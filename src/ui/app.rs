@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, row, scrollable, text};
+use iced::widget::{button, column, container, progress_bar, row, scrollable, text};
 use iced::{Alignment, Element, Length, Task, Theme};
 
 use crate::core::AppConfig;
@@ -124,19 +124,57 @@ impl XionApp {
 
         let navigation = row![back_button, forward_button, refresh_button].spacing(8);
 
+        let tabs = row![button(text("Ce PC")), button(text("+"))].spacing(6);
+
         let address_bar = container(text(self.state.route.path.display().to_string()))
             .padding([6, 12])
             .width(Length::Fill);
 
-        let header = container(
-            row![navigation, address_bar]
+        let search_bar = container(text("Rechercher dans : Ce PC"))
+            .padding([6, 12])
+            .width(Length::Fixed(220.0));
+
+        let command_bar = row![
+            button(text("Nouveau")),
+            button(text("Couper")),
+            button(text("Copier")),
+            button(text("Coller")),
+            button(text("Trier")),
+            button(text("Afficher")),
+            button(text("..."))
+        ]
+        .spacing(8);
+
+        let header = column![
+            row![tabs].spacing(8).align_y(Alignment::Center),
+            row![navigation, address_bar, search_bar]
                 .spacing(12)
                 .align_y(Alignment::Center),
-        )
-        .padding(12);
+            command_bar
+        ]
+        .spacing(10);
+
+        let drive_summary = column![
+            text("Périphériques et lecteurs").size(16),
+            row![
+                text("🖥️"),
+                column![
+                    text("Disque local (C:)"),
+                    progress_bar(0.0..=1.0, 0.12),
+                    text("109 Go libres sur 930 Go").size(12)
+                ]
+                .spacing(6)
+            ]
+            .spacing(12)
+            .align_y(Alignment::Center)
+        ]
+        .spacing(12);
 
         let list_content = if let Some(message) = &self.error {
-            column![text("Impossible de charger le dossier"), text(message)]
+            column![
+                text("Impossible de charger le dossier").size(16),
+                text(message)
+            ]
         } else if self.entries.is_empty() {
             column![text("Dossier vide")]
         } else {
@@ -156,15 +194,26 @@ impl XionApp {
             })
         };
 
-        let list = scrollable(container(list_content.spacing(10)).padding(8));
+        let list = scrollable(
+            container(column![drive_summary, list_content].spacing(20)).padding(12),
+        );
 
         let sidebar = column![
             text("Accueil").size(16),
+            text("Galerie").size(16),
+            text("—").size(12),
+            text("Bureau").size(14),
+            text("Téléchargement").size(14),
+            text("Documents").size(14),
+            text("Images").size(14),
+            text("Musique").size(14),
+            text("Vidéos").size(14),
+            text("—").size(12),
             text("Ce PC").size(16),
             text("Disque local (C:)").size(14),
             text("Réseau").size(14)
         ]
-        .spacing(12)
+        .spacing(10)
         .padding(12);
 
         let body = row![

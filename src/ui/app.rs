@@ -46,15 +46,6 @@ impl XionApp {
         self.refresh_entries();
     }
 
-    fn entry_label(entry: &FsEntry) -> String {
-        let icon = match entry.entry_type {
-            FsEntryType::Directory => "📁",
-            FsEntryType::File => "📄",
-            FsEntryType::Symlink => "🔗",
-            FsEntryType::Other => "❓",
-        };
-        format!("{icon} {}", entry.name)
-    }
 }
 
 impl XionApp {
@@ -190,12 +181,27 @@ impl XionApp {
                 ]
                 .spacing(12)
                 .align_y(Alignment::Center);
-                column.push(entry_row)
+                let message = match entry.entry_type {
+                    FsEntryType::Directory => UiMessage::NavigateTo(entry.path.clone()),
+                    _ => UiMessage::SelectEntry(entry.path.clone()),
+                };
+                column.push(button(entry_row).on_press(message))
             })
         };
 
+        let selection_status = self
+            .state
+            .navigation
+            .selection
+            .as_ref()
+            .map(|path| format!("Sélection : {}", path.display()))
+            .unwrap_or_else(|| "Sélection : —".to_string());
+
         let list = scrollable(
-            container(column![drive_summary, list_content].spacing(20)).padding(12),
+            container(
+                column![drive_summary, list_content, text(selection_status).size(12)].spacing(20),
+            )
+            .padding(12),
         );
 
         let sidebar = column![

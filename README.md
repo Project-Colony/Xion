@@ -16,6 +16,12 @@ Ce dépôt pose les bases du projet ainsi que les règles de développement.
 - Toutes les dépendances, `Cargo.toml` et `Cargo.lock` doivent rester **à jour** en permanence.
 - Organisation claire des dossiers, documentation et suivi des tâches obligatoires.
 
+## Stack choisie
+
+- **UI** : Iced
+- **Fenêtrage/événements** : winit
+- **Rendu** : wgpu
+
 ## Inspirations UI/UX
 
 - Windows File Explorer

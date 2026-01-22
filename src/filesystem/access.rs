@@ -1,8 +1,6 @@
 use std::cmp::Ordering;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::thread;
 
 use crate::core::{AppResult, XionError};
 use crate::filesystem::metadata::FsMetadata;
@@ -146,35 +144,6 @@ impl LocalFileSystem {
             SortOrder::Desc => ordering.reverse(),
         }
     }
-
-    fn compare_entry_stubs(options: &ListOptions, left: &EntryStub, right: &EntryStub) -> Ordering {
-        if options.directories_first && left.entry_type != right.entry_type {
-            return match (left.entry_type, right.entry_type) {
-                (FsEntryType::Directory, _) => Ordering::Less,
-                (_, FsEntryType::Directory) => Ordering::Greater,
-                _ => Ordering::Equal,
-            };
-        }
-
-        let ordering = match options.sort_by {
-            SortKey::Name => left.name.to_lowercase().cmp(&right.name.to_lowercase()),
-            SortKey::Modified => left
-                .metadata
-                .as_ref()
-                .map(|metadata| metadata.modified)
-                .cmp(&right.metadata.as_ref().map(|metadata| metadata.modified)),
-            SortKey::Size => left
-                .metadata
-                .as_ref()
-                .map(|metadata| metadata.size)
-                .cmp(&right.metadata.as_ref().map(|metadata| metadata.size)),
-        };
-
-        match options.sort_order {
-            SortOrder::Asc => ordering,
-            SortOrder::Desc => ordering.reverse(),
-        }
-    }
 }
 
 impl FileSystem for LocalFileSystem {
@@ -230,154 +199,7 @@ impl FileSystem for LocalFileSystem {
         Ok(FsMetadata::from_metadata(metadata))
     }
 
-    fn list_dir_paged(
-        &self,
-        path: &Path,
-        options: ListOptions,
-        page: PageRequest,
-    ) -> AppResult<Page<FsEntry>> {
-        if !path.exists() {
-            return Err(XionError::NotFound(path.to_path_buf()));
-        }
-
-        let needs_full_metadata = matches!(options.sort_by, SortKey::Modified | SortKey::Size);
-        let mut entries = Vec::new();
-
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
-            let file_name = entry.file_name();
-            let name = file_name.to_string_lossy().to_string();
-
-            if !options.show_hidden && Self::is_hidden(&name) {
-                continue;
-            }
-
-            let file_type = entry.file_type()?;
-            let entry_type = if file_type.is_dir() {
-                FsEntryType::Directory
-            } else if file_type.is_file() {
-                FsEntryType::File
-            } else if file_type.is_symlink() {
-                FsEntryType::Symlink
-            } else {
-                FsEntryType::Other
-            };
-
-            if !Self::matches_filter(entry_type, options.filter) {
-                continue;
-            }
-
-            if !Self::matches_query(&name, &options.name_query) {
-                continue;
-            }
-
-            let metadata = if needs_full_metadata {
-                Some(FsMetadata::from_metadata(entry.metadata()?))
-            } else {
-                None
-            };
-
-            entries.push(EntryStub {
-                path: entry.path(),
-                name,
-                entry_type,
-                metadata,
-            });
-        }
-
-        entries.sort_by(|left, right| Self::compare_entry_stubs(&options, left, right));
-
-        let total = entries.len();
-        let offset = page.offset.min(total);
-        let end = offset.saturating_add(page.limit).min(total);
-        let slice = &entries[offset..end];
-
-        let missing_paths: Vec<PathBuf> = slice
-            .iter()
-            .filter(|entry| entry.metadata.is_none())
-            .map(|entry| entry.path.clone())
-            .collect();
-
-        let mut missing_iter = if missing_paths.is_empty() {
-            Vec::new().into_iter()
-        } else {
-            self.metadata_batch(&missing_paths)?.into_iter()
-        };
-
-        let mut items = Vec::with_capacity(slice.len());
-        for entry in slice {
-            let metadata = match entry.metadata.as_ref() {
-                Some(metadata) => metadata.clone(),
-                None => missing_iter
-                    .next()
-                    .ok_or_else(|| XionError::InvalidPath(entry.path.clone()))?,
-            };
-
-            items.push(FsEntry {
-                path: entry.path.clone(),
-                name: entry.name.clone(),
-                entry_type: entry.entry_type,
-                metadata,
-            });
-        }
-
-        Ok(Page {
-            items,
-            total,
-            offset,
-            limit: page.limit,
-        })
-    }
-
     fn metadata_batch(&self, paths: &[PathBuf]) -> AppResult<Vec<FsMetadata>> {
-        if paths.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let thread_count = thread::available_parallelism()
-            .map(|count| count.get())
-            .unwrap_or(1);
-        let chunk_size = ((paths.len() + thread_count - 1) / thread_count).max(1);
-        let results = Arc::new(Mutex::new(vec![None; paths.len()]));
-
-        thread::scope(|scope| {
-            for (chunk_index, chunk) in paths.chunks(chunk_size).enumerate() {
-                let results = Arc::clone(&results);
-                scope.spawn(move || {
-                    for (index, path) in chunk.iter().enumerate() {
-                        let result = fs::metadata(path)
-                            .map(FsMetadata::from_metadata)
-                            .map_err(XionError::from);
-                        if let Ok(mut guard) = results.lock() {
-                            guard[chunk_index * chunk_size + index] = Some(result);
-                        }
-                    }
-                });
-            }
-        });
-
-        let results = Arc::try_unwrap(results)
-            .map_err(|_| XionError::InvalidPath(PathBuf::from("<batch>")))?
-            .into_inner()
-            .map_err(|_| XionError::InvalidPath(PathBuf::from("<batch>")))?;
-
-        let mut metadata = Vec::with_capacity(paths.len());
-        for result in results {
-            match result {
-                Some(Ok(value)) => metadata.push(value),
-                Some(Err(error)) => return Err(error),
-                None => return Err(XionError::InvalidPath(PathBuf::from("<batch>"))),
-            }
-        }
-
-        Ok(metadata)
+        paths.iter().map(|path| self.metadata(path)).collect()
     }
-}
-
-#[derive(Debug)]
-struct EntryStub {
-    path: PathBuf,
-    name: String,
-    entry_type: FsEntryType,
-    metadata: Option<FsMetadata>,
 }

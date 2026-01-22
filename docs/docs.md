@@ -51,3 +51,8 @@ Créer un explorateur de fichiers en Rust inspiré de Windows File Explorer, Fil
 - Conventions d'architecture et de modules.
 - Principes de performance et de réactivité.
 - Décisions techniques importantes.
+
+## Références internes
+
+- `docs/architecture.md` : architecture modulaire et responsabilités des domaines.
+- `docs/ui-routing.md` : structure de routing UI et messages de navigation.

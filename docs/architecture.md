@@ -31,8 +31,11 @@ ui/          -> état UI, routing, composants Iced
 
 - `FileSystem` : trait pour injecter une implémentation (locale, mock, future API).
 - `LocalFileSystem` : implémentation OS locale.
-- `FsEntry` : entrée unifiée (nom, chemin, type).
-- `ListOptions` : options runtime (ex. afficher/masquer les fichiers cachés).
+- `FsEntry` : entrée unifiée (nom, chemin, type, métadonnées).
+- `ListOptions` : options runtime (tri, filtrage, masquage des fichiers cachés).
+- `Page`/`PageRequest` : pagination pour listes volumineuses.
+- `DirectoryCache`/`MetadataCache` : caches TTL pour répertoires et métadonnées.
+- `FileWatcher` : abstraction de surveillance (implémentation no-op pour le proto).
 
 **Invariants**
 
@@ -44,12 +47,10 @@ ui/          -> état UI, routing, composants Iced
 **Responsabilité** : logique métier transverse.
 
 - `HistoryService` : gestion de l'historique de navigation (back/forward).
-
-**Extensions prévues**
-
-- `SearchService` : indexation et recherche.
 - `FavoritesService` : favoris rapides.
-- `ThumbnailService` : cache et génération des miniatures.
+- `SearchService` : recherche initiale (filtrage par nom).
+- `DirectoryLoader` : orchestration des pages + caches (dossiers/métadonnées).
+- `ThumbnailService` : cache et génération des miniatures (prépare la phase perf).
 
 ## ui/
 

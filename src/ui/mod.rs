@@ -57,12 +57,4 @@ pub enum UiMessage {
     Refresh,
     FocusPane(PaneKind),
     SelectEntry(PathBuf),
-    Scroll(ScrollViewport),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ScrollViewport {
-    pub offset_y: f32,
-    pub viewport_height: f32,
-    pub content_height: f32,
 }

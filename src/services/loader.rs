@@ -39,15 +39,27 @@ impl DirectoryLoader {
             });
         }
 
-        let page_data = filesystem.list_dir_paged(path, options, page)?;
-        self.cache_metadata(&page_data.items);
+        let entries = filesystem.list_dir(path, options)?;
+        self.cache_metadata(&entries);
+        let total = entries.len();
+        self.directory_cache.insert(path.clone(), entries);
 
-        if page_data.offset == 0 && page_data.items.len() == page_data.total {
-            self.directory_cache
-                .insert(path.clone(), page_data.items.clone());
+        if let Some(entries) = self.directory_cache.get(path) {
+            let page_entries = page.slice(entries).iter().cloned().collect::<Vec<_>>();
+            return Ok(Page {
+                items: page_entries,
+                total,
+                offset: page.offset.min(total),
+                limit: page.limit,
+            });
         }
 
-        Ok(page_data)
+        Ok(Page {
+            items: Vec::new(),
+            total: 0,
+            offset: 0,
+            limit: page.limit,
+        })
     }
 
     pub fn load_next_page(

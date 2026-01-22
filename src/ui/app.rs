@@ -1,41 +1,106 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
+use std::time::Duration;
 
-use iced::widget::{button, column, container, progress_bar, row, scrollable, text};
+use iced::widget::{
+    button, column, container, progress_bar, row, scrollable, text, vertical_space,
+};
 use iced::{Alignment, Element, Length, Task, Theme};
 
 use crate::core::AppConfig;
-use crate::filesystem::{FileSystem, FsEntry, FsEntryType, ListOptions, LocalFileSystem};
-use crate::services::HistoryService;
-use crate::ui::{AppState, UiMessage};
+use crate::filesystem::{FsEntry, FsEntryType, ListOptions, LocalFileSystem, Page, PageRequest};
+use crate::services::{DirectoryLoader, HistoryService, VirtualList, VirtualWindow};
+use crate::ui::{AppState, ScrollViewport, UiMessage};
+
+const ROW_HEIGHT: f32 = 32.0;
+const OVERSCAN: usize = 6;
+const CACHE_SIZE: usize = 256;
+const CACHE_TTL_SECONDS: u64 = 45;
+const PAGE_SIZE: usize = 120;
+
+#[derive(Debug)]
+struct PagedEntries {
+    total: usize,
+    items: Vec<Option<FsEntry>>,
+    loaded_pages: HashSet<usize>,
+    page_size: usize,
+}
+
+impl PagedEntries {
+    fn new(total: usize, page_size: usize) -> Self {
+        Self {
+            total,
+            items: vec![None; total],
+            loaded_pages: HashSet::new(),
+            page_size: page_size.max(1),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.total = 0;
+        self.items.clear();
+        self.loaded_pages.clear();
+    }
+
+    fn apply_page(&mut self, page_index: usize, page: Page<FsEntry>) {
+        if self.total != page.total || self.items.len() != page.total {
+            *self = Self::new(page.total, self.page_size);
+        }
+
+        for (index, entry) in page.items.into_iter().enumerate() {
+            let target_index = page.offset + index;
+            if target_index < self.items.len() {
+                self.items[target_index] = Some(entry);
+            }
+        }
+
+        self.loaded_pages.insert(page_index);
+    }
+
+    fn is_page_loaded(&self, page_index: usize) -> bool {
+        self.loaded_pages.contains(&page_index)
+    }
+
+    fn get(&self, index: usize) -> Option<&FsEntry> {
+        self.items.get(index).and_then(|entry| entry.as_ref())
+    }
+}
 
 #[derive(Debug)]
 pub struct XionApp {
     state: AppState,
     history: HistoryService,
     filesystem: LocalFileSystem,
-    entries: Vec<FsEntry>,
+    directory_loader: DirectoryLoader,
+    entries: PagedEntries,
+    scroll_offset: f32,
+    viewport_height: f32,
     error: Option<String>,
 }
 
 impl XionApp {
-    fn load_entries(&self, path: &PathBuf) -> Result<Vec<FsEntry>, String> {
+    fn load_entries(
+        &mut self,
+        path: &PathBuf,
+        page_request: PageRequest,
+    ) -> Result<Page<FsEntry>, String> {
         let options = ListOptions {
             show_hidden: self.state.config.show_hidden,
             ..ListOptions::default()
         };
-        self.filesystem
-            .list_dir(path, options)
+        self.directory_loader
+            .load_page(&self.filesystem, path, options, page_request)
             .map_err(|error| error.to_string())
     }
 
     fn refresh_entries(&mut self) {
-        match self.load_entries(&self.state.route.path) {
-            Ok(entries) => {
-                self.entries = entries;
-                self.error = None;
-            }
+        self.entries.reset();
+        self.error = None;
+        self.scroll_offset = 0.0;
+
+        match self.load_page(0) {
+            Ok(()) => {}
             Err(message) => {
-                self.entries.clear();
                 self.error = Some(message);
             }
         }
@@ -56,11 +121,20 @@ impl XionApp {
         history.record(state.route.path.clone());
 
         let filesystem = LocalFileSystem::new();
+        let directory_loader = DirectoryLoader::new(
+            CACHE_SIZE,
+            Duration::from_secs(CACHE_TTL_SECONDS),
+            PAGE_SIZE,
+        );
+        let entries = PagedEntries::new(0, directory_loader.page_size());
         let mut app = Self {
             state,
             history,
             filesystem,
-            entries: Vec::new(),
+            directory_loader,
+            entries,
+            scroll_offset: 0.0,
+            viewport_height: 480.0,
             error: None,
         };
         app.refresh_entries();
@@ -93,9 +167,54 @@ impl XionApp {
             UiMessage::SelectEntry(path) => {
                 self.state.navigation.selection = Some(path);
             }
+            UiMessage::Scroll(viewport) => {
+                self.scroll_offset = viewport.offset_y;
+                self.viewport_height = viewport.viewport_height.max(1.0);
+                self.ensure_visible_pages();
+            }
         }
 
         Task::none()
+    }
+
+    fn load_page(&mut self, page_index: usize) -> Result<(), String> {
+        let offset = page_index * self.entries.page_size;
+        let page_request = PageRequest::new(offset, self.entries.page_size);
+        let page = self.load_entries(&self.state.route.path, page_request)?;
+        self.entries.apply_page(page_index, page);
+        Ok(())
+    }
+
+    fn ensure_visible_pages(&mut self) {
+        if self.entries.total == 0 {
+            return;
+        }
+
+        let window = self.virtual_window();
+        if window.len() == 0 {
+            return;
+        }
+
+        let start_page = window.start / self.entries.page_size;
+        let end_page = (window.end.saturating_sub(1)) / self.entries.page_size;
+
+        for page_index in start_page..=end_page {
+            if !self.entries.is_page_loaded(page_index) {
+                if let Err(message) = self.load_page(page_index) {
+                    self.error = Some(message);
+                    break;
+                }
+            }
+        }
+    }
+
+    fn virtual_window(&self) -> VirtualWindow {
+        let virtual_list = VirtualList {
+            item_height: ROW_HEIGHT,
+            viewport_height: self.viewport_height,
+            overscan: OVERSCAN,
+        };
+        virtual_list.visible_range(self.scroll_offset, self.entries.total)
     }
 
     fn view(&self) -> Element<'_, UiMessage> {
@@ -166,27 +285,51 @@ impl XionApp {
                 text("Impossible de charger le dossier").size(16),
                 text(message)
             ]
-        } else if self.entries.is_empty() {
+        } else if self.entries.total == 0 {
             column![text("Dossier vide")]
         } else {
-            self.entries.iter().fold(column![], |column, entry| {
-                let entry_row = row![
-                    text(match entry.entry_type {
-                        FsEntryType::Directory => "📁",
-                        FsEntryType::File => "📄",
-                        FsEntryType::Symlink => "🔗",
-                        FsEntryType::Other => "❓",
-                    }),
-                    text(&entry.name)
-                ]
-                .spacing(12)
-                .align_y(Alignment::Center);
-                let message = match entry.entry_type {
-                    FsEntryType::Directory => UiMessage::NavigateTo(entry.path.clone()),
-                    _ => UiMessage::SelectEntry(entry.path.clone()),
-                };
-                column.push(button(entry_row).on_press(message))
-            })
+            let window = self.virtual_window();
+            let mut list = column![];
+
+            if window.padding_top > 0.0 {
+                list = list.push(vertical_space().height(Length::Fixed(window.padding_top)));
+            }
+
+            for index in window.start..window.end {
+                let entry = self.entries.get(index);
+                list = list.push(match entry {
+                    Some(entry) => {
+                        let entry_row = row![
+                            text(match entry.entry_type {
+                                FsEntryType::Directory => "📁",
+                                FsEntryType::File => "📄",
+                                FsEntryType::Symlink => "🔗",
+                                FsEntryType::Other => "❓",
+                            }),
+                            text(&entry.name)
+                        ]
+                        .spacing(12)
+                        .align_y(Alignment::Center);
+                        let message = match entry.entry_type {
+                            FsEntryType::Directory => UiMessage::NavigateTo(entry.path.clone()),
+                            _ => UiMessage::SelectEntry(entry.path.clone()),
+                        };
+                        button(entry_row).on_press(message)
+                    }
+                    None => {
+                        let placeholder = row![text("⏳"), text("Chargement…")]
+                            .spacing(12)
+                            .align_y(Alignment::Center);
+                        button(placeholder)
+                    }
+                });
+            }
+
+            if window.padding_bottom > 0.0 {
+                list = list.push(vertical_space().height(Length::Fixed(window.padding_bottom)));
+            }
+
+            list
         };
 
         let selection_status = self
@@ -202,7 +345,14 @@ impl XionApp {
                 column![drive_summary, list_content, text(selection_status).size(12)].spacing(20),
             )
             .padding(12),
-        );
+        )
+        .on_scroll(|viewport| {
+            UiMessage::Scroll(ScrollViewport {
+                offset_y: viewport.absolute_offset().y,
+                viewport_height: viewport.bounds().height,
+                content_height: viewport.content_bounds().height,
+            })
+        });
 
         let sidebar = column![
             text("Accueil").size(16),

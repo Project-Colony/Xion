@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use iced::widget::{button, column, container, row, scrollable, text};
-use iced::{Alignment, Element, Task, Theme};
+use iced::{Alignment, Element, Length, Task, Theme};
 
 use crate::core::AppConfig;
 use crate::filesystem::{FileSystem, FsEntry, FsEntryType, ListOptions, LocalFileSystem};
@@ -122,33 +122,63 @@ impl XionApp {
 
         let refresh_button = button(text("⟳")).on_press(UiMessage::Refresh);
 
-        let header = row![
-            back_button,
-            forward_button,
-            refresh_button,
-            text(self.state.route.path.display().to_string())
-        ]
-        .spacing(12)
-        .align_y(Alignment::Center);
+        let navigation = row![back_button, forward_button, refresh_button].spacing(8);
+
+        let address_bar = container(text(self.state.route.path.display().to_string()))
+            .padding([6, 12])
+            .width(Length::Fill);
+
+        let header = container(
+            row![navigation, address_bar]
+                .spacing(12)
+                .align_y(Alignment::Center),
+        )
+        .padding(12);
 
         let list_content = if let Some(message) = &self.error {
             column![text("Impossible de charger le dossier"), text(message)]
         } else if self.entries.is_empty() {
             column![text("Dossier vide")]
         } else {
-            self.entries
-                .iter()
-                .fold(column![], |column, entry| {
-                    column.push(text(Self::entry_label(entry)))
-                })
+            self.entries.iter().fold(column![], |column, entry| {
+                let entry_row = row![
+                    text(match entry.entry_type {
+                        FsEntryType::Directory => "📁",
+                        FsEntryType::File => "📄",
+                        FsEntryType::Symlink => "🔗",
+                        FsEntryType::Other => "❓",
+                    }),
+                    text(&entry.name)
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center);
+                column.push(entry_row)
+            })
         };
 
-        let list = scrollable(container(list_content.spacing(6)).padding(4));
+        let list = scrollable(container(list_content.spacing(10)).padding(8));
 
-        let content = column![header, list]
-            .spacing(16)
+        let sidebar = column![
+            text("Accueil").size(16),
+            text("Ce PC").size(16),
+            text("Disque local (C:)").size(14),
+            text("Réseau").size(14)
+        ]
+        .spacing(12)
+        .padding(12);
+
+        let body = row![
+            container(sidebar).width(Length::Fixed(220.0)),
+            container(list).width(Length::Fill).height(Length::Fill)
+        ]
+        .height(Length::Fill)
+        .spacing(16);
+
+        let content = column![header, body]
+            .spacing(12)
             .padding(16)
-            .align_x(Alignment::Start);
+            .align_x(Alignment::Start)
+            .height(Length::Fill);
 
         container(content).into()
     }
@@ -160,6 +190,6 @@ pub fn run() -> iced::Result {
         XionApp::update,
         XionApp::view,
     )
-    .theme(|_| Theme::Dark)
+    .theme(|_| Theme::Light)
     .run_with(|| (XionApp::new(), Task::none()))
 }

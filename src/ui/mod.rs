@@ -4,7 +4,7 @@ use crate::core::AppConfig;
 
 pub mod app;
 
-pub use app::{run, XionApp};
+pub use app::{XionApp, run};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneKind {

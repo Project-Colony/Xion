@@ -21,6 +21,7 @@ impl XionApp {
     fn load_entries(&self, path: &PathBuf) -> Result<Vec<FsEntry>, String> {
         let options = ListOptions {
             show_hidden: self.state.config.show_hidden,
+            ..ListOptions::default()
         };
         self.filesystem
             .list_dir(path, options)
@@ -45,7 +46,6 @@ impl XionApp {
         self.history.record(path);
         self.refresh_entries();
     }
-
 }
 
 impl XionApp {

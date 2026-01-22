@@ -2,6 +2,10 @@ use std::path::PathBuf;
 
 use crate::core::AppConfig;
 
+pub mod app;
+
+pub use app::{run, XionApp};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneKind {
     Tree,
@@ -48,6 +52,9 @@ impl AppState {
 #[derive(Debug, Clone)]
 pub enum UiMessage {
     NavigateTo(PathBuf),
+    Back,
+    Forward,
+    Refresh,
     FocusPane(PaneKind),
     SelectEntry(PathBuf),
 }

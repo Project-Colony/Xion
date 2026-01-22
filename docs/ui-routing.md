@@ -59,6 +59,6 @@ NavigationState {
 
 ## Prochaines étapes
 
-- Brancher les messages UI à une boucle Iced.
-- Ajouter des commandes clavier/souris standard (Back/Forward, Ctrl+L, etc.).
-- Introduire la virtualisation pour la liste lorsque le volume est important.
+- [ ] Brancher les messages UI à une boucle Iced.
+- [ ] Ajouter des commandes clavier/souris standard (Back/Forward, Ctrl+L, etc.).
+- [ ] Introduire la virtualisation pour la liste lorsque le volume est important.

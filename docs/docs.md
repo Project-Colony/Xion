@@ -42,9 +42,9 @@ Créer un explorateur de fichiers en Rust inspiré de Windows File Explorer, Fil
 
 ## Roadmap documentaire
 
-- Détailler l'architecture des modules (diagrammes + API principales).
-- Décrire le cycle de rendu Iced et le modèle d'état.
-- Documenter les stratégies de cache et d'indexation.
+- [ ] Détailler l'architecture des modules (diagrammes + API principales).
+- [ ] Décrire le cycle de rendu Iced et le modèle d'état.
+- [ ] Documenter les stratégies de cache et d'indexation.
 
 ## Documentation à maintenir
 

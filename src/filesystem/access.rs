@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::core::{AppResult, XionError};
 use crate::filesystem::metadata::FsMetadata;
+use crate::filesystem::paging::{Page, PageRequest};
 
 #[derive(Debug, Clone)]
 pub struct FsEntry {
@@ -74,6 +75,18 @@ impl ListOptions {
 pub trait FileSystem {
     fn list_dir(&self, path: &Path, options: ListOptions) -> AppResult<Vec<FsEntry>>;
     fn metadata(&self, path: &Path) -> AppResult<FsMetadata>;
+    fn list_dir_paged(
+        &self,
+        path: &Path,
+        options: ListOptions,
+        page: PageRequest,
+    ) -> AppResult<Page<FsEntry>> {
+        let entries = self.list_dir(path, options)?;
+        Ok(page.apply(entries))
+    }
+    fn metadata_batch(&self, paths: &[PathBuf]) -> AppResult<Vec<FsMetadata>> {
+        paths.iter().map(|path| self.metadata(path)).collect()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -184,5 +197,9 @@ impl FileSystem for LocalFileSystem {
     fn metadata(&self, path: &Path) -> AppResult<FsMetadata> {
         let metadata = fs::metadata(path)?;
         Ok(FsMetadata::from_metadata(metadata))
+    }
+
+    fn metadata_batch(&self, paths: &[PathBuf]) -> AppResult<Vec<FsMetadata>> {
+        paths.iter().map(|path| self.metadata(path)).collect()
     }
 }

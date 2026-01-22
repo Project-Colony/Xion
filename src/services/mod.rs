@@ -42,4 +42,12 @@ impl HistoryService {
     pub fn current(&self) -> Option<&PathBuf> {
         self.cursor.and_then(|index| self.entries.get(index))
     }
+
+    pub fn can_back(&self) -> bool {
+        matches!(self.cursor, Some(index) if index > 0)
+    }
+
+    pub fn can_forward(&self) -> bool {
+        matches!(self.cursor, Some(index) if index + 1 < self.entries.len())
+    }
 }

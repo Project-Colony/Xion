@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+iced = { version = "0.13", features = ["wgpu"] }
+wgpu = "0.20"
+winit = "0.29"

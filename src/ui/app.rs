@@ -27,36 +27,71 @@ use crate::ui::{
     UiMessage,
 };
 
-const FONT_NAME: &str = "JetBrains Mono";
+const FONT_NAME: &str = "JetBrainsMono Nerd Font";
 const JETBRAINS_MONO_REGULAR: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Regular.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Regular.ttf");
 const JETBRAINS_MONO_ITALIC: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Italic.ttf");
-const JETBRAINS_MONO_THIN: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Thin.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Italic.ttf");
+const JETBRAINS_MONO_THIN: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Thin.ttf");
 const JETBRAINS_MONO_THIN_ITALIC: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-ThinItalic.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-ThinItalic.ttf");
 const JETBRAINS_MONO_EXTRA_LIGHT: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-ExtraLight.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-ExtraLight.ttf");
 const JETBRAINS_MONO_EXTRA_LIGHT_ITALIC: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-ExtraLightItalic.ttf");
-const JETBRAINS_MONO_LIGHT: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Light.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-ExtraLightItalic.ttf");
+const JETBRAINS_MONO_LIGHT: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Light.ttf");
 const JETBRAINS_MONO_LIGHT_ITALIC: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-LightItalic.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-LightItalic.ttf");
 const JETBRAINS_MONO_MEDIUM: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Medium.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Medium.ttf");
 const JETBRAINS_MONO_MEDIUM_ITALIC: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-MediumItalic.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-MediumItalic.ttf");
 const JETBRAINS_MONO_SEMI_BOLD: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-SemiBold.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-SemiBold.ttf");
 const JETBRAINS_MONO_SEMI_BOLD_ITALIC: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-SemiBoldItalic.ttf");
-const JETBRAINS_MONO_BOLD: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Bold.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-SemiBoldItalic.ttf");
+const JETBRAINS_MONO_BOLD: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Bold.ttf");
 const JETBRAINS_MONO_BOLD_ITALIC: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-BoldItalic.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-BoldItalic.ttf");
 const JETBRAINS_MONO_EXTRA_BOLD: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-ExtraBold.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-ExtraBold.ttf");
 const JETBRAINS_MONO_EXTRA_BOLD_ITALIC: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-ExtraBoldItalic.ttf");
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-ExtraBoldItalic.ttf");
+
+const ICON_DEVICE: &str = "";
+const ICON_LOADING: &str = "";
+const ICON_FOLDER: &str = "";
+const ICON_FILE: &str = "";
+const ICON_SYMLINK: &str = "";
+const ICON_UNKNOWN: &str = "";
+const ICON_HOME: &str = "";
+const ICON_GALLERY: &str = "";
+const ICON_DESKTOP: &str = "";
+const ICON_DOWNLOAD: &str = "";
+const ICON_DOCUMENTS: &str = "";
+const ICON_MUSIC: &str = "";
+const ICON_VIDEO: &str = "";
+const ICON_PC: &str = "";
+const ICON_DRIVE: &str = "";
+const ICON_NETWORK: &str = "";
+const ICON_BACK: &str = "";
+const ICON_FORWARD: &str = "";
+const ICON_REFRESH: &str = "";
+const ICON_SEARCH: &str = "";
+const ICON_NEW: &str = "";
+const ICON_CUT: &str = "";
+const ICON_COPY: &str = "";
+const ICON_PASTE: &str = "";
+const ICON_SORT: &str = "";
+const ICON_VIEW: &str = "";
+const ICON_MORE: &str = "";
+const ICON_ACTIONS: &str = "";
+const ICON_OPEN: &str = "";
+const ICON_RENAME: &str = "";
+const ICON_DELETE: &str = "";
 
 #[derive(Debug, Clone, Copy)]
 struct UiColors {
@@ -967,24 +1002,24 @@ impl XionApp {
         };
 
         let back_button = if self.history.can_back() {
-            toolbar_button("⟵".to_string()).on_press(UiMessage::Back)
+            toolbar_button(ICON_BACK.to_string()).on_press(UiMessage::Back)
         } else {
-            toolbar_button("⟵".to_string())
+            toolbar_button(ICON_BACK.to_string())
         };
 
         let forward_button = if self.history.can_forward() {
-            toolbar_button("⟶".to_string()).on_press(UiMessage::Forward)
+            toolbar_button(ICON_FORWARD.to_string()).on_press(UiMessage::Forward)
         } else {
-            toolbar_button("⟶".to_string())
+            toolbar_button(ICON_FORWARD.to_string())
         };
 
-        let refresh_button = toolbar_button("⟳".to_string()).on_press(UiMessage::Refresh);
+        let refresh_button = toolbar_button(ICON_REFRESH.to_string()).on_press(UiMessage::Refresh);
 
         let navigation = row![back_button, forward_button, refresh_button].spacing(spacing.sm);
 
         let tabs = row![
-            tab_button("💻 Ce PC".to_string(), true),
-            tab_button("＋".to_string(), false)
+            tab_button(format!("{} Ce PC", ICON_PC), true),
+            tab_button(ICON_NEW.to_string(), false)
         ]
         .spacing(spacing.sm);
 
@@ -998,7 +1033,7 @@ impl XionApp {
             });
 
         let search_bar = container(
-            text("🔍 Rechercher dans : Ce PC")
+            text(format!("{} Rechercher dans : Ce PC", ICON_SEARCH))
                 .size(typography.caption)
                 .font(typography.caption_font),
         )
@@ -1011,26 +1046,26 @@ impl XionApp {
         });
 
         let command_bar = row![
-            toolbar_button("➕ Nouveau".to_string()),
-            toolbar_button("✂️ Couper".to_string()),
-            toolbar_button("📋 Copier".to_string()),
-            toolbar_button("📌 Coller".to_string()),
-            toolbar_button("↕️ Trier".to_string()),
-            toolbar_button("🖼️ Afficher".to_string()),
-            toolbar_button("⋯".to_string()),
-            toolbar_button("⚙️ Actions".to_string())
+            toolbar_button(format!("{} Nouveau", ICON_NEW)),
+            toolbar_button(format!("{} Couper", ICON_CUT)),
+            toolbar_button(format!("{} Copier", ICON_COPY)),
+            toolbar_button(format!("{} Coller", ICON_PASTE)),
+            toolbar_button(format!("{} Trier", ICON_SORT)),
+            toolbar_button(format!("{} Afficher", ICON_VIEW)),
+            toolbar_button(ICON_MORE.to_string()),
+            toolbar_button(format!("{} Actions", ICON_ACTIONS))
                 .on_press(UiMessage::ToggleContextMenu(!self.context_menu_open))
         ]
         .spacing(spacing.sm);
 
         let context_actions = row![
-            toolbar_button("📂 Ouvrir".to_string())
+            toolbar_button(format!("{} Ouvrir", ICON_OPEN))
                 .on_press(UiMessage::ContextAction(ContextAction::Open,)),
-            toolbar_button("✏️ Renommer".to_string())
+            toolbar_button(format!("{} Renommer", ICON_RENAME))
                 .on_press(UiMessage::ContextAction(ContextAction::Rename,)),
-            toolbar_button("🗑️ Supprimer".to_string())
+            toolbar_button(format!("{} Supprimer", ICON_DELETE))
                 .on_press(UiMessage::ContextAction(ContextAction::Delete,)),
-            toolbar_button("🔗 Copier le chemin".to_string())
+            toolbar_button(format!("{} Copier le chemin", ICON_SYMLINK))
                 .on_press(UiMessage::ContextAction(ContextAction::CopyPath),)
         ]
         .spacing(spacing.sm);
@@ -1079,7 +1114,9 @@ impl XionApp {
                     .size(typography.title)
                     .font(typography.title_font),
                 row![
-                    text("🖥️").size(typography.body).font(typography.body_font),
+                    text(ICON_DEVICE)
+                        .size(typography.body)
+                        .font(typography.body_font),
                     column![
                         text("Disque local (C:)")
                             .size(typography.body)
@@ -1160,7 +1197,7 @@ impl XionApp {
                             .map(|path| path == &entry.path)
                             .unwrap_or(false);
                         let leading: Element<'_, UiMessage> = match entry.entry_type {
-                            FsEntryType::Directory => text("📁")
+                            FsEntryType::Directory => text(ICON_FOLDER)
                                 .size(typography.body)
                                 .font(typography.body_font)
                                 .into(),
@@ -1178,16 +1215,16 @@ impl XionApp {
                                         .into()
                                 })
                                 .unwrap_or_else(|| {
-                                    text("📄")
+                                    text(ICON_FILE)
                                         .size(typography.body)
                                         .font(typography.body_font)
                                         .into()
                                 }),
-                            FsEntryType::Symlink => text("🔗")
+                            FsEntryType::Symlink => text(ICON_SYMLINK)
                                 .size(typography.body)
                                 .font(typography.body_font)
                                 .into(),
-                            FsEntryType::Other => text("❓")
+                            FsEntryType::Other => text(ICON_UNKNOWN)
                                 .size(typography.body)
                                 .font(typography.body_font)
                                 .into(),
@@ -1249,7 +1286,9 @@ impl XionApp {
                     }
                     None => {
                         let placeholder = row![
-                            text("⏳").size(typography.body).font(typography.body_font),
+                            text(ICON_LOADING)
+                                .size(typography.body)
+                                .font(typography.body_font),
                             text("Chargement…")
                                 .size(typography.body)
                                 .font(typography.body_font)
@@ -1315,14 +1354,18 @@ impl XionApp {
         let sidebar = container(
             column![
                 row![
-                    text("🏠").size(typography.body).font(typography.body_font),
+                    text(ICON_HOME)
+                        .size(typography.body)
+                        .font(typography.body_font),
                     text("Accueil")
                         .size(typography.body)
                         .font(typography.body_font)
                 ]
                 .spacing(spacing.sm),
                 row![
-                    text("🖼️").size(typography.body).font(typography.body_font),
+                    text(ICON_GALLERY)
+                        .size(typography.body)
+                        .font(typography.body_font),
                     text("Galerie")
                         .size(typography.body)
                         .font(typography.body_font)
@@ -1332,42 +1375,54 @@ impl XionApp {
                     .size(typography.caption)
                     .font(typography.caption_font),
                 row![
-                    text("🗂️").size(typography.body).font(typography.body_font),
+                    text(ICON_DESKTOP)
+                        .size(typography.body)
+                        .font(typography.body_font),
                     text("Bureau")
                         .size(typography.body)
                         .font(typography.body_font)
                 ]
                 .spacing(spacing.sm),
                 row![
-                    text("⬇️").size(typography.body).font(typography.body_font),
+                    text(ICON_DOWNLOAD)
+                        .size(typography.body)
+                        .font(typography.body_font),
                     text("Téléchargement")
                         .size(typography.body)
                         .font(typography.body_font)
                 ]
                 .spacing(spacing.sm),
                 row![
-                    text("📄").size(typography.body).font(typography.body_font),
+                    text(ICON_DOCUMENTS)
+                        .size(typography.body)
+                        .font(typography.body_font),
                     text("Documents")
                         .size(typography.body)
                         .font(typography.body_font)
                 ]
                 .spacing(spacing.sm),
                 row![
-                    text("🖼️").size(typography.body).font(typography.body_font),
+                    text(ICON_GALLERY)
+                        .size(typography.body)
+                        .font(typography.body_font),
                     text("Images")
                         .size(typography.body)
                         .font(typography.body_font)
                 ]
                 .spacing(spacing.sm),
                 row![
-                    text("🎵").size(typography.body).font(typography.body_font),
+                    text(ICON_MUSIC)
+                        .size(typography.body)
+                        .font(typography.body_font),
                     text("Musique")
                         .size(typography.body)
                         .font(typography.body_font)
                 ]
                 .spacing(spacing.sm),
                 row![
-                    text("🎬").size(typography.body).font(typography.body_font),
+                    text(ICON_VIDEO)
+                        .size(typography.body)
+                        .font(typography.body_font),
                     text("Vidéos")
                         .size(typography.body)
                         .font(typography.body_font)
@@ -1378,7 +1433,9 @@ impl XionApp {
                     .font(typography.caption_font),
                 container(
                     row![
-                        text("💻").size(typography.body).font(typography.body_font),
+                        text(ICON_PC)
+                            .size(typography.body)
+                            .font(typography.body_font),
                         text("Ce PC")
                             .size(typography.body)
                             .font(typography.body_font)
@@ -1392,14 +1449,18 @@ impl XionApp {
                     ..Default::default()
                 }),
                 row![
-                    text("💽").size(typography.body).font(typography.body_font),
+                    text(ICON_DRIVE)
+                        .size(typography.body)
+                        .font(typography.body_font),
                     text("Disque local (C:)")
                         .size(typography.body)
                         .font(typography.body_font)
                 ]
                 .spacing(spacing.sm),
                 row![
-                    text("🌐").size(typography.body).font(typography.body_font),
+                    text(ICON_NETWORK)
+                        .size(typography.body)
+                        .font(typography.body_font),
                     text("Réseau")
                         .size(typography.body)
                         .font(typography.body_font)

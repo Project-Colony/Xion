@@ -59,6 +59,13 @@ NavigationState {
 
 ## Prochaines étapes
 
-- [ ] Brancher les messages UI à une boucle Iced.
-- [ ] Ajouter des commandes clavier/souris standard (Back/Forward, Ctrl+L, etc.).
-- [ ] Introduire la virtualisation pour la liste lorsque le volume est important.
+- [x] Brancher les messages UI à une boucle Iced.
+- [x] Ajouter des commandes clavier/souris standard (Back/Forward, Ctrl+L, etc.).
+- [x] Introduire la virtualisation pour la liste lorsque le volume est important.
+
+## Prochaines étapes (cap Explorer)
+
+- [ ] Arbre latéral actif (lecteurs, quick access, favoris) connecté au routing.
+- [ ] Barre d'adresse éditable + historique.
+- [ ] Prévisualisation enrichie (métadonnées, image, aperçu texte).
+- [ ] Drag & drop entre panneaux + multi-sélection.

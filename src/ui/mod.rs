@@ -52,12 +52,6 @@ pub struct AppState {
     pub navigation: NavigationState,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct DiskUsage {
-    pub total: u64,
-    pub available: u64,
-}
-
 impl AppState {
     pub fn new(config: AppConfig) -> Self {
         let start_path = config.start_path.clone();
@@ -106,10 +100,6 @@ pub enum UiMessage {
     ThumbnailLoaded {
         path: PathBuf,
         thumbnail: Option<Thumbnail>,
-    },
-    DiskUsageUpdated {
-        root_path: PathBuf,
-        usage: Option<DiskUsage>,
     },
     ClipboardCut,
     ClipboardCopy,

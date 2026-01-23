@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use directories::UserDirs;
 use iced::font::{Family, Style, Weight};
@@ -27,8 +27,8 @@ use crate::services::{
     VirtualWindow, generate_thumbnail,
 };
 use crate::ui::{
-    AppState, ContextAction, DiskUsage, KeyboardCommand, ModifiersState, ScrollViewport,
-    SelectionKind, UiMessage,
+    AppState, ContextAction, KeyboardCommand, ModifiersState, ScrollViewport, SelectionKind,
+    UiMessage,
 };
 use sysinfo::Disks;
 
@@ -98,7 +98,6 @@ const ICON_OPEN: &str = "";
 const ICON_RENAME: &str = "";
 const ICON_DELETE: &str = "";
 const ICON_CLOSE: &str = "";
-const DISK_USAGE_CACHE_TTL: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Copy)]
 struct UiColors {
@@ -275,22 +274,13 @@ fn root_path_for(path: &PathBuf) -> Option<PathBuf> {
     }
 }
 
-fn disk_usage_for(
-    path: &Path,
-    cache: &Option<(PathBuf, DiskUsage, Instant)>,
-) -> Option<DiskUsage> {
-    cache
-        .as_ref()
-        .and_then(|(cached_path, usage, cached_at)| {
-            if cached_path == path && cached_at.elapsed() <= DISK_USAGE_CACHE_TTL {
-                Some(*usage)
-            } else {
-                None
-            }
-        })
+#[derive(Clone, Copy)]
+struct DiskUsage {
+    total: u64,
+    available: u64,
 }
 
-fn snapshot_disk_usage(path: &Path) -> Option<DiskUsage> {
+fn disk_usage_for(path: &Path) -> Option<DiskUsage> {
     let disks = Disks::new_with_refreshed_list();
     let mut best_match: Option<(usize, DiskUsage)> = None;
 
@@ -371,7 +361,6 @@ pub struct XionApp {
     active_tab: usize,
     clipboard: ClipboardState,
     rename_dialog: Option<RenameDialog>,
-    disk_usage_cache: Option<(PathBuf, DiskUsage, Instant)>,
 }
 
 impl XionApp {
@@ -389,27 +378,18 @@ impl XionApp {
         self.request_page(0)
     }
 
-    fn update_active_tab_path(&mut self, path: PathBuf) -> Task<UiMessage> {
-        let previous_root = root_path_for(&self.state.route.path);
+    fn update_active_tab_path(&mut self, path: PathBuf) {
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             tab.path = path.clone();
         }
         self.state.route.path = path;
         self.address_input = self.state.route.path.display().to_string();
-        let current_root = root_path_for(&self.state.route.path);
-        if current_root != previous_root {
-            self.disk_usage_cache = None;
-            if let Some(root_path) = current_root {
-                return self.request_disk_usage(root_path);
-            }
-        }
-        Task::none()
     }
 
     fn navigate_to(&mut self, path: PathBuf) -> Task<UiMessage> {
-        let update_task = self.update_active_tab_path(path.clone());
+        self.update_active_tab_path(path.clone());
         self.history.record(path);
-        Task::batch([update_task, self.refresh_entries()])
+        self.refresh_entries()
     }
 
     fn request_page(&mut self, page_index: usize) -> Task<UiMessage> {
@@ -461,9 +441,9 @@ impl XionApp {
             .get(self.active_tab)
             .map(|tab| tab.path.clone())
             .unwrap_or_else(|| self.state.config.start_path.clone());
-        let update_task = self.update_active_tab_path(active_path.clone());
+        self.update_active_tab_path(active_path.clone());
         self.history.record(active_path);
-        Task::batch([update_task, self.refresh_entries()])
+        self.refresh_entries()
     }
 
     fn switch_tab(&mut self, index: usize) -> Task<UiMessage> {
@@ -472,9 +452,9 @@ impl XionApp {
         }
         self.active_tab = index;
         let path = self.tabs[index].path.clone();
-        let update_task = self.update_active_tab_path(path.clone());
+        self.update_active_tab_path(path.clone());
         self.history.record(path);
-        Task::batch([update_task, self.refresh_entries()])
+        self.refresh_entries()
     }
 
     fn close_tab(&mut self, index: usize) -> Task<UiMessage> {
@@ -489,18 +469,11 @@ impl XionApp {
         }
         if let Some(tab) = self.tabs.get(self.active_tab) {
             let path = tab.path.clone();
-            let update_task = self.update_active_tab_path(path.clone());
+            self.update_active_tab_path(path.clone());
             self.history.record(path);
-            return Task::batch([update_task, self.refresh_entries()]);
+            return self.refresh_entries();
         }
         Task::none()
-    }
-
-    fn request_disk_usage(&self, root_path: PathBuf) -> Task<UiMessage> {
-        Task::perform(
-            async move { (root_path.clone(), snapshot_disk_usage(&root_path)) },
-            |(root_path, usage)| UiMessage::DiskUsageUpdated { root_path, usage },
-        )
     }
 }
 
@@ -557,7 +530,6 @@ impl XionApp {
             active_tab: 0,
             clipboard: ClipboardState::default(),
             rename_dialog: None,
-            disk_usage_cache: None,
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -592,16 +564,14 @@ impl XionApp {
             }
             UiMessage::Back => {
                 if let Some(path) = self.history.back() {
-                    let update_task = self.update_active_tab_path(path);
+                    self.update_active_tab_path(path);
                     tasks.push(self.refresh_entries());
-                    tasks.push(update_task);
                 }
             }
             UiMessage::Forward => {
                 if let Some(path) = self.history.forward() {
-                    let update_task = self.update_active_tab_path(path);
+                    self.update_active_tab_path(path);
                     tasks.push(self.refresh_entries());
-                    tasks.push(update_task);
                 }
             }
             UiMessage::Refresh => {
@@ -696,11 +666,6 @@ impl XionApp {
                     None => {
                         self.thumbnail_misses.insert(path);
                     }
-                }
-            }
-            UiMessage::DiskUsageUpdated { root_path, usage } => {
-                if root_path_for(&self.state.route.path) == Some(root_path.clone()) {
-                    self.disk_usage_cache = usage.map(|usage| (root_path, usage, Instant::now()));
                 }
             }
             UiMessage::ClipboardCut => {
@@ -1911,7 +1876,7 @@ impl XionApp {
 
         let mut drive_section = column![section_title("Lecteurs".to_string())].spacing(spacing.xs);
         if let Some(root_path) = root_path_for(&self.state.route.path) {
-            if let Some(usage) = disk_usage_for(&root_path, &self.disk_usage_cache) {
+            if let Some(usage) = disk_usage_for(&root_path) {
                 let total_gb = format_gigabytes(usage.total);
                 let free_gb = format_gigabytes(usage.available);
                 let used_ratio = if usage.total == 0 {
@@ -1965,50 +1930,9 @@ impl XionApp {
                         .on_press(UiMessage::NavigateTo(root_path)),
                 );
             } else {
-                let content: Element<'_, UiMessage> = column![
-                    row![
-                        text(ICON_DRIVE)
-                            .size(typography.caption)
-                            .font(typography.caption_font),
-                        text(drive_label(&root_path))
-                            .size(typography.caption)
-                            .font(typography.caption_font)
-                    ]
-                    .spacing(spacing.xs)
-                    .align_y(Alignment::Center),
-                    text("Informations du lecteur indisponibles")
-                        .size(typography.caption)
-                        .font(typography.caption_font)
-                ]
-                .spacing(spacing.xs)
-                .into();
-
-                drive_section = drive_section.push(
-                    button(content)
-                        .padding([spacing.xs, spacing.sm])
-                        .width(Length::Fill)
-                        .style(move |_theme: &Theme, status: ButtonStatus| {
-                            let mut style = iced::widget::button::Style {
-                                text_color: colors.text_primary,
-                                ..Default::default()
-                            };
-
-                            match status {
-                                ButtonStatus::Hovered => {
-                                    style.background = Some(Background::Color(colors.hover));
-                                    style.border =
-                                        border::rounded(6.0).color(colors.border).width(1.0);
-                                }
-                                ButtonStatus::Pressed => {
-                                    style.background = Some(Background::Color(colors.pressed));
-                                }
-                                ButtonStatus::Active | ButtonStatus::Disabled => {}
-                            }
-
-                            style
-                        })
-                        .on_press(UiMessage::NavigateTo(root_path)),
-                );
+                let label = format_sidebar_label(&root_path);
+                drive_section =
+                    drive_section.push(sidebar_button(ICON_DRIVE, &label, Some(root_path)));
             }
         } else {
             drive_section = drive_section.push(

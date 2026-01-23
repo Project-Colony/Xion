@@ -3,20 +3,18 @@ use std::path::{Component, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use iced::font::{Family, Style, Weight};
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{
     button, column, container, horizontal_space, image, progress_bar, row, scrollable, text,
     vertical_space,
 };
+use iced::font::{Family, Style, Weight};
 use iced::{
     Alignment, Background, Border, Color, Element, Font, Length, Subscription, Task, Theme, border,
     keyboard, mouse,
 };
 
-use crate::core::{
-    ConfigManager, EntryFilterConfig, KeyInput, KeyKind, NamedKey, SortKeyConfig, SortOrderConfig,
-};
+use crate::core::AppConfig;
 use crate::filesystem::{FsEntry, FsEntryType, ListOptions, LocalFileSystem, Page, PageRequest};
 use crate::services::{
     DirectoryLoader, HistoryService, ThumbnailService, VirtualList, VirtualWindow,
@@ -27,11 +25,14 @@ use crate::ui::{
     UiMessage,
 };
 
+const ROW_HEIGHT: f32 = 32.0;
+const OVERSCAN: usize = 6;
+const CACHE_SIZE: usize = 256;
+const CACHE_TTL_SECONDS: u64 = 45;
+const PAGE_SIZE: usize = 120;
 const FONT_NAME: &str = "JetBrains Mono";
-const JETBRAINS_MONO_REGULAR: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Regular.ttf");
-const JETBRAINS_MONO_ITALIC: &[u8] =
-    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Italic.ttf");
+const JETBRAINS_MONO_REGULAR: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Regular.ttf");
+const JETBRAINS_MONO_ITALIC: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Italic.ttf");
 const JETBRAINS_MONO_THIN: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Thin.ttf");
 const JETBRAINS_MONO_THIN_ITALIC: &[u8] =
     include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-ThinItalic.ttf");
@@ -213,7 +214,6 @@ pub struct XionApp {
     modifiers: ModifiersState,
     context_menu_open: bool,
     last_action: Option<String>,
-    config_manager: ConfigManager,
 }
 
 impl XionApp {
@@ -245,7 +245,7 @@ impl XionApp {
         let offset = page_index * self.entries.page_size;
         let page_request = PageRequest::new(offset, self.entries.page_size);
         let path = self.state.route.path.clone();
-        let list_config = self.state.config.list.clone();
+        let show_hidden = self.state.config.show_hidden;
         let loader = Arc::clone(&self.directory_loader);
 
         self.pending_pages.insert(page_index);
@@ -253,7 +253,10 @@ impl XionApp {
 
         Task::perform(
             async move {
-                let options = list_options_from_config(list_config);
+                let options = ListOptions {
+                    show_hidden,
+                    ..ListOptions::default()
+                };
                 let filesystem = LocalFileSystem::new();
                 let result = match loader.lock() {
                     Ok(mut loader) => loader
@@ -274,25 +277,23 @@ impl XionApp {
 
 impl XionApp {
     fn new() -> (Self, Task<UiMessage>) {
-        let config_manager = ConfigManager::new();
-        let config_load = config_manager.load();
-        let config = config_load.config;
-        let mut state = AppState::new(config);
+        let config = AppConfig::default();
+        let state = AppState::new(config);
         let mut history = HistoryService::default();
         history.record(state.route.path.clone());
 
         let directory_loader = Arc::new(Mutex::new(DirectoryLoader::new(
-            state.config.cache.directory_entries,
-            Duration::from_secs(state.config.cache.directory_ttl_seconds),
-            state.config.paging.page_size,
+            CACHE_SIZE,
+            Duration::from_secs(CACHE_TTL_SECONDS),
+            PAGE_SIZE,
         )));
         let page_size = directory_loader
             .lock()
             .map(|loader| loader.page_size())
-            .unwrap_or(state.config.paging.page_size);
+            .unwrap_or(PAGE_SIZE);
         let thumbnails = ThumbnailService::new(
-            state.config.cache.thumbnail_entries,
-            Duration::from_secs(state.config.cache.thumbnail_ttl_seconds),
+            state.config.thumbnail_cache_entries,
+            Duration::from_secs(state.config.thumbnail_cache_ttl_seconds),
         );
         let entries = PagedEntries::new(0, page_size);
         let mut app = Self {
@@ -312,19 +313,7 @@ impl XionApp {
             modifiers: ModifiersState::default(),
             context_menu_open: false,
             last_action: None,
-            config_manager,
         };
-        if !config_load.warnings.is_empty() {
-            app.last_action = Some(format!(
-                "Config: {}",
-                config_load
-                    .warnings
-                    .iter()
-                    .map(|warning| warning.message.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" | ")
-            ));
-        }
         let task = app.refresh_entries();
         (app, task)
     }
@@ -349,7 +338,6 @@ impl XionApp {
                 }
             }
             UiMessage::Refresh => {
-                tasks.push(self.reload_config());
                 tasks.push(self.refresh_entries());
             }
             UiMessage::FocusPane(pane) => {
@@ -434,10 +422,54 @@ impl XionApp {
                     alt: modifiers.alt(),
                 })
             }
-            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => self
-                .command_from_key_press(key, modifiers)
-                .map(UiMessage::KeyboardCommand)
-                .unwrap_or(UiMessage::Noop),
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+                let extend = modifiers.shift();
+                let command = match key {
+                    keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
+                        Some(KeyboardCommand::MoveUp { extend })
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
+                        Some(KeyboardCommand::MoveDown { extend })
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::Home) => {
+                        Some(KeyboardCommand::MoveHome { extend })
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::End) => {
+                        Some(KeyboardCommand::MoveEnd { extend })
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::Enter) => {
+                        Some(KeyboardCommand::Activate)
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::Escape) => {
+                        Some(KeyboardCommand::ClearSelection)
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::Tab) => {
+                        Some(KeyboardCommand::CyclePaneFocus)
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::ArrowLeft) if modifiers.alt() => {
+                        Some(KeyboardCommand::Back)
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::ArrowRight) if modifiers.alt() => {
+                        Some(KeyboardCommand::Forward)
+                    }
+                    keyboard::Key::Character(character) => {
+                        let character = character.to_lowercase();
+                        if modifiers.control() && character == "a" {
+                            Some(KeyboardCommand::SelectAll)
+                        } else if modifiers.control() && character == "r" {
+                            Some(KeyboardCommand::Refresh)
+                        } else if modifiers.control() && character == "m" {
+                            Some(KeyboardCommand::ToggleContextMenu)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                command
+                    .map(UiMessage::KeyboardCommand)
+                    .unwrap_or(UiMessage::Noop)
+            }
             iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
                 UiMessage::ToggleContextMenu(true)
             }
@@ -456,112 +488,6 @@ impl XionApp {
         } else {
             SelectionKind::Single
         }
-    }
-
-    fn command_from_key_press(
-        &self,
-        key: keyboard::Key,
-        modifiers: keyboard::Modifiers,
-    ) -> Option<KeyboardCommand> {
-        let input = key_input_from_event(key, modifiers)?;
-        let shortcuts = &self.state.config.shortcuts;
-        let extend = modifiers.shift();
-
-        if shortcuts.move_up.matches(&input, true) {
-            return Some(KeyboardCommand::MoveUp { extend });
-        }
-        if shortcuts.move_down.matches(&input, true) {
-            return Some(KeyboardCommand::MoveDown { extend });
-        }
-        if shortcuts.move_home.matches(&input, true) {
-            return Some(KeyboardCommand::MoveHome { extend });
-        }
-        if shortcuts.move_end.matches(&input, true) {
-            return Some(KeyboardCommand::MoveEnd { extend });
-        }
-        if shortcuts.activate.matches(&input, false) {
-            return Some(KeyboardCommand::Activate);
-        }
-        if shortcuts.clear_selection.matches(&input, false) {
-            return Some(KeyboardCommand::ClearSelection);
-        }
-        if shortcuts.cycle_pane_focus.matches(&input, false) {
-            return Some(KeyboardCommand::CyclePaneFocus);
-        }
-        if shortcuts.back.matches(&input, false) {
-            return Some(KeyboardCommand::Back);
-        }
-        if shortcuts.forward.matches(&input, false) {
-            return Some(KeyboardCommand::Forward);
-        }
-        if shortcuts.refresh.matches(&input, false) {
-            return Some(KeyboardCommand::Refresh);
-        }
-        if shortcuts.select_all.matches(&input, false) {
-            return Some(KeyboardCommand::SelectAll);
-        }
-        if shortcuts.toggle_context_menu.matches(&input, false) {
-            return Some(KeyboardCommand::ToggleContextMenu);
-        }
-
-        None
-    }
-
-    fn reload_config(&mut self) -> Task<UiMessage> {
-        let load = self.config_manager.load();
-        let new_config = load.config;
-        if new_config == self.state.config {
-            return Task::none();
-        }
-
-        let should_reset_loader = new_config.cache.directory_entries
-            != self.state.config.cache.directory_entries
-            || new_config.cache.directory_ttl_seconds
-                != self.state.config.cache.directory_ttl_seconds
-            || new_config.paging.page_size != self.state.config.paging.page_size;
-
-        if should_reset_loader {
-            self.directory_loader = Arc::new(Mutex::new(DirectoryLoader::new(
-                new_config.cache.directory_entries,
-                Duration::from_secs(new_config.cache.directory_ttl_seconds),
-                new_config.paging.page_size,
-            )));
-            self.entries = PagedEntries::new(0, new_config.paging.page_size);
-            self.pending_pages.clear();
-        }
-
-        if new_config.cache.thumbnail_entries != self.state.config.cache.thumbnail_entries
-            || new_config.cache.thumbnail_ttl_seconds
-                != self.state.config.cache.thumbnail_ttl_seconds
-        {
-            self.thumbnails = ThumbnailService::new(
-                new_config.cache.thumbnail_entries,
-                Duration::from_secs(new_config.cache.thumbnail_ttl_seconds),
-            );
-            self.thumbnail_handles.clear();
-            self.thumbnail_misses.clear();
-            self.thumbnails_in_flight.clear();
-        }
-
-        if self.state.route.path == self.state.config.start_path {
-            self.state.route.path = new_config.start_path.clone();
-        }
-
-        if !load.warnings.is_empty() {
-            self.last_action = Some(format!(
-                "Config: {}",
-                load.warnings
-                    .iter()
-                    .map(|warning| warning.message.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" | ")
-            ));
-        } else {
-            self.last_action = Some("Config rechargée".to_string());
-        }
-
-        self.state.config = new_config;
-        Task::none()
     }
 
     fn apply_selection(&mut self, path: PathBuf, kind: SelectionKind) {
@@ -851,9 +777,9 @@ impl XionApp {
 
     fn virtual_window(&self) -> VirtualWindow {
         let virtual_list = VirtualList {
-            item_height: self.state.config.view.row_height,
+            item_height: ROW_HEIGHT,
             viewport_height: self.viewport_height,
-            overscan: self.state.config.view.overscan,
+            overscan: OVERSCAN,
         };
         virtual_list.visible_range(self.scroll_offset, self.entries.total)
     }
@@ -869,7 +795,7 @@ impl XionApp {
         }
 
         let mut tasks = Vec::new();
-        let thumbnail_size = self.state.config.view.thumbnail_size;
+        let thumbnail_size = self.state.config.thumbnail_size;
 
         for index in window.start..window.end {
             let Some(entry) = self.entries.get(index) else {
@@ -940,7 +866,11 @@ impl XionApp {
             current_path.push(component.as_os_str());
             let target = current_path.clone();
             row = row.push(
-                button(text(label).size(typography.body).font(typography.body_font))
+                button(
+                    text(label)
+                        .size(typography.body)
+                        .font(typography.body_font),
+                )
                     .padding([2, 6])
                     .on_press(UiMessage::NavigateTo(target)),
             );
@@ -964,7 +894,11 @@ impl XionApp {
         let typography = tokens.typography;
 
         let toolbar_button = |label: String| {
-            button(text(label).size(typography.body).font(typography.body_font))
+            button(
+                text(label)
+                    .size(typography.body)
+                    .font(typography.body_font),
+            )
                 .padding([spacing.xs, spacing.sm])
                 .style(move |_theme: &Theme, status: ButtonStatus| {
                     let mut style = iced::widget::button::Style {
@@ -992,7 +926,11 @@ impl XionApp {
         };
 
         let tab_button = |label: String, active: bool| {
-            button(text(label).size(typography.body).font(typography.body_font))
+            button(
+                text(label)
+                    .size(typography.body)
+                    .font(typography.body_font),
+            )
                 .padding([spacing.xs, spacing.md])
                 .style(move |_theme: &Theme, status: ButtonStatus| {
                     let mut style = iced::widget::button::Style {
@@ -1049,13 +987,13 @@ impl XionApp {
                 .size(typography.caption)
                 .font(typography.caption_font),
         )
-        .padding([spacing.xs, spacing.md])
-        .width(Length::Fixed(240.0))
-        .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.panel_background)),
-            border: border::rounded(6.0).color(colors.border).width(1.0),
-            ..Default::default()
-        });
+            .padding([spacing.xs, spacing.md])
+            .width(Length::Fixed(240.0))
+            .style(move |_| iced::widget::container::Style {
+                background: Some(Background::Color(colors.panel_background)),
+                border: border::rounded(6.0).color(colors.border).width(1.0),
+                ..Default::default()
+            });
 
         let command_bar = row![
             toolbar_button("➕ Nouveau".to_string()),
@@ -1126,7 +1064,9 @@ impl XionApp {
                     .size(typography.title)
                     .font(typography.title_font),
                 row![
-                    text("🖥️").size(typography.body).font(typography.body_font),
+                    text("🖥️")
+                        .size(typography.body)
+                        .font(typography.body_font),
                     column![
                         text("Disque local (C:)")
                             .size(typography.body)
@@ -1175,11 +1115,9 @@ impl XionApp {
             ]
             .spacing(spacing.md)
         } else if self.entries.total == 0 {
-            column![
-                text("Dossier vide")
-                    .size(typography.body)
-                    .font(typography.body_font)
-            ]
+            column![text("Dossier vide")
+                .size(typography.body)
+                .font(typography.body_font)]
         } else {
             let window = self.virtual_window();
             let mut list = column![];
@@ -1217,10 +1155,10 @@ impl XionApp {
                                 .map(|handle| {
                                     image(handle.clone())
                                         .width(Length::Fixed(
-                                            self.state.config.view.thumbnail_size as f32,
+                                            self.state.config.thumbnail_size as f32,
                                         ))
                                         .height(Length::Fixed(
-                                            self.state.config.view.thumbnail_size as f32,
+                                            self.state.config.thumbnail_size as f32,
                                         ))
                                         .into()
                                 })
@@ -1246,9 +1184,9 @@ impl XionApp {
                                         .size(typography.caption)
                                         .font(typography.caption_font),
                                 )
-                                .padding([spacing.xs, spacing.sm])
-                                .on_press(UiMessage::ActivateEntry(entry.path.clone()))
-                                .into()
+                                    .padding([spacing.xs, spacing.sm])
+                                    .on_press(UiMessage::ActivateEntry(entry.path.clone()))
+                                    .into()
                             } else {
                                 container(row![]).into()
                             };
@@ -1296,13 +1234,15 @@ impl XionApp {
                     }
                     None => {
                         let placeholder = row![
-                            text("⏳").size(typography.body).font(typography.body_font),
+                            text("⏳")
+                                .size(typography.body)
+                                .font(typography.body_font),
                             text("Chargement…")
                                 .size(typography.body)
                                 .font(typography.body_font)
                         ]
-                        .spacing(spacing.md)
-                        .align_y(Alignment::Center);
+                            .spacing(spacing.md)
+                            .align_y(Alignment::Center);
                         button(placeholder)
                     }
                 });
@@ -1493,60 +1433,6 @@ impl XionApp {
             })
             .into()
     }
-}
-
-fn list_options_from_config(list_config: crate::core::ListConfig) -> ListOptions {
-    ListOptions {
-        show_hidden: list_config.show_hidden,
-        sort_by: match list_config.sort_key {
-            SortKeyConfig::Name => crate::filesystem::SortKey::Name,
-            SortKeyConfig::Modified => crate::filesystem::SortKey::Modified,
-            SortKeyConfig::Size => crate::filesystem::SortKey::Size,
-        },
-        sort_order: match list_config.sort_order {
-            SortOrderConfig::Asc => crate::filesystem::SortOrder::Asc,
-            SortOrderConfig::Desc => crate::filesystem::SortOrder::Desc,
-        },
-        directories_first: list_config.directories_first,
-        filter: match list_config.filter {
-            EntryFilterConfig::All => crate::filesystem::EntryFilter::All,
-            EntryFilterConfig::OnlyDirectories => crate::filesystem::EntryFilter::OnlyDirectories,
-            EntryFilterConfig::OnlyFiles => crate::filesystem::EntryFilter::OnlyFiles,
-        },
-        name_query: None,
-    }
-}
-
-fn key_input_from_event(key: keyboard::Key, modifiers: keyboard::Modifiers) -> Option<KeyInput> {
-    let key_kind = match key {
-        keyboard::Key::Named(named) => match named {
-            keyboard::key::Named::ArrowUp => KeyKind::Named(NamedKey::ArrowUp),
-            keyboard::key::Named::ArrowDown => KeyKind::Named(NamedKey::ArrowDown),
-            keyboard::key::Named::ArrowLeft => KeyKind::Named(NamedKey::ArrowLeft),
-            keyboard::key::Named::ArrowRight => KeyKind::Named(NamedKey::ArrowRight),
-            keyboard::key::Named::Home => KeyKind::Named(NamedKey::Home),
-            keyboard::key::Named::End => KeyKind::Named(NamedKey::End),
-            keyboard::key::Named::Enter => KeyKind::Named(NamedKey::Enter),
-            keyboard::key::Named::Escape => KeyKind::Named(NamedKey::Escape),
-            keyboard::key::Named::Tab => KeyKind::Named(NamedKey::Tab),
-            _ => return None,
-        },
-        keyboard::Key::Character(character) => {
-            let normalized = character.to_lowercase();
-            if normalized.is_empty() {
-                return None;
-            }
-            KeyKind::Character(normalized)
-        }
-        _ => return None,
-    };
-
-    Some(KeyInput {
-        key: key_kind,
-        ctrl: modifiers.control(),
-        alt: modifiers.alt(),
-        shift: modifiers.shift(),
-    })
 }
 
 pub fn run() -> iced::Result {

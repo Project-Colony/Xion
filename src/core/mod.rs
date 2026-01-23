@@ -1,13 +1,6 @@
 use std::fmt;
 use std::path::PathBuf;
 
-pub mod config;
-pub use config::{
-    AppConfig, AppConfigLoad, CacheConfig, ConfigManager, ConfigSource, ConfigWarning,
-    EntryFilterConfig, KeyChord, KeyInput, KeyKind, ListConfig, NamedKey, PagingConfig,
-    ShortcutBindings, SortKeyConfig, SortOrderConfig, ViewConfig,
-};
-
 pub type AppResult<T> = Result<T, XionError>;
 
 #[derive(Debug)]
@@ -42,4 +35,24 @@ impl From<std::io::Error> for XionError {
     }
 }
 
-pub type AppConfigPath = PathBuf;
+#[derive(Debug, Clone)]
+pub struct AppConfig {
+    pub start_path: PathBuf,
+    pub show_hidden: bool,
+    pub thumbnail_size: u32,
+    pub thumbnail_cache_entries: usize,
+    pub thumbnail_cache_ttl_seconds: u64,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        let start_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        Self {
+            start_path,
+            show_hidden: false,
+            thumbnail_size: 48,
+            thumbnail_cache_entries: 256,
+            thumbnail_cache_ttl_seconds: 300,
+        }
+    }
+}

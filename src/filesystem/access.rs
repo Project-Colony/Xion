@@ -223,7 +223,10 @@ impl FileSystem for LocalFileSystem {
         let metadata = if entries.is_empty() {
             Vec::new()
         } else {
-            let paths = entries.iter().map(|entry| entry.path.clone()).collect::<Vec<_>>();
+            let paths = entries
+                .iter()
+                .map(|entry| entry.path.clone())
+                .collect::<Vec<_>>();
             self.metadata_batch(&paths)?
         };
 

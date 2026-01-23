@@ -89,8 +89,6 @@ pub enum UiMessage {
     ToggleContextMenu(bool),
     ContextAction(ContextAction),
     ModifiersChanged(ModifiersState),
-    AddressInputChanged(String),
-    AddressInputSubmitted,
     Scroll(ScrollViewport),
     PageLoaded {
         path: PathBuf,

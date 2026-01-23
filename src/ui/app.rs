@@ -1156,6 +1156,72 @@ impl XionApp {
                 })
         };
 
+        let drive_item = |icon: &str,
+                          label: String,
+                          usage_label: Option<String>,
+                          usage_ratio: Option<f32>,
+                          target: Option<PathBuf>|
+         -> Element<'_, UiMessage> {
+            let icon = icon.to_string();
+            let details = match (usage_label, usage_ratio) {
+                (Some(usage_label), Some(usage_ratio)) => column![
+                    text(label)
+                        .size(typography.body)
+                        .font(typography.body_font),
+                    progress_bar(0.0..=1.0, usage_ratio),
+                    text(usage_label)
+                        .size(typography.caption)
+                        .font(typography.caption_font)
+                ]
+                .spacing(spacing.xs),
+                _ => column![text(label)
+                    .size(typography.body)
+                    .font(typography.body_font)]
+                .spacing(spacing.xs),
+            };
+
+            let content: Element<'_, UiMessage> = row![
+                text(icon)
+                    .size(typography.body)
+                    .font(typography.body_font),
+                details
+            ]
+            .spacing(spacing.sm)
+            .align_y(Alignment::Center)
+            .into();
+
+            match target {
+                Some(path) => button(content)
+                    .padding([spacing.xs, spacing.sm])
+                    .width(Length::Fill)
+                    .style(move |_theme: &Theme, status: ButtonStatus| {
+                        let mut style = iced::widget::button::Style {
+                            text_color: colors.text_primary,
+                            ..Default::default()
+                        };
+
+                        match status {
+                            ButtonStatus::Hovered => {
+                                style.background = Some(Background::Color(colors.hover));
+                                style.border = border::rounded(6.0).color(colors.border).width(1.0);
+                            }
+                            ButtonStatus::Pressed => {
+                                style.background = Some(Background::Color(colors.pressed));
+                            }
+                            ButtonStatus::Active | ButtonStatus::Disabled => {}
+                        }
+
+                        style
+                    })
+                    .on_press(UiMessage::NavigateTo(path))
+                    .into(),
+                None => container(content)
+                    .padding([spacing.xs, spacing.sm])
+                    .width(Length::Fill)
+                    .into(),
+            }
+        };
+
         let format_sidebar_label = |path: &PathBuf| {
             path.file_name()
                 .and_then(|name| name.to_str())
@@ -1583,9 +1649,14 @@ impl XionApp {
 
         let mut drive_section = column![section_title("Lecteurs".to_string())].spacing(spacing.xs);
         if let Some(root_path) = root_path_for(&self.state.route.path) {
-            let label = format_sidebar_label(&root_path);
-            drive_section = drive_section
-                .push(sidebar_button(ICON_DRIVE, &label, Some(root_path)));
+            let label = format!("Disque local ({})", format_sidebar_label(&root_path));
+            drive_section = drive_section.push(drive_item(
+                ICON_DRIVE,
+                label,
+                Some("109 Go libres sur 930 Go".to_string()),
+                Some(0.12),
+                Some(root_path),
+            ));
         } else {
             drive_section = drive_section.push(
                 text("Aucun lecteur")
@@ -1593,7 +1664,13 @@ impl XionApp {
                     .font(typography.caption_font),
             );
         }
-        drive_section = drive_section.push(sidebar_button(ICON_NETWORK, "Réseau", None));
+        drive_section = drive_section.push(drive_item(
+            ICON_NETWORK,
+            "Réseau".to_string(),
+            None,
+            None,
+            None,
+        ));
 
         let sidebar = container(
             column![
@@ -1616,12 +1693,19 @@ impl XionApp {
                 }),
                 quick_access,
                 favorites_section,
-                drive_section,
                 section_title("Raccourcis".to_string()),
                 sidebar_button(ICON_DOCUMENTS, "Documents", documents_dir),
                 sidebar_button(ICON_GALLERY, "Images", pictures_dir),
                 sidebar_button(ICON_MUSIC, "Musique", music_dir),
-                sidebar_button(ICON_VIDEO, "Vidéos", video_dir)
+                sidebar_button(ICON_VIDEO, "Vidéos", video_dir),
+                vertical_space().height(Length::Fill),
+                container(row![])
+                    .height(Length::Fixed(1.0))
+                    .style(move |_| iced::widget::container::Style {
+                        background: Some(Background::Color(colors.border)),
+                        ..Default::default()
+                    }),
+                drive_section
             ]
             .spacing(spacing.sm),
         )

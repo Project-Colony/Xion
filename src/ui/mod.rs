@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use crate::core::AppConfig;
-use crate::filesystem::{FsEntry, Page};
+use crate::filesystem::{FsEntry, OperationReport, Page};
 use crate::services::Thumbnail;
 
 pub mod app;
@@ -101,6 +101,13 @@ pub enum UiMessage {
         path: PathBuf,
         thumbnail: Option<Thumbnail>,
     },
+    ClipboardCut,
+    ClipboardCopy,
+    ClipboardPaste,
+    RenameInputChanged(String),
+    RenameSubmit,
+    RenameCancel,
+    FileOperationFinished(OperationReport),
 }
 
 #[derive(Debug, Clone, Copy)]

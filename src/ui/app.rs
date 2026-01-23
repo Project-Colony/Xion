@@ -1638,9 +1638,64 @@ impl XionApp {
 
         let mut drive_section = column![section_title("Lecteurs".to_string())].spacing(spacing.xs);
         if let Some(root_path) = root_path_for(&self.state.route.path) {
-            let label = format_sidebar_label(&root_path);
-            drive_section = drive_section
-                .push(sidebar_button(ICON_DRIVE, &label, Some(root_path)));
+            if let Some(usage) = disk_usage_for(&root_path) {
+                let total_gb = format_gigabytes(usage.total);
+                let free_gb = format_gigabytes(usage.available);
+                let used_ratio = if usage.total == 0 {
+                    0.0
+                } else {
+                    1.0 - (usage.available as f32 / usage.total as f32)
+                };
+                let content: Element<'_, UiMessage> = column![
+                    row![
+                        text(ICON_DEVICE)
+                            .size(typography.caption)
+                            .font(typography.caption_font),
+                        text(drive_label(&root_path))
+                            .size(typography.caption)
+                            .font(typography.caption_font)
+                    ]
+                    .spacing(spacing.xs)
+                    .align_y(Alignment::Center),
+                    progress_bar(0.0..=1.0, used_ratio).height(Length::Fixed(6.0)),
+                    text(format!("{} Go libres sur {} Go", free_gb, total_gb))
+                        .size(typography.caption)
+                        .font(typography.caption_font)
+                ]
+                .spacing(spacing.xs)
+                .into();
+
+                drive_section = drive_section.push(
+                    button(content)
+                        .padding([spacing.xs, spacing.sm])
+                        .width(Length::Fill)
+                        .style(move |_theme: &Theme, status: ButtonStatus| {
+                            let mut style = iced::widget::button::Style {
+                                text_color: colors.text_primary,
+                                ..Default::default()
+                            };
+
+                            match status {
+                                ButtonStatus::Hovered => {
+                                    style.background = Some(Background::Color(colors.hover));
+                                    style.border =
+                                        border::rounded(6.0).color(colors.border).width(1.0);
+                                }
+                                ButtonStatus::Pressed => {
+                                    style.background = Some(Background::Color(colors.pressed));
+                                }
+                                ButtonStatus::Active | ButtonStatus::Disabled => {}
+                            }
+
+                            style
+                        })
+                        .on_press(UiMessage::NavigateTo(root_path)),
+                );
+            } else {
+                let label = format_sidebar_label(&root_path);
+                drive_section = drive_section
+                    .push(sidebar_button(ICON_DRIVE, &label, Some(root_path)));
+            }
         } else {
             drive_section = drive_section.push(
                 text("Aucun lecteur")

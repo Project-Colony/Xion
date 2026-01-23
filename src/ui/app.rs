@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -27,6 +27,7 @@ use crate::ui::{
     AppState, ContextAction, KeyboardCommand, ModifiersState, ScrollViewport, SelectionKind,
     UiMessage,
 };
+use sysinfo::Disks;
 
 const FONT_NAME: &str = "JetBrainsMono Nerd Font";
 const JETBRAINS_MONO_REGULAR: &[u8] =
@@ -265,6 +266,47 @@ fn root_path_for(path: &PathBuf) -> Option<PathBuf> {
         path.ancestors().last().map(|ancestor| ancestor.to_path_buf())
     } else {
         None
+    }
+}
+
+#[derive(Clone, Copy)]
+struct DiskUsage {
+    total: u64,
+    available: u64,
+}
+
+fn disk_usage_for(path: &Path) -> Option<DiskUsage> {
+    let disks = Disks::new_with_refreshed_list();
+    let mut best_match: Option<(usize, DiskUsage)> = None;
+
+    for disk in disks.iter() {
+        let mount = disk.mount_point();
+        if path.starts_with(mount) {
+            let depth = mount.components().count();
+            let usage = DiskUsage {
+                total: disk.total_space(),
+                available: disk.available_space(),
+            };
+            if best_match.as_ref().map_or(true, |(best_depth, _)| depth > *best_depth) {
+                best_match = Some((depth, usage));
+            }
+        }
+    }
+
+    best_match.map(|(_, usage)| usage)
+}
+
+fn format_gigabytes(bytes: u64) -> u64 {
+    const BYTES_PER_GB: f64 = 1_000_000_000.0;
+    ((bytes as f64) / BYTES_PER_GB).round() as u64
+}
+
+fn drive_label(root_path: &Path) -> String {
+    let label = root_path.display().to_string();
+    if label.len() >= 2 && label.as_bytes().get(1) == Some(&b':') {
+        format!("Disque local ({})", &label[..2])
+    } else {
+        format!("Disque local ({})", label)
     }
 }
 
@@ -1316,37 +1358,50 @@ impl XionApp {
             ..Default::default()
         });
 
-        let drive_summary = container(
-            column![
-                text("Périphériques et lecteurs")
-                    .size(typography.title)
-                    .font(typography.title_font),
-                row![
-                    text(ICON_DEVICE)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    column![
-                        text("Disque local (C:)")
-                            .size(typography.body)
-                            .font(typography.body_font),
-                        progress_bar(0.0..=1.0, 0.12),
-                        text("109 Go libres sur 930 Go")
-                            .size(typography.caption)
-                            .font(typography.caption_font)
-                    ]
-                    .spacing(spacing.sm)
-                ]
-                .spacing(spacing.md)
-                .align_y(Alignment::Center)
-            ]
-            .spacing(spacing.md),
-        )
-        .padding(spacing.md)
-        .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.panel_background)),
-            border: border::rounded(8.0).color(colors.border).width(1.0),
-            ..Default::default()
-        });
+        let drive_summary = root_path_for(&self.state.route.path)
+            .and_then(|root_path| {
+                disk_usage_for(&root_path).map(|usage| {
+                    let total_gb = format_gigabytes(usage.total);
+                    let free_gb = format_gigabytes(usage.available);
+                    let used_ratio = if usage.total == 0 {
+                        0.0
+                    } else {
+                        1.0 - (usage.available as f32 / usage.total as f32)
+                    };
+                    container(
+                        column![
+                            text("Périphériques et lecteurs")
+                                .size(typography.title)
+                                .font(typography.title_font),
+                            row![
+                                text(ICON_DEVICE)
+                                    .size(typography.body)
+                                    .font(typography.body_font),
+                                column![
+                                    text(drive_label(&root_path))
+                                        .size(typography.body)
+                                        .font(typography.body_font),
+                                    progress_bar(0.0..=1.0, used_ratio),
+                                    text(format!("{} Go libres sur {} Go", free_gb, total_gb))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font)
+                                ]
+                                .spacing(spacing.sm)
+                            ]
+                            .spacing(spacing.md)
+                            .align_y(Alignment::Center)
+                        ]
+                        .spacing(spacing.md),
+                    )
+                    .padding(spacing.md)
+                    .style(move |_| iced::widget::container::Style {
+                        background: Some(Background::Color(colors.panel_background)),
+                        border: border::rounded(8.0).color(colors.border).width(1.0),
+                        ..Default::default()
+                    })
+                })
+            })
+            .unwrap_or_else(|| container(row![]));
 
         let list_content = if let Some(message) = &self.error {
             column![

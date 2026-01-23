@@ -75,8 +75,17 @@ UI (messages) -> AppState -> services (historique) -> filesystem (listes)
 - `services` coordonne la logique (navigation, cache, recherche).
 - `ui` n'a pas accès direct au disque : elle demande au `filesystem`.
 
+## État d'implémentation (checklist)
+
+- [x] Modules `core/`, `filesystem/`, `services/`, `ui/` présents et séparés.
+- [x] Config centralisée (`core::config`) utilisée côté UI.
+- [x] Services branchés dans la boucle UI (history, loader, thumbnails).
+- [x] Virtualisation des listes branchée dans l'UI.
+- [ ] Watcher FS natif (au-delà du no-op) pour rafraîchissement temps réel.
+
 ## Prochaines itérations
 
-1. [x] Brancher les services dans `AppState`.
-2. [ ] Introduire la virtualisation de listes dans l'UI.
+1. [x] Brancher les services dans la boucle UI (history + loader).
+2. [x] Introduire la virtualisation de listes dans l'UI.
 3. [x] Passer à une boucle Iced pour intégrer le routing réel.
+4. [ ] Ajouter un watcher FS natif + invalidation fine des caches.

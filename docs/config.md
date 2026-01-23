@@ -76,3 +76,12 @@ Chaque champ est validé (plages min/max). En cas de valeur invalide :
 
 La configuration est rechargée à chaque action de rafraîchissement (par défaut
 `Ctrl+R`). Les caches dépendants sont réinitialisés si nécessaire.
+
+## Avancement (checklist)
+
+- [x] Format TOML versionné (v1) documenté.
+- [x] Migration depuis une version non versionnée (V0).
+- [x] Validation des champs + warnings UI.
+- [x] Rechargement à chaud via `Ctrl+R`.
+- [ ] Éditeur de configuration intégré à l'UI.
+- [ ] Presets de configuration (Explorer-like, performance, minimal).

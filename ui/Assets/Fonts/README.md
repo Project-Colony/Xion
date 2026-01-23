@@ -46,3 +46,8 @@ For more information see: [The FAQ](https://github.com/ryanoasis/nerd-fonts/wiki
 
 [SIL-RFN]:http://scripts.sil.org/cms/scripts/page.php?item_id=OFL_web_fonts_and_RFNs#14cbfd4a
 
+## Suivi d'intégration Xion
+
+- [x] Polices Nerd Fonts archivées dans le dépôt.
+- [x] Polices JetBrains Mono chargées côté UI.
+- [ ] Optimiser/limiter les variantes chargées pour réduire le poids binaire.

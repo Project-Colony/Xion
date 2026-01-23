@@ -43,9 +43,17 @@ Créer un explorateur de fichiers en Rust inspiré de Windows File Explorer, Fil
 
 ## Roadmap documentaire
 
-- [ ] Détailler l'architecture des modules (diagrammes + API principales).
+- [x] Détailler l'architecture des modules (v1 : responsabilités + API principales).
+- [ ] Ajouter des diagrammes d'interaction (modules + flux de données).
 - [ ] Décrire le cycle de rendu Iced et le modèle d'état.
-- [ ] Documenter les stratégies de cache et d'indexation.
+- [x] Documenter les stratégies de cache (métadonnées + thumbnails).
+- [ ] Documenter l'indexation et la recherche avancée.
+
+## Vérification documentaire (checklist)
+
+- [x] `docs/architecture.md` revu et aligné sur l'implémentation actuelle.
+- [x] `docs/ui-routing.md` revu (messages, navigation, focus).
+- [x] `docs/config.md` revu (format, migration, validation, reload).
 
 ## Documentation à maintenir
 

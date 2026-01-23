@@ -73,6 +73,9 @@ impl AppState {
 pub enum UiMessage {
     Noop,
     NavigateTo(PathBuf),
+    AddTab,
+    SwitchTab(usize),
+    CloseTab(usize),
     Back,
     Forward,
     Refresh,

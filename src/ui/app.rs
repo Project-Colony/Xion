@@ -92,6 +92,7 @@ const ICON_ACTIONS: &str = "";
 const ICON_OPEN: &str = "";
 const ICON_RENAME: &str = "";
 const ICON_DELETE: &str = "";
+const ICON_CLOSE: &str = "";
 
 #[derive(Debug, Clone, Copy)]
 struct UiColors {
@@ -230,6 +231,12 @@ impl PagedEntries {
     }
 }
 
+#[derive(Debug, Clone)]
+struct TabState {
+    title: String,
+    path: PathBuf,
+}
+
 #[derive(Debug)]
 pub struct XionApp {
     state: AppState,
@@ -249,6 +256,8 @@ pub struct XionApp {
     context_menu_open: bool,
     last_action: Option<String>,
     config_manager: ConfigManager,
+    tabs: Vec<TabState>,
+    active_tab: usize,
 }
 
 impl XionApp {
@@ -266,8 +275,15 @@ impl XionApp {
         self.request_page(0)
     }
 
+    fn update_active_tab_path(&mut self, path: PathBuf) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            tab.path = path.clone();
+        }
+        self.state.route.path = path;
+    }
+
     fn navigate_to(&mut self, path: PathBuf) -> Task<UiMessage> {
-        self.state.route.path = path.clone();
+        self.update_active_tab_path(path.clone());
         self.history.record(path);
         self.refresh_entries()
     }
@@ -305,6 +321,56 @@ impl XionApp {
             },
         )
     }
+
+    fn add_tab(&mut self) -> Task<UiMessage> {
+        let new_index = self.tabs.len() + 1;
+        let title = if new_index == 1 {
+            "Ce PC".to_string()
+        } else {
+            format!("Ce PC {}", new_index)
+        };
+        let path = self.state.config.start_path.clone();
+        self.tabs.push(TabState { title, path });
+        self.active_tab = self.tabs.len().saturating_sub(1);
+        let active_path = self
+            .tabs
+            .get(self.active_tab)
+            .map(|tab| tab.path.clone())
+            .unwrap_or_else(|| self.state.config.start_path.clone());
+        self.update_active_tab_path(active_path.clone());
+        self.history.record(active_path);
+        self.refresh_entries()
+    }
+
+    fn switch_tab(&mut self, index: usize) -> Task<UiMessage> {
+        if index >= self.tabs.len() {
+            return Task::none();
+        }
+        self.active_tab = index;
+        let path = self.tabs[index].path.clone();
+        self.update_active_tab_path(path.clone());
+        self.history.record(path);
+        self.refresh_entries()
+    }
+
+    fn close_tab(&mut self, index: usize) -> Task<UiMessage> {
+        if self.tabs.len() <= 1 || index == 0 || index >= self.tabs.len() {
+            return Task::none();
+        }
+        self.tabs.remove(index);
+        if self.active_tab == index {
+            self.active_tab = index.saturating_sub(1);
+        } else if self.active_tab > index {
+            self.active_tab = self.active_tab.saturating_sub(1);
+        }
+        if let Some(tab) = self.tabs.get(self.active_tab) {
+            let path = tab.path.clone();
+            self.update_active_tab_path(path.clone());
+            self.history.record(path);
+            return self.refresh_entries();
+        }
+        Task::none()
+    }
 }
 
 impl XionApp {
@@ -315,6 +381,10 @@ impl XionApp {
         let state = AppState::new(config);
         let mut history = HistoryService::default();
         history.record(state.route.path.clone());
+        let tabs = vec![TabState {
+            title: "Ce PC".to_string(),
+            path: state.route.path.clone(),
+        }];
 
         let directory_loader = Arc::new(Mutex::new(DirectoryLoader::new(
             state.config.cache.directory_entries,
@@ -348,6 +418,8 @@ impl XionApp {
             context_menu_open: false,
             last_action: None,
             config_manager,
+            tabs,
+            active_tab: 0,
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -371,15 +443,24 @@ impl XionApp {
             UiMessage::NavigateTo(path) => {
                 tasks.push(self.navigate_to(path));
             }
+            UiMessage::AddTab => {
+                tasks.push(self.add_tab());
+            }
+            UiMessage::SwitchTab(index) => {
+                tasks.push(self.switch_tab(index));
+            }
+            UiMessage::CloseTab(index) => {
+                tasks.push(self.close_tab(index));
+            }
             UiMessage::Back => {
                 if let Some(path) = self.history.back() {
-                    self.state.route.path = path;
+                    self.update_active_tab_path(path);
                     tasks.push(self.refresh_entries());
                 }
             }
             UiMessage::Forward => {
                 if let Some(path) = self.history.forward() {
-                    self.state.route.path = path;
+                    self.update_active_tab_path(path);
                     tasks.push(self.refresh_entries());
                 }
             }
@@ -1017,11 +1098,23 @@ impl XionApp {
 
         let navigation = row![back_button, forward_button, refresh_button].spacing(spacing.sm);
 
-        let tabs = row![
-            tab_button(format!("{} Ce PC", ICON_PC), true),
-            tab_button(ICON_NEW.to_string(), false)
-        ]
-        .spacing(spacing.sm);
+        let mut tabs = row![];
+        for (index, tab) in self.tabs.iter().enumerate() {
+            let label = format!("{} {}", ICON_PC, tab.title);
+            let mut button = tab_button(label, index == self.active_tab);
+            if index != self.active_tab {
+                button = button.on_press(UiMessage::SwitchTab(index));
+            }
+            let mut tab_row = row![button].spacing(spacing.xs).align_y(Alignment::Center);
+            if index != 0 {
+                tab_row = tab_row.push(
+                    tab_button(ICON_CLOSE.to_string(), false).on_press(UiMessage::CloseTab(index)),
+                );
+            }
+            tabs = tabs.push(tab_row);
+        }
+        tabs = tabs.push(tab_button(ICON_NEW.to_string(), false).on_press(UiMessage::AddTab));
+        let tabs = tabs.spacing(spacing.sm);
 
         let address_bar = container(self.breadcrumbs())
             .padding([spacing.xs, spacing.md])
@@ -1032,8 +1125,13 @@ impl XionApp {
                 ..Default::default()
             });
 
+        let active_tab_title = self
+            .tabs
+            .get(self.active_tab)
+            .map(|tab| tab.title.as_str())
+            .unwrap_or("Ce PC");
         let search_bar = container(
-            text(format!("{} Rechercher dans : Ce PC", ICON_SEARCH))
+            text(format!("{} Rechercher dans : {}", ICON_SEARCH, active_tab_title))
                 .size(typography.caption)
                 .font(typography.caption_font),
         )

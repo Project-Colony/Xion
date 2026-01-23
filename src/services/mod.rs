@@ -9,5 +9,5 @@ pub use favorites::FavoritesService;
 pub use history::HistoryService;
 pub use loader::DirectoryLoader;
 pub use search::SearchService;
-pub use thumbnails::{Thumbnail, ThumbnailService};
+pub use thumbnails::{generate_thumbnail, Thumbnail, ThumbnailService};
 pub use virtualization::{VirtualList, VirtualWindow};

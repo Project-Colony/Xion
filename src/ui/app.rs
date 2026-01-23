@@ -1,15 +1,17 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
 
 use iced::widget::{
-    button, column, container, progress_bar, row, scrollable, text, vertical_space,
+    button, column, container, image, progress_bar, row, scrollable, text, vertical_space,
 };
 use iced::{Alignment, Element, Length, Task, Theme};
 
 use crate::core::AppConfig;
 use crate::filesystem::{FsEntry, FsEntryType, ListOptions, LocalFileSystem, Page, PageRequest};
-use crate::services::{DirectoryLoader, HistoryService, VirtualList, VirtualWindow};
+use crate::services::{
+    generate_thumbnail, DirectoryLoader, HistoryService, ThumbnailService, VirtualList, VirtualWindow,
+};
 use crate::ui::{AppState, ScrollViewport, UiMessage};
 
 const ROW_HEIGHT: f32 = 32.0;
@@ -72,6 +74,10 @@ pub struct XionApp {
     history: HistoryService,
     filesystem: LocalFileSystem,
     directory_loader: DirectoryLoader,
+    thumbnails: ThumbnailService,
+    thumbnail_handles: HashMap<PathBuf, image::Handle>,
+    thumbnails_in_flight: HashSet<PathBuf>,
+    thumbnail_misses: HashSet<PathBuf>,
     entries: PagedEntries,
     scroll_offset: f32,
     viewport_height: f32,
@@ -97,6 +103,9 @@ impl XionApp {
         self.entries.reset();
         self.error = None;
         self.scroll_offset = 0.0;
+        self.thumbnail_handles.clear();
+        self.thumbnails_in_flight.clear();
+        self.thumbnail_misses.clear();
 
         match self.load_page(0) {
             Ok(()) => {}
@@ -126,12 +135,20 @@ impl XionApp {
             Duration::from_secs(CACHE_TTL_SECONDS),
             PAGE_SIZE,
         );
+        let thumbnails = ThumbnailService::new(
+            state.config.thumbnail_cache_entries,
+            Duration::from_secs(state.config.thumbnail_cache_ttl_seconds),
+        );
         let entries = PagedEntries::new(0, directory_loader.page_size());
         let mut app = Self {
             state,
             history,
             filesystem,
             directory_loader,
+            thumbnails,
+            thumbnail_handles: HashMap::new(),
+            thumbnails_in_flight: HashSet::new(),
+            thumbnail_misses: HashSet::new(),
             entries,
             scroll_offset: 0.0,
             viewport_height: 480.0,
@@ -142,6 +159,7 @@ impl XionApp {
     }
 
     fn update(&mut self, message: UiMessage) -> Task<UiMessage> {
+        let mut tasks = Vec::new();
         match message {
             UiMessage::NavigateTo(path) => {
                 self.navigate_to(path);
@@ -172,9 +190,26 @@ impl XionApp {
                 self.viewport_height = viewport.viewport_height.max(1.0);
                 self.ensure_visible_pages();
             }
+            UiMessage::ThumbnailLoaded { path, thumbnail } => {
+                self.thumbnails_in_flight.remove(&path);
+                match thumbnail {
+                    Some(thumbnail) => {
+                        self.thumbnail_handles.insert(
+                            path.clone(),
+                            image::Handle::from_bytes(thumbnail.bytes.clone()),
+                        );
+                        self.thumbnails.insert(path.clone(), thumbnail);
+                        self.thumbnail_misses.remove(&path);
+                    }
+                    None => {
+                        self.thumbnail_misses.insert(path);
+                    }
+                }
+            }
         }
 
-        Task::none()
+        tasks.push(self.request_visible_thumbnails());
+        Task::batch(tasks)
     }
 
     fn load_page(&mut self, page_index: usize) -> Result<(), String> {
@@ -216,6 +251,60 @@ impl XionApp {
             overscan: OVERSCAN,
         };
         virtual_list.visible_range(self.scroll_offset, self.entries.total)
+    }
+
+    fn request_visible_thumbnails(&mut self) -> Task<UiMessage> {
+        if self.entries.total == 0 {
+            return Task::none();
+        }
+
+        let window = self.virtual_window();
+        if window.len() == 0 {
+            return Task::none();
+        }
+
+        let mut tasks = Vec::new();
+        let thumbnail_size = self.state.config.thumbnail_size;
+
+        for index in window.start..window.end {
+            let Some(entry) = self.entries.get(index) else {
+                continue;
+            };
+
+            if entry.entry_type != FsEntryType::File {
+                continue;
+            }
+
+            if let Some(thumbnail) = self.thumbnails.get(&entry.path) {
+                if !self.thumbnail_handles.contains_key(&entry.path) {
+                    self.thumbnail_handles.insert(
+                        entry.path.clone(),
+                        image::Handle::from_bytes(thumbnail.bytes.clone()),
+                    );
+                }
+                continue;
+            }
+
+            self.thumbnail_handles.remove(&entry.path);
+
+            if self.thumbnail_misses.contains(&entry.path)
+                || self.thumbnails_in_flight.contains(&entry.path)
+            {
+                continue;
+            }
+
+            let path = entry.path.clone();
+            self.thumbnails_in_flight.insert(path.clone());
+            tasks.push(Task::perform(
+                async move {
+                    let thumbnail = generate_thumbnail(path.as_path(), thumbnail_size);
+                    (path, thumbnail)
+                },
+                |(path, thumbnail)| UiMessage::ThumbnailLoaded { path, thumbnail },
+            ));
+        }
+
+        Task::batch(tasks)
     }
 
     fn view(&self) -> Element<'_, UiMessage> {
@@ -300,17 +389,27 @@ impl XionApp {
                 let entry = self.entries.get(index);
                 list = list.push(match entry {
                     Some(entry) => {
-                        let entry_row = row![
-                            text(match entry.entry_type {
-                                FsEntryType::Directory => "📁",
-                                FsEntryType::File => "📄",
-                                FsEntryType::Symlink => "🔗",
-                                FsEntryType::Other => "❓",
-                            }),
-                            text(&entry.name)
-                        ]
-                        .spacing(12)
-                        .align_y(Alignment::Center);
+                        let leading: Element<'_, UiMessage> = match entry.entry_type {
+                            FsEntryType::Directory => text("📁").into(),
+                            FsEntryType::File => self
+                                .thumbnail_handles
+                                .get(&entry.path)
+                                .map(|handle| {
+                                    image(handle.clone())
+                                        .width(Length::Fixed(
+                                            self.state.config.thumbnail_size as f32,
+                                        ))
+                                        .height(Length::Fixed(
+                                            self.state.config.thumbnail_size as f32,
+                                        ))
+                                        .into()
+                                })
+                                .unwrap_or_else(|| text("📄").into()),
+                            FsEntryType::Symlink => text("🔗").into(),
+                            FsEntryType::Other => text("❓").into(),
+                        };
+                        let entry_row =
+                            row![leading, text(&entry.name)].spacing(12).align_y(Alignment::Center);
                         let message = match entry.entry_type {
                             FsEntryType::Directory => UiMessage::NavigateTo(entry.path.clone()),
                             _ => UiMessage::SelectEntry(entry.path.clone()),

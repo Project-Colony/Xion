@@ -39,6 +39,9 @@ impl From<std::io::Error> for XionError {
 pub struct AppConfig {
     pub start_path: PathBuf,
     pub show_hidden: bool,
+    pub thumbnail_size: u32,
+    pub thumbnail_cache_entries: usize,
+    pub thumbnail_cache_ttl_seconds: u64,
 }
 
 impl Default for AppConfig {
@@ -47,6 +50,9 @@ impl Default for AppConfig {
         Self {
             start_path,
             show_hidden: false,
+            thumbnail_size: 48,
+            thumbnail_cache_entries: 256,
+            thumbnail_cache_ttl_seconds: 300,
         }
     }
 }

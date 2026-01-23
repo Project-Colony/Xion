@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::io::Cursor;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::filesystem::TimedCache;
@@ -42,4 +43,14 @@ impl ThumbnailService {
     pub fn clear(&mut self) {
         self.cache.clear();
     }
+}
+
+pub fn generate_thumbnail(path: &Path, max_size: u32) -> Option<Thumbnail> {
+    let image = image::open(path).ok()?;
+    let thumbnail = image.thumbnail(max_size, max_size);
+    let mut bytes = Vec::new();
+    thumbnail
+        .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+        .ok()?;
+    Some(Thumbnail::new(bytes, Some("image/png".to_string())))
 }

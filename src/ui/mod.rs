@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::core::AppConfig;
+use crate::filesystem::{FsEntry, Page};
 use crate::services::Thumbnail;
 
 pub mod app;
@@ -59,6 +60,11 @@ pub enum UiMessage {
     FocusPane(PaneKind),
     SelectEntry(PathBuf),
     Scroll(ScrollViewport),
+    PageLoaded {
+        path: PathBuf,
+        page_index: usize,
+        result: Result<Page<FsEntry>, String>,
+    },
     ThumbnailLoaded {
         path: PathBuf,
         thumbnail: Option<Thumbnail>,

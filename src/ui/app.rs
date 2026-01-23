@@ -3,11 +3,10 @@ use std::path::{Component, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{
     button, column, container, image, progress_bar, row, scrollable, text, vertical_space,
 };
-use iced::{Alignment, Background, Border, Color, Element, Length, Task, Theme, border};
+use iced::{Alignment, Element, Length, Task, Theme};
 
 use crate::core::AppConfig;
 use crate::filesystem::{FsEntry, FsEntryType, ListOptions, LocalFileSystem, Page, PageRequest};
@@ -388,152 +387,67 @@ impl XionApp {
     }
 
     fn view(&self) -> Element<'_, UiMessage> {
-        let chrome_background = Color::from_rgb8(247, 247, 250);
-        let panel_background = Color::from_rgb8(255, 255, 255);
-        let border_color = Color::from_rgb8(223, 226, 232);
-        let sidebar_background = Color::from_rgb8(242, 244, 248);
-        let accent = Color::from_rgb8(0, 120, 215);
-        let text_primary = Color::from_rgb8(32, 34, 38);
-
-        let toolbar_button = |label: &str| {
-            button(text(label).size(14)).padding([6, 10]).style(
-                move |_theme: &Theme, status: ButtonStatus| {
-                    let mut style = iced::widget::button::Style {
-                        text_color: text_primary,
-                        ..Default::default()
-                    };
-
-                    match status {
-                        ButtonStatus::Hovered => {
-                            style.background =
-                                Some(Background::Color(Color::from_rgb8(236, 239, 245)));
-                            style.border = border::rounded(6.0).color(border_color).width(1.0);
-                        }
-                        ButtonStatus::Pressed => {
-                            style.background =
-                                Some(Background::Color(Color::from_rgb8(224, 230, 240)));
-                            style.border = border::rounded(6.0).color(border_color).width(1.0);
-                        }
-                        ButtonStatus::Disabled => {
-                            style.text_color = Color::from_rgb8(150, 150, 150);
-                        }
-                        ButtonStatus::Active => {}
-                    }
-
-                    style
-                },
-            )
-        };
-
-        let tab_button = |label: &str, active: bool| {
-            button(text(label).size(14)).padding([6, 12]).style(
-                move |_theme: &Theme, status: ButtonStatus| {
-                    let mut style = iced::widget::button::Style {
-                        text_color: text_primary,
-                        ..Default::default()
-                    };
-
-                    if active {
-                        style.background = Some(Background::Color(panel_background));
-                        style.border = border::rounded(8.0).color(border_color).width(1.0);
-                    }
-
-                    if matches!(status, ButtonStatus::Hovered) {
-                        style.background = Some(Background::Color(Color::from_rgb8(236, 239, 245)));
-                    }
-
-                    style
-                },
-            )
-        };
-
         let back_button = if self.history.can_back() {
-            toolbar_button("←").on_press(UiMessage::Back)
+            button(text("←")).on_press(UiMessage::Back)
         } else {
-            toolbar_button("←")
+            button(text("←"))
         };
 
         let forward_button = if self.history.can_forward() {
-            toolbar_button("→").on_press(UiMessage::Forward)
+            button(text("→")).on_press(UiMessage::Forward)
         } else {
-            toolbar_button("→")
+            button(text("→"))
         };
 
-        let refresh_button = toolbar_button("⟳").on_press(UiMessage::Refresh);
+        let refresh_button = button(text("⟳")).on_press(UiMessage::Refresh);
 
-        let navigation = row![back_button, forward_button, refresh_button].spacing(6);
+        let navigation = row![back_button, forward_button, refresh_button].spacing(8);
 
-        let tabs = row![tab_button("Ce PC", true), tab_button("+", false)].spacing(6);
+        let tabs = row![button(text("Ce PC")), button(text("+"))].spacing(6);
 
         let address_bar = container(self.breadcrumbs())
             .padding([6, 12])
-            .width(Length::Fill)
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(panel_background)),
-                border: border::rounded(6.0).color(border_color).width(1.0),
-                ..Default::default()
-            });
+            .width(Length::Fill);
 
-        let search_bar = container(text("Rechercher dans : Ce PC").size(13))
+        let search_bar = container(text("Rechercher dans : Ce PC"))
             .padding([6, 12])
-            .width(Length::Fixed(240.0))
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(panel_background)),
-                border: border::rounded(6.0).color(border_color).width(1.0),
-                ..Default::default()
-            });
+            .width(Length::Fixed(220.0));
 
         let command_bar = row![
-            toolbar_button("Nouveau"),
-            toolbar_button("Couper"),
-            toolbar_button("Copier"),
-            toolbar_button("Coller"),
-            toolbar_button("Trier"),
-            toolbar_button("Afficher"),
-            toolbar_button("...")
+            button(text("Nouveau")),
+            button(text("Couper")),
+            button(text("Copier")),
+            button(text("Coller")),
+            button(text("Trier")),
+            button(text("Afficher")),
+            button(text("..."))
         ]
-        .spacing(6);
+        .spacing(8);
 
-        let header = container(
-            column![
-                row![tabs].spacing(8).align_y(Alignment::Center),
-                row![navigation, address_bar, search_bar]
-                    .spacing(12)
-                    .align_y(Alignment::Center),
-                command_bar
-            ]
-            .spacing(8),
-        )
-        .padding([10, 12, 8, 12])
-        .style(|_| iced::widget::container::Style {
-            background: Some(Background::Color(chrome_background)),
-            border: border::rounded(10.0).color(border_color).width(1.0),
-            ..Default::default()
-        });
-
-        let drive_summary = container(
-            column![
-                text("Périphériques et lecteurs").size(16),
-                row![
-                    text("🖥️"),
-                    column![
-                        text("Disque local (C:)"),
-                        progress_bar(0.0..=1.0, 0.12),
-                        text("109 Go libres sur 930 Go").size(12)
-                    ]
-                    .spacing(6)
-                ]
+        let header = column![
+            row![tabs].spacing(8).align_y(Alignment::Center),
+            row![navigation, address_bar, search_bar]
                 .spacing(12)
-                .align_y(Alignment::Center)
+                .align_y(Alignment::Center),
+            command_bar
+        ]
+        .spacing(10);
+
+        let drive_summary = column![
+            text("Périphériques et lecteurs").size(16),
+            row![
+                text("🖥️"),
+                column![
+                    text("Disque local (C:)"),
+                    progress_bar(0.0..=1.0, 0.12),
+                    text("109 Go libres sur 930 Go").size(12)
+                ]
+                .spacing(6)
             ]
-            .spacing(12),
-        )
-        .padding(12)
-        .style(|_| iced::widget::container::Style {
-            background: Some(Background::Color(panel_background)),
-            border: border::rounded(8.0).color(border_color).width(1.0),
-            ..Default::default()
-        });
+            .spacing(12)
+            .align_y(Alignment::Center)
+        ]
+        .spacing(12);
 
         let list_content = if let Some(message) = &self.error {
             column![
@@ -562,13 +476,6 @@ impl XionApp {
                 let entry = self.entries.get(index);
                 list = list.push(match entry {
                     Some(entry) => {
-                        let is_selected = self
-                            .state
-                            .navigation
-                            .selection
-                            .as_ref()
-                            .map(|path| path == &entry.path)
-                            .unwrap_or(false);
                         let leading: Element<'_, UiMessage> = match entry.entry_type {
                             FsEntryType::Directory => text("📁").into(),
                             FsEntryType::File => self
@@ -595,35 +502,7 @@ impl XionApp {
                             FsEntryType::Directory => UiMessage::NavigateTo(entry.path.clone()),
                             _ => UiMessage::SelectEntry(entry.path.clone()),
                         };
-                        button(entry_row)
-                            .padding([6, 10])
-                            .style(move |_theme: &Theme, status: ButtonStatus| {
-                                let mut style = iced::widget::button::Style {
-                                    text_color: text_primary,
-                                    ..Default::default()
-                                };
-
-                                if is_selected {
-                                    style.background =
-                                        Some(Background::Color(Color::from_rgb8(214, 230, 248)));
-                                    style.border = border::rounded(6.0)
-                                        .color(Color::from_rgb8(178, 206, 236))
-                                        .width(1.0);
-                                }
-
-                                if matches!(status, ButtonStatus::Hovered) {
-                                    style.background =
-                                        Some(Background::Color(Color::from_rgb8(233, 239, 247)));
-                                }
-
-                                if matches!(status, ButtonStatus::Pressed) {
-                                    style.background =
-                                        Some(Background::Color(Color::from_rgb8(220, 230, 244)));
-                                }
-
-                                style
-                            })
-                            .on_press(message)
+                        button(entry_row).on_press(message)
                     }
                     None => {
                         let placeholder = row![text("⏳"), text("Chargement…")]
@@ -663,54 +542,30 @@ impl XionApp {
             })
         });
 
-        let sidebar = container(
-            column![
-                row![text("🏠"), text("Accueil").size(15)].spacing(8),
-                row![text("🖼️"), text("Galerie").size(15)].spacing(8),
-                text("—").size(12),
-                row![text("🗂️"), text("Bureau").size(14)].spacing(8),
-                row![text("⬇️"), text("Téléchargement").size(14)].spacing(8),
-                row![text("📄"), text("Documents").size(14)].spacing(8),
-                row![text("🖼️"), text("Images").size(14)].spacing(8),
-                row![text("🎵"), text("Musique").size(14)].spacing(8),
-                row![text("🎬"), text("Vidéos").size(14)].spacing(8),
-                text("—").size(12),
-                container(row![text("💻"), text("Ce PC").size(15)].spacing(8))
-                    .padding([4, 6])
-                    .style(|_| iced::widget::container::Style {
-                        background: Some(Background::Color(Color::from_rgb8(226, 238, 252))),
-                        border: border::rounded(6.0).color(accent).width(1.0),
-                        ..Default::default()
-                    }),
-                row![text("💽"), text("Disque local (C:)").size(14)].spacing(8),
-                row![text("🌐"), text("Réseau").size(14)].spacing(8)
-            ]
-            .spacing(10),
-        )
-        .padding(12)
-        .style(|_| iced::widget::container::Style {
-            background: Some(Background::Color(sidebar_background)),
-            border: Border {
-                color: border_color,
-                width: 1.0,
-                radius: 0.0.into(),
-            },
-            ..Default::default()
-        });
+        let sidebar = column![
+            text("Accueil").size(16),
+            text("Galerie").size(16),
+            text("—").size(12),
+            text("Bureau").size(14),
+            text("Téléchargement").size(14),
+            text("Documents").size(14),
+            text("Images").size(14),
+            text("Musique").size(14),
+            text("Vidéos").size(14),
+            text("—").size(12),
+            text("Ce PC").size(16),
+            text("Disque local (C:)").size(14),
+            text("Réseau").size(14)
+        ]
+        .spacing(10)
+        .padding(12);
 
         let body = row![
-            sidebar.width(Length::Fixed(220.0)),
-            container(list)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(|_| iced::widget::container::Style {
-                    background: Some(Background::Color(panel_background)),
-                    border: border::rounded(10.0).color(border_color).width(1.0),
-                    ..Default::default()
-                })
+            container(sidebar).width(Length::Fixed(220.0)),
+            container(list).width(Length::Fill).height(Length::Fill)
         ]
         .height(Length::Fill)
-        .spacing(12);
+        .spacing(16);
 
         let content = column![header, body]
             .spacing(12)
@@ -718,12 +573,7 @@ impl XionApp {
             .align_x(Alignment::Start)
             .height(Length::Fill);
 
-        container(content)
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(chrome_background)),
-                ..Default::default()
-            })
-            .into()
+        container(content).into()
     }
 }
 

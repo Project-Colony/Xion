@@ -1358,51 +1358,6 @@ impl XionApp {
             ..Default::default()
         });
 
-        let drive_summary = root_path_for(&self.state.route.path)
-            .and_then(|root_path| {
-                disk_usage_for(&root_path).map(|usage| {
-                    let total_gb = format_gigabytes(usage.total);
-                    let free_gb = format_gigabytes(usage.available);
-                    let used_ratio = if usage.total == 0 {
-                        0.0
-                    } else {
-                        1.0 - (usage.available as f32 / usage.total as f32)
-                    };
-                    container(
-                        column![
-                            text("Périphériques et lecteurs")
-                                .size(typography.title)
-                                .font(typography.title_font),
-                            row![
-                                text(ICON_DEVICE)
-                                    .size(typography.body)
-                                    .font(typography.body_font),
-                                column![
-                                    text(drive_label(&root_path))
-                                        .size(typography.body)
-                                        .font(typography.body_font),
-                                    progress_bar(0.0..=1.0, used_ratio),
-                                    text(format!("{} Go libres sur {} Go", free_gb, total_gb))
-                                        .size(typography.caption)
-                                        .font(typography.caption_font)
-                                ]
-                                .spacing(spacing.sm)
-                            ]
-                            .spacing(spacing.md)
-                            .align_y(Alignment::Center)
-                        ]
-                        .spacing(spacing.md),
-                    )
-                    .padding(spacing.md)
-                    .style(move |_| iced::widget::container::Style {
-                        background: Some(Background::Color(colors.panel_background)),
-                        border: border::rounded(8.0).color(colors.border).width(1.0),
-                        ..Default::default()
-                    })
-                })
-            })
-            .unwrap_or_else(|| container(row![]));
-
         let list_content = if let Some(message) = &self.error {
             column![
                 text("Impossible de charger le dossier")
@@ -1593,7 +1548,6 @@ impl XionApp {
         let list = scrollable(
             container(
                 column![
-                    drive_summary,
                     list_content,
                     text(selection_status)
                         .size(typography.caption)

@@ -37,8 +37,9 @@ Créer un explorateur de fichiers en Rust inspiré de Windows File Explorer, Fil
 
 ## Conventions de configuration
 
-- Fichiers de config versionnés et documentés (format à définir).
+- Fichiers de config versionnés et documentés (format TOML).
 - Valeurs par défaut minimales, extensibles via options utilisateur.
+- Voir `docs/config.md` pour le format, la migration et la validation.
 
 ## Roadmap documentaire
 

@@ -212,14 +212,31 @@ impl FileSystem for LocalFileSystem {
                 continue;
             }
 
-            let metadata = FsMetadata::from_metadata(entry.metadata()?);
-            entries.push(FsEntry {
+            entries.push(EntryStub {
                 path: entry.path(),
                 name,
                 entry_type,
-                metadata,
+                metadata: None,
             });
         }
+
+        let metadata = if entries.is_empty() {
+            Vec::new()
+        } else {
+            let paths = entries.iter().map(|entry| entry.path.clone()).collect::<Vec<_>>();
+            self.metadata_batch(&paths)?
+        };
+
+        let mut entries = entries
+            .into_iter()
+            .zip(metadata)
+            .map(|(entry, metadata)| FsEntry {
+                path: entry.path,
+                name: entry.name,
+                entry_type: entry.entry_type,
+                metadata,
+            })
+            .collect::<Vec<_>>();
 
         entries.sort_by(|left, right| Self::compare_entries(&options, left, right));
         Ok(entries)
@@ -271,18 +288,31 @@ impl FileSystem for LocalFileSystem {
                 continue;
             }
 
-            let metadata = if needs_full_metadata {
-                Some(FsMetadata::from_metadata(entry.metadata()?))
-            } else {
-                None
-            };
-
             entries.push(EntryStub {
                 path: entry.path(),
                 name,
                 entry_type,
-                metadata,
+                metadata: None,
             });
+        }
+
+        if needs_full_metadata {
+            let paths = entries
+                .iter()
+                .map(|entry| entry.path.clone())
+                .collect::<Vec<_>>();
+            let mut metadata_iter = if paths.is_empty() {
+                Vec::new().into_iter()
+            } else {
+                self.metadata_batch(&paths)?.into_iter()
+            };
+            for entry in &mut entries {
+                entry.metadata = Some(
+                    metadata_iter
+                        .next()
+                        .ok_or_else(|| XionError::InvalidPath(entry.path.clone()))?,
+                );
+            }
         }
 
         entries.sort_by(|left, right| Self::compare_entry_stubs(&options, left, right));

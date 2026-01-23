@@ -5,13 +5,9 @@ use std::time::Duration;
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{
-    button, column, container, horizontal_space, image, progress_bar, row, scrollable, text,
-    vertical_space,
+    button, column, container, image, progress_bar, row, scrollable, text, vertical_space,
 };
-use iced::{
-    Alignment, Background, Border, Color, Element, Length, Subscription, Task, Theme, border,
-    keyboard, mouse,
-};
+use iced::{Alignment, Background, Border, Color, Element, Length, Task, Theme, border};
 
 use crate::core::AppConfig;
 use crate::filesystem::{FsEntry, FsEntryType, ListOptions, LocalFileSystem, Page, PageRequest};
@@ -19,86 +15,13 @@ use crate::services::{
     DirectoryLoader, HistoryService, ThumbnailService, VirtualList, VirtualWindow,
     generate_thumbnail,
 };
-use crate::ui::{
-    AppState, ContextAction, KeyboardCommand, ModifiersState, ScrollViewport, SelectionKind,
-    UiMessage,
-};
+use crate::ui::{AppState, ScrollViewport, UiMessage};
 
 const ROW_HEIGHT: f32 = 32.0;
 const OVERSCAN: usize = 6;
 const CACHE_SIZE: usize = 256;
 const CACHE_TTL_SECONDS: u64 = 45;
 const PAGE_SIZE: usize = 120;
-
-#[derive(Debug, Clone, Copy)]
-struct UiColors {
-    chrome_background: Color,
-    panel_background: Color,
-    border: Color,
-    sidebar_background: Color,
-    accent: Color,
-    text_primary: Color,
-    text_muted: Color,
-    selection: Color,
-    selection_border: Color,
-    hover: Color,
-    pressed: Color,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct UiSpacing {
-    xs: f32,
-    sm: f32,
-    md: f32,
-    lg: f32,
-    xl: f32,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct UiTypography {
-    title: u16,
-    body: u16,
-    caption: u16,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct UiTokens {
-    colors: UiColors,
-    spacing: UiSpacing,
-    typography: UiTypography,
-}
-
-impl Default for UiTokens {
-    fn default() -> Self {
-        Self {
-            colors: UiColors {
-                chrome_background: Color::from_rgb8(247, 247, 250),
-                panel_background: Color::from_rgb8(255, 255, 255),
-                border: Color::from_rgb8(223, 226, 232),
-                sidebar_background: Color::from_rgb8(242, 244, 248),
-                accent: Color::from_rgb8(0, 120, 215),
-                text_primary: Color::from_rgb8(32, 34, 38),
-                text_muted: Color::from_rgb8(110, 114, 122),
-                selection: Color::from_rgb8(214, 230, 248),
-                selection_border: Color::from_rgb8(178, 206, 236),
-                hover: Color::from_rgb8(233, 239, 247),
-                pressed: Color::from_rgb8(220, 230, 244),
-            },
-            spacing: UiSpacing {
-                xs: 4.0,
-                sm: 8.0,
-                md: 12.0,
-                lg: 16.0,
-                xl: 20.0,
-            },
-            typography: UiTypography {
-                title: 16,
-                body: 14,
-                caption: 12,
-            },
-        }
-    }
-}
 
 #[derive(Debug)]
 struct PagedEntries {
@@ -163,9 +86,6 @@ pub struct XionApp {
     scroll_offset: f32,
     viewport_height: f32,
     error: Option<String>,
-    modifiers: ModifiersState,
-    context_menu_open: bool,
-    last_action: Option<String>,
 }
 
 impl XionApp {
@@ -178,7 +98,6 @@ impl XionApp {
         self.thumbnail_misses.clear();
         self.pending_pages.clear();
         self.is_loading = true;
-        self.clear_selection();
 
         self.request_page(0)
     }
@@ -262,9 +181,6 @@ impl XionApp {
             scroll_offset: 0.0,
             viewport_height: 480.0,
             error: None,
-            modifiers: ModifiersState::default(),
-            context_menu_open: false,
-            last_action: None,
         };
         let task = app.refresh_entries();
         (app, task)
@@ -294,23 +210,8 @@ impl XionApp {
             UiMessage::FocusPane(pane) => {
                 self.state.navigation.focused_pane = pane;
             }
-            UiMessage::SelectEntry { path, kind } => {
-                self.apply_selection(path, kind);
-            }
-            UiMessage::ActivateEntry(path) => {
-                tasks.push(self.activate_entry(path));
-            }
-            UiMessage::KeyboardCommand(command) => {
-                tasks.push(self.handle_keyboard_command(command));
-            }
-            UiMessage::ToggleContextMenu(force_open) => {
-                self.context_menu_open = force_open;
-            }
-            UiMessage::ContextAction(action) => {
-                tasks.push(self.apply_context_action(action));
-            }
-            UiMessage::ModifiersChanged(modifiers) => {
-                self.modifiers = modifiers;
+            UiMessage::SelectEntry(path) => {
+                self.state.navigation.selection = Some(path);
             }
             UiMessage::Scroll(viewport) => {
                 self.scroll_offset = viewport.offset_y;
@@ -362,353 +263,6 @@ impl XionApp {
 
         tasks.push(self.request_visible_thumbnails());
         Task::batch(tasks)
-    }
-
-    fn subscription(&self) -> Subscription<UiMessage> {
-        iced::subscription::events_with(|event, status| {
-            if status == iced::event::Status::Captured {
-                return None;
-            }
-
-            match event {
-                iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
-                    Some(UiMessage::ModifiersChanged(ModifiersState {
-                        shift: modifiers.shift(),
-                        control: modifiers.control(),
-                        alt: modifiers.alt(),
-                    }))
-                }
-                iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
-                    let extend = modifiers.shift();
-                    let command = match key {
-                        keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
-                            Some(KeyboardCommand::MoveUp { extend })
-                        }
-                        keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
-                            Some(KeyboardCommand::MoveDown { extend })
-                        }
-                        keyboard::Key::Named(keyboard::key::Named::Home) => {
-                            Some(KeyboardCommand::MoveHome { extend })
-                        }
-                        keyboard::Key::Named(keyboard::key::Named::End) => {
-                            Some(KeyboardCommand::MoveEnd { extend })
-                        }
-                        keyboard::Key::Named(keyboard::key::Named::Enter) => {
-                            Some(KeyboardCommand::Activate)
-                        }
-                        keyboard::Key::Named(keyboard::key::Named::Escape) => {
-                            Some(KeyboardCommand::ClearSelection)
-                        }
-                        keyboard::Key::Named(keyboard::key::Named::Tab) => {
-                            Some(KeyboardCommand::CyclePaneFocus)
-                        }
-                        keyboard::Key::Named(keyboard::key::Named::ArrowLeft)
-                            if modifiers.alt() =>
-                        {
-                            Some(KeyboardCommand::Back)
-                        }
-                        keyboard::Key::Named(keyboard::key::Named::ArrowRight)
-                            if modifiers.alt() =>
-                        {
-                            Some(KeyboardCommand::Forward)
-                        }
-                        keyboard::Key::Character(character) => {
-                            let character = character.to_lowercase();
-                            if modifiers.control() && character == "a" {
-                                Some(KeyboardCommand::SelectAll)
-                            } else if modifiers.control() && character == "r" {
-                                Some(KeyboardCommand::Refresh)
-                            } else if modifiers.control() && character == "m" {
-                                Some(KeyboardCommand::ToggleContextMenu)
-                            } else {
-                                None
-                            }
-                        }
-                        _ => None,
-                    };
-                    command.map(UiMessage::KeyboardCommand)
-                }
-                iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
-                    Some(UiMessage::ToggleContextMenu(true))
-                }
-                iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                    Some(UiMessage::ToggleContextMenu(false))
-                }
-                _ => None,
-            }
-        })
-    }
-
-    fn selection_kind_from_modifiers(&self) -> SelectionKind {
-        if self.modifiers.shift {
-            SelectionKind::Range
-        } else if self.modifiers.control {
-            SelectionKind::Toggle
-        } else {
-            SelectionKind::Single
-        }
-    }
-
-    fn apply_selection(&mut self, path: PathBuf, kind: SelectionKind) {
-        let anchor_path = self.state.navigation.selection.anchor.clone();
-        let selection_kind = match kind {
-            SelectionKind::Range if anchor_path.is_none() => SelectionKind::Single,
-            SelectionKind::Range => SelectionKind::Range,
-            other => other,
-        };
-        let target_index = self.index_for_path(&path);
-        let anchor_index = anchor_path
-            .as_ref()
-            .and_then(|anchor_path| self.index_for_path(anchor_path));
-
-        let selection = &mut self.state.navigation.selection;
-
-        match selection_kind {
-            SelectionKind::Single => {
-                selection.selected.clear();
-                selection.selected.insert(path.clone());
-                selection.focused = Some(path.clone());
-                selection.anchor = Some(path);
-            }
-            SelectionKind::Toggle => {
-                if selection.selected.contains(&path) {
-                    selection.selected.remove(&path);
-                } else {
-                    selection.selected.insert(path.clone());
-                }
-                selection.focused = Some(path.clone());
-                selection.anchor.get_or_insert(path);
-            }
-            SelectionKind::Range => {
-                let anchor_path = anchor_path.unwrap_or_else(|| path.clone());
-                let target = target_index;
-                let anchor = anchor_index;
-
-                if let (Some(anchor), Some(target)) = (anchor, target) {
-                    selection.selected.clear();
-                    let (start, end) = if anchor <= target {
-                        (anchor, target)
-                    } else {
-                        (target, anchor)
-                    };
-                    for index in start..=end {
-                        if let Some(entry) = self.entries.get(index) {
-                            selection.selected.insert(entry.path.clone());
-                        }
-                    }
-                    selection.focused = Some(path.clone());
-                    selection.anchor = Some(anchor_path);
-                } else {
-                    selection.selected.clear();
-                    selection.selected.insert(path.clone());
-                    selection.focused = Some(path.clone());
-                    selection.anchor = Some(path);
-                }
-            }
-        }
-
-        if selection.selected.is_empty() {
-            selection.focused = None;
-            selection.anchor = None;
-        }
-        self.context_menu_open = false;
-    }
-
-    fn handle_keyboard_command(&mut self, command: KeyboardCommand) -> Task<UiMessage> {
-        match command {
-            KeyboardCommand::MoveUp { extend } => {
-                self.move_focus_by(-1, extend);
-                Task::none()
-            }
-            KeyboardCommand::MoveDown { extend } => {
-                self.move_focus_by(1, extend);
-                Task::none()
-            }
-            KeyboardCommand::MoveHome { extend } => {
-                self.move_focus_to_start(extend);
-                Task::none()
-            }
-            KeyboardCommand::MoveEnd { extend } => {
-                self.move_focus_to_end(extend);
-                Task::none()
-            }
-            KeyboardCommand::Activate => self.activate_focused_entry(),
-            KeyboardCommand::Back => {
-                if self.history.can_back() {
-                    if let Some(path) = self.history.back() {
-                        self.state.route.path = path;
-                        return self.refresh_entries();
-                    }
-                }
-                Task::none()
-            }
-            KeyboardCommand::Forward => {
-                if self.history.can_forward() {
-                    if let Some(path) = self.history.forward() {
-                        self.state.route.path = path;
-                        return self.refresh_entries();
-                    }
-                }
-                Task::none()
-            }
-            KeyboardCommand::Refresh => self.refresh_entries(),
-            KeyboardCommand::SelectAll => {
-                self.select_all_entries();
-                Task::none()
-            }
-            KeyboardCommand::ClearSelection => {
-                self.clear_selection();
-                Task::none()
-            }
-            KeyboardCommand::ToggleContextMenu => {
-                self.context_menu_open = !self.context_menu_open;
-                Task::none()
-            }
-            KeyboardCommand::CyclePaneFocus => {
-                self.cycle_focus();
-                Task::none()
-            }
-        }
-    }
-
-    fn apply_context_action(&mut self, action: ContextAction) -> Task<UiMessage> {
-        self.context_menu_open = false;
-        let selection = &self.state.navigation.selection;
-        let selected_label = if selection.selected.len() == 1 {
-            selection
-                .selected
-                .iter()
-                .next()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "—".to_string())
-        } else if selection.selected.is_empty() {
-            "—".to_string()
-        } else {
-            format!("{} éléments", selection.selected.len())
-        };
-
-        self.last_action = Some(match action {
-            ContextAction::Open => format!("Ouverture : {}", selected_label),
-            ContextAction::Rename => format!("Renommer : {}", selected_label),
-            ContextAction::Delete => format!("Supprimer : {}", selected_label),
-            ContextAction::CopyPath => format!("Copier le chemin : {}", selected_label),
-        });
-
-        match action {
-            ContextAction::Open => self.activate_focused_entry(),
-            _ => Task::none(),
-        }
-    }
-
-    fn activate_focused_entry(&mut self) -> Task<UiMessage> {
-        let focused = self.state.navigation.selection.focused.clone();
-        if let Some(path) = focused {
-            return self.activate_entry(path);
-        }
-        Task::none()
-    }
-
-    fn activate_entry(&mut self, path: PathBuf) -> Task<UiMessage> {
-        if let Some(entry) = self
-            .entries
-            .items
-            .iter()
-            .flatten()
-            .find(|entry| entry.path == path)
-        {
-            if entry.entry_type == FsEntryType::Directory {
-                return self.navigate_to(entry.path.clone());
-            }
-        }
-        Task::none()
-    }
-
-    fn index_for_path(&self, path: &PathBuf) -> Option<usize> {
-        self.entries.items.iter().position(|entry| {
-            entry
-                .as_ref()
-                .map(|entry| &entry.path == path)
-                .unwrap_or(false)
-        })
-    }
-
-    fn first_entry_index(&self) -> Option<usize> {
-        self.entries.items.iter().position(|entry| entry.is_some())
-    }
-
-    fn last_entry_index(&self) -> Option<usize> {
-        self.entries.items.iter().rposition(|entry| entry.is_some())
-    }
-
-    fn move_focus_by(&mut self, offset: isize, extend: bool) {
-        let selection = &self.state.navigation.selection;
-        let start_index = selection
-            .focused
-            .as_ref()
-            .and_then(|path| self.index_for_path(path))
-            .or_else(|| self.first_entry_index());
-
-        let Some(start_index) = start_index else {
-            return;
-        };
-
-        let target_index = if offset.is_negative() {
-            start_index.saturating_sub(offset.unsigned_abs() as usize)
-        } else {
-            (start_index + offset as usize).min(self.entries.total.saturating_sub(1))
-        };
-
-        self.move_focus_to_index(target_index, extend);
-    }
-
-    fn move_focus_to_start(&mut self, extend: bool) {
-        if let Some(index) = self.first_entry_index() {
-            self.move_focus_to_index(index, extend);
-        }
-    }
-
-    fn move_focus_to_end(&mut self, extend: bool) {
-        if let Some(index) = self.last_entry_index() {
-            self.move_focus_to_index(index, extend);
-        }
-    }
-
-    fn move_focus_to_index(&mut self, index: usize, extend: bool) {
-        let Some(entry) = self.entries.get(index) else {
-            return;
-        };
-        let kind = if extend {
-            SelectionKind::Range
-        } else {
-            SelectionKind::Single
-        };
-        self.apply_selection(entry.path.clone(), kind);
-    }
-
-    fn select_all_entries(&mut self) {
-        let selection = &mut self.state.navigation.selection;
-        selection.selected.clear();
-        for entry in self.entries.items.iter().flatten() {
-            selection.selected.insert(entry.path.clone());
-        }
-        selection.focused = selection.selected.iter().next().cloned();
-        selection.anchor = selection.focused.clone();
-    }
-
-    fn clear_selection(&mut self) {
-        let selection = &mut self.state.navigation.selection;
-        selection.selected.clear();
-        selection.focused = None;
-        selection.anchor = None;
-        self.context_menu_open = false;
-    }
-
-    fn cycle_focus(&mut self) {
-        self.state.navigation.focused_pane = match self.state.navigation.focused_pane {
-            crate::ui::PaneKind::Tree => crate::ui::PaneKind::List,
-            crate::ui::PaneKind::List => crate::ui::PaneKind::Preview,
-            crate::ui::PaneKind::Preview => crate::ui::PaneKind::Tree,
-        };
     }
 
     fn ensure_visible_pages(&mut self) -> Task<UiMessage> {
@@ -834,28 +388,31 @@ impl XionApp {
     }
 
     fn view(&self) -> Element<'_, UiMessage> {
-        let tokens = UiTokens::default();
-        let colors = tokens.colors;
-        let spacing = tokens.spacing;
-        let typography = tokens.typography;
+        let chrome_background = Color::from_rgb8(247, 247, 250);
+        let panel_background = Color::from_rgb8(255, 255, 255);
+        let border_color = Color::from_rgb8(223, 226, 232);
+        let sidebar_background = Color::from_rgb8(242, 244, 248);
+        let accent = Color::from_rgb8(0, 120, 215);
+        let text_primary = Color::from_rgb8(32, 34, 38);
 
         let toolbar_button = |label: String| {
-            button(text(label).size(typography.body))
-                .padding([spacing.xs, spacing.sm])
-                .style(move |_theme: &Theme, status: ButtonStatus| {
+            button(text(label).size(14)).padding([6, 10]).style(
+                move |_theme: &Theme, status: ButtonStatus| {
                     let mut style = iced::widget::button::Style {
-                        text_color: colors.text_primary,
+                        text_color: text_primary,
                         ..Default::default()
                     };
 
                     match status {
                         ButtonStatus::Hovered => {
-                            style.background = Some(Background::Color(colors.hover));
-                            style.border = border::rounded(6.0).color(colors.border).width(1.0);
+                            style.background =
+                                Some(Background::Color(Color::from_rgb8(236, 239, 245)));
+                            style.border = border::rounded(6.0).color(border_color).width(1.0);
                         }
                         ButtonStatus::Pressed => {
-                            style.background = Some(Background::Color(colors.pressed));
-                            style.border = border::rounded(6.0).color(colors.border).width(1.0);
+                            style.background =
+                                Some(Background::Color(Color::from_rgb8(224, 230, 240)));
+                            style.border = border::rounded(6.0).color(border_color).width(1.0);
                         }
                         ButtonStatus::Disabled => {
                             style.text_color = Color::from_rgb8(150, 150, 150);
@@ -864,29 +421,30 @@ impl XionApp {
                     }
 
                     style
-                })
+                },
+            )
         };
 
         let tab_button = |label: String, active: bool| {
-            button(text(label).size(typography.body))
-                .padding([spacing.xs, spacing.md])
-                .style(move |_theme: &Theme, status: ButtonStatus| {
+            button(text(label).size(14)).padding([6, 12]).style(
+                move |_theme: &Theme, status: ButtonStatus| {
                     let mut style = iced::widget::button::Style {
-                        text_color: colors.text_primary,
+                        text_color: text_primary,
                         ..Default::default()
                     };
 
                     if active {
-                        style.background = Some(Background::Color(colors.panel_background));
-                        style.border = border::rounded(8.0).color(colors.border).width(1.0);
+                        style.background = Some(Background::Color(panel_background));
+                        style.border = border::rounded(8.0).color(border_color).width(1.0);
                     }
 
                     if matches!(status, ButtonStatus::Hovered) {
-                        style.background = Some(Background::Color(colors.hover));
+                        style.background = Some(Background::Color(Color::from_rgb8(236, 239, 245)));
                     }
 
                     style
-                })
+                },
+            )
         };
 
         let back_button = if self.history.can_back() {
@@ -903,29 +461,29 @@ impl XionApp {
 
         let refresh_button = toolbar_button("⟳".to_string()).on_press(UiMessage::Refresh);
 
-        let navigation = row![back_button, forward_button, refresh_button].spacing(spacing.sm);
+        let navigation = row![back_button, forward_button, refresh_button].spacing(6);
 
         let tabs = row![
             tab_button("Ce PC".to_string(), true),
             tab_button("+".to_string(), false)
         ]
-        .spacing(spacing.sm);
+        .spacing(6);
 
         let address_bar = container(self.breadcrumbs())
-            .padding([spacing.xs, spacing.md])
+            .padding([6, 12])
             .width(Length::Fill)
             .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.panel_background)),
-                border: border::rounded(6.0).color(colors.border).width(1.0),
+                background: Some(Background::Color(panel_background)),
+                border: border::rounded(6.0).color(border_color).width(1.0),
                 ..Default::default()
             });
 
-        let search_bar = container(text("Rechercher dans : Ce PC").size(typography.caption))
-            .padding([spacing.xs, spacing.md])
+        let search_bar = container(text("Rechercher dans : Ce PC").size(13))
+            .padding([6, 12])
             .width(Length::Fixed(240.0))
             .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.panel_background)),
-                border: border::rounded(6.0).color(colors.border).width(1.0),
+                background: Some(Background::Color(panel_background)),
+                border: border::rounded(6.0).color(border_color).width(1.0),
                 ..Default::default()
             });
 
@@ -936,99 +494,69 @@ impl XionApp {
             toolbar_button("Coller".to_string()),
             toolbar_button("Trier".to_string()),
             toolbar_button("Afficher".to_string()),
-            toolbar_button("...".to_string()),
-            toolbar_button("Actions".to_string())
-                .on_press(UiMessage::ToggleContextMenu(!self.context_menu_open))
+            toolbar_button("...".to_string())
         ]
-        .spacing(spacing.sm);
-
-        let context_actions = row![
-            toolbar_button("Ouvrir".to_string())
-                .on_press(UiMessage::ContextAction(ContextAction::Open,)),
-            toolbar_button("Renommer".to_string())
-                .on_press(UiMessage::ContextAction(ContextAction::Rename,)),
-            toolbar_button("Supprimer".to_string())
-                .on_press(UiMessage::ContextAction(ContextAction::Delete,)),
-            toolbar_button("Copier le chemin".to_string())
-                .on_press(UiMessage::ContextAction(ContextAction::CopyPath),)
-        ]
-        .spacing(spacing.sm);
-
-        let context_menu =
-            if self.context_menu_open && !self.state.navigation.selection.selected.is_empty() {
-                Some(
-                    container(context_actions)
-                        .padding([spacing.sm, spacing.md])
-                        .style(move |_| iced::widget::container::Style {
-                            background: Some(Background::Color(colors.panel_background)),
-                            border: border::rounded(8.0).color(colors.border).width(1.0),
-                            ..Default::default()
-                        }),
-                )
-            } else {
-                None
-            };
+        .spacing(6);
 
         let header = container(
             column![
                 row![tabs].spacing(8).align_y(Alignment::Center),
                 row![navigation, address_bar, search_bar]
-                    .spacing(spacing.md)
+                    .spacing(12)
                     .align_y(Alignment::Center),
-                command_bar,
-                context_menu.unwrap_or_else(|| container(row![]))
+                command_bar
             ]
-            .spacing(spacing.sm),
+            .spacing(8),
         )
         .padding(iced::Padding {
-            top: spacing.sm + 2.0,
-            right: spacing.md,
-            bottom: spacing.sm,
-            left: spacing.md,
+            top: 10.0,
+            right: 12.0,
+            bottom: 8.0,
+            left: 12.0,
         })
         .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.chrome_background)),
-            border: border::rounded(10.0).color(colors.border).width(1.0),
+            background: Some(Background::Color(chrome_background)),
+            border: border::rounded(10.0).color(border_color).width(1.0),
             ..Default::default()
         });
 
         let drive_summary = container(
             column![
-                text("Périphériques et lecteurs").size(typography.title),
+                text("Périphériques et lecteurs").size(16),
                 row![
                     text("🖥️"),
                     column![
                         text("Disque local (C:)"),
                         progress_bar(0.0..=1.0, 0.12),
-                        text("109 Go libres sur 930 Go").size(typography.caption)
+                        text("109 Go libres sur 930 Go").size(12)
                     ]
-                    .spacing(spacing.sm)
+                    .spacing(6)
                 ]
-                .spacing(spacing.md)
+                .spacing(12)
                 .align_y(Alignment::Center)
             ]
-            .spacing(spacing.md),
+            .spacing(12),
         )
-        .padding(spacing.md)
+        .padding(12)
         .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.panel_background)),
-            border: border::rounded(8.0).color(colors.border).width(1.0),
+            background: Some(Background::Color(panel_background)),
+            border: border::rounded(8.0).color(border_color).width(1.0),
             ..Default::default()
         });
 
         let list_content = if let Some(message) = &self.error {
             column![
-                text("Impossible de charger le dossier").size(typography.title),
+                text("Impossible de charger le dossier").size(16),
                 text(message),
                 button(text("Réessayer")).on_press(UiMessage::Refresh)
             ]
-            .spacing(spacing.sm)
+            .spacing(8)
         } else if self.is_loading && self.entries.total == 0 {
             column![
-                text("Chargement du dossier…").size(typography.title),
+                text("Chargement du dossier…").size(16),
                 progress_bar(0.0..=1.0, 0.4)
             ]
-            .spacing(spacing.md)
+            .spacing(12)
         } else if self.entries.total == 0 {
             column![text("Dossier vide")]
         } else {
@@ -1047,13 +575,6 @@ impl XionApp {
                             .state
                             .navigation
                             .selection
-                            .selected
-                            .contains(&entry.path);
-                        let is_focused = self
-                            .state
-                            .navigation
-                            .selection
-                            .focused
                             .as_ref()
                             .map(|path| path == &entry.path)
                             .unwrap_or(false);
@@ -1076,49 +597,37 @@ impl XionApp {
                             FsEntryType::Symlink => text("🔗").into(),
                             FsEntryType::Other => text("❓").into(),
                         };
-                        let open_button: Element<'_, UiMessage> =
-                            if entry.entry_type == FsEntryType::Directory {
-                                button(text("Ouvrir").size(typography.caption))
-                                    .padding([spacing.xs, spacing.sm])
-                                    .on_press(UiMessage::ActivateEntry(entry.path.clone()))
-                                    .into()
-                            } else {
-                                container(row![]).into()
-                            };
-                        let entry_row = row![
-                            leading,
-                            text(&entry.name).size(typography.body),
-                            horizontal_space(),
-                            open_button
-                        ]
-                        .spacing(spacing.md)
-                        .align_y(Alignment::Center);
-                        let selection_kind = self.selection_kind_from_modifiers();
-                        let message = UiMessage::SelectEntry {
-                            path: entry.path.clone(),
-                            kind: selection_kind,
+                        let entry_row = row![leading, text(&entry.name)]
+                            .spacing(12)
+                            .align_y(Alignment::Center);
+                        let message = match entry.entry_type {
+                            FsEntryType::Directory => UiMessage::NavigateTo(entry.path.clone()),
+                            _ => UiMessage::SelectEntry(entry.path.clone()),
                         };
                         button(entry_row)
-                            .padding([spacing.xs, spacing.sm])
+                            .padding([6, 10])
                             .style(move |_theme: &Theme, status: ButtonStatus| {
                                 let mut style = iced::widget::button::Style {
-                                    text_color: colors.text_primary,
+                                    text_color: text_primary,
                                     ..Default::default()
                                 };
 
                                 if is_selected {
-                                    style.background = Some(Background::Color(colors.selection));
+                                    style.background =
+                                        Some(Background::Color(Color::from_rgb8(214, 230, 248)));
                                     style.border = border::rounded(6.0)
-                                        .color(colors.selection_border)
-                                        .width(if is_focused { 2.0 } else { 1.0 });
+                                        .color(Color::from_rgb8(178, 206, 236))
+                                        .width(1.0);
                                 }
 
                                 if matches!(status, ButtonStatus::Hovered) {
-                                    style.background = Some(Background::Color(colors.hover));
+                                    style.background =
+                                        Some(Background::Color(Color::from_rgb8(233, 239, 247)));
                                 }
 
                                 if matches!(status, ButtonStatus::Pressed) {
-                                    style.background = Some(Background::Color(colors.pressed));
+                                    style.background =
+                                        Some(Background::Color(Color::from_rgb8(220, 230, 244)));
                                 }
 
                                 style
@@ -1127,7 +636,7 @@ impl XionApp {
                     }
                     None => {
                         let placeholder = row![text("⏳"), text("Chargement…")]
-                            .spacing(spacing.md)
+                            .spacing(12)
                             .align_y(Alignment::Center);
                         button(placeholder)
                     }
@@ -1141,37 +650,19 @@ impl XionApp {
             list
         };
 
-        let selection = &self.state.navigation.selection;
-        let selection_status = if selection.selected.is_empty() {
-            "Sélection : —".to_string()
-        } else if selection.selected.len() == 1 {
-            let path = selection
-                .selected
-                .iter()
-                .next()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "—".to_string());
-            format!("Sélection : {}", path)
-        } else {
-            format!("Sélection : {} éléments", selection.selected.len())
-        };
-
-        let action_status = self
-            .last_action
-            .clone()
-            .unwrap_or_else(|| "Action : —".to_string());
+        let selection_status = self
+            .state
+            .navigation
+            .selection
+            .as_ref()
+            .map(|path| format!("Sélection : {}", path.display()))
+            .unwrap_or_else(|| "Sélection : —".to_string());
 
         let list = scrollable(
             container(
-                column![
-                    drive_summary,
-                    list_content,
-                    text(selection_status).size(typography.caption),
-                    text(action_status).size(typography.caption)
-                ]
-                .spacing(spacing.xl),
+                column![drive_summary, list_content, text(selection_status).size(12)].spacing(20),
             )
-            .padding(spacing.md),
+            .padding(12),
         )
         .on_scroll(|viewport| {
             UiMessage::Scroll(ScrollViewport {
@@ -1183,36 +674,33 @@ impl XionApp {
 
         let sidebar = container(
             column![
-                row![text("🏠"), text("Accueil").size(typography.body)].spacing(spacing.sm),
-                row![text("🖼️"), text("Galerie").size(typography.body)].spacing(spacing.sm),
-                text("—").size(typography.caption),
-                row![text("🗂️"), text("Bureau").size(typography.body)].spacing(spacing.sm),
-                row![text("⬇️"), text("Téléchargement").size(typography.body)].spacing(spacing.sm),
-                row![text("📄"), text("Documents").size(typography.body)].spacing(spacing.sm),
-                row![text("🖼️"), text("Images").size(typography.body)].spacing(spacing.sm),
-                row![text("🎵"), text("Musique").size(typography.body)].spacing(spacing.sm),
-                row![text("🎬"), text("Vidéos").size(typography.body)].spacing(spacing.sm),
-                text("—").size(typography.caption),
-                container(
-                    row![text("💻"), text("Ce PC").size(typography.body)].spacing(spacing.sm)
-                )
-                .padding([spacing.xs, spacing.sm])
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.selection)),
-                    border: border::rounded(6.0).color(colors.accent).width(1.0),
-                    ..Default::default()
-                }),
-                row![text("💽"), text("Disque local (C:)").size(typography.body)]
-                    .spacing(spacing.sm),
-                row![text("🌐"), text("Réseau").size(typography.body)].spacing(spacing.sm)
+                row![text("🏠"), text("Accueil").size(15)].spacing(8),
+                row![text("🖼️"), text("Galerie").size(15)].spacing(8),
+                text("—").size(12),
+                row![text("🗂️"), text("Bureau").size(14)].spacing(8),
+                row![text("⬇️"), text("Téléchargement").size(14)].spacing(8),
+                row![text("📄"), text("Documents").size(14)].spacing(8),
+                row![text("🖼️"), text("Images").size(14)].spacing(8),
+                row![text("🎵"), text("Musique").size(14)].spacing(8),
+                row![text("🎬"), text("Vidéos").size(14)].spacing(8),
+                text("—").size(12),
+                container(row![text("💻"), text("Ce PC").size(15)].spacing(8))
+                    .padding([4, 6])
+                    .style(move |_| iced::widget::container::Style {
+                        background: Some(Background::Color(Color::from_rgb8(226, 238, 252))),
+                        border: border::rounded(6.0).color(accent).width(1.0),
+                        ..Default::default()
+                    }),
+                row![text("💽"), text("Disque local (C:)").size(14)].spacing(8),
+                row![text("🌐"), text("Réseau").size(14)].spacing(8)
             ]
-            .spacing(spacing.sm),
+            .spacing(10),
         )
-        .padding(spacing.md)
+        .padding(12)
         .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.sidebar_background)),
+            background: Some(Background::Color(sidebar_background)),
             border: Border {
-                color: colors.border,
+                color: border_color,
                 width: 1.0,
                 radius: 0.0.into(),
             },
@@ -1225,23 +713,23 @@ impl XionApp {
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.panel_background)),
-                    border: border::rounded(10.0).color(colors.border).width(1.0),
+                    background: Some(Background::Color(panel_background)),
+                    border: border::rounded(10.0).color(border_color).width(1.0),
                     ..Default::default()
                 })
         ]
         .height(Length::Fill)
-        .spacing(spacing.md);
+        .spacing(12);
 
         let content = column![header, body]
-            .spacing(spacing.md)
-            .padding(spacing.lg)
+            .spacing(12)
+            .padding(16)
             .align_x(Alignment::Start)
             .height(Length::Fill);
 
         container(content)
             .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.chrome_background)),
+                background: Some(Background::Color(chrome_background)),
                 ..Default::default()
             })
             .into()
@@ -1255,6 +743,5 @@ pub fn run() -> iced::Result {
         XionApp::view,
     )
     .theme(|_| Theme::Light)
-    .subscription(XionApp::subscription)
     .run_with(XionApp::new)
 }

@@ -3,6 +3,7 @@ use std::path::{Component, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use directories::UserDirs;
 use iced::font::{Family, Style, Weight};
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{
@@ -1031,6 +1032,28 @@ impl XionApp {
         let colors = tokens.colors;
         let spacing = tokens.spacing;
         let typography = tokens.typography;
+        let user_dirs = UserDirs::new();
+        let home_dir = user_dirs
+            .as_ref()
+            .map(|dirs| dirs.home_dir().to_path_buf());
+        let desktop_dir = user_dirs
+            .as_ref()
+            .and_then(|dirs| dirs.desktop_dir().map(|path| path.to_path_buf()));
+        let downloads_dir = user_dirs
+            .as_ref()
+            .and_then(|dirs| dirs.download_dir().map(|path| path.to_path_buf()));
+        let documents_dir = user_dirs
+            .as_ref()
+            .and_then(|dirs| dirs.document_dir().map(|path| path.to_path_buf()));
+        let pictures_dir = user_dirs
+            .as_ref()
+            .and_then(|dirs| dirs.picture_dir().map(|path| path.to_path_buf()));
+        let music_dir = user_dirs
+            .as_ref()
+            .and_then(|dirs| dirs.audio_dir().map(|path| path.to_path_buf()));
+        let video_dir = user_dirs
+            .as_ref()
+            .and_then(|dirs| dirs.video_dir().map(|path| path.to_path_buf()));
 
         let toolbar_button = |label: String| {
             button(text(label).size(typography.body).font(typography.body_font))
@@ -1058,6 +1081,51 @@ impl XionApp {
 
                     style
                 })
+        };
+
+        let sidebar_button = |icon: &str, label: &str, target: Option<PathBuf>| {
+            let content = row![
+                text(icon)
+                    .size(typography.body)
+                    .font(typography.body_font),
+                text(label)
+                    .size(typography.body)
+                    .font(typography.body_font)
+            ]
+            .spacing(spacing.sm)
+            .align_y(Alignment::Center);
+
+            match target {
+                Some(path) => button(content)
+                    .padding([spacing.xs, spacing.sm])
+                    .width(Length::Fill)
+                    .style(move |_theme: &Theme, status: ButtonStatus| {
+                        let mut style = iced::widget::button::Style {
+                            text_color: colors.text_primary,
+                            ..Default::default()
+                        };
+
+                        match status {
+                            ButtonStatus::Hovered => {
+                                style.background = Some(Background::Color(colors.hover));
+                                style.border =
+                                    border::rounded(6.0).color(colors.border).width(1.0);
+                            }
+                            ButtonStatus::Pressed => {
+                                style.background = Some(Background::Color(colors.pressed));
+                            }
+                            ButtonStatus::Active | ButtonStatus::Disabled => {}
+                        }
+
+                        style
+                    })
+                    .on_press(UiMessage::NavigateTo(path))
+                    .into(),
+                None => container(content)
+                    .padding([spacing.xs, spacing.sm])
+                    .width(Length::Fill)
+                    .into(),
+            }
         };
 
         let tab_button = |label: String, active: bool| {
@@ -1451,81 +1519,17 @@ impl XionApp {
 
         let sidebar = container(
             column![
-                row![
-                    text(ICON_HOME)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    text("Accueil")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
-                .spacing(spacing.sm),
-                row![
-                    text(ICON_GALLERY)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    text("Galerie")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
-                .spacing(spacing.sm),
+                sidebar_button(ICON_HOME, "Accueil", home_dir.clone()),
+                sidebar_button(ICON_GALLERY, "Galerie", pictures_dir.clone()),
                 text("—")
                     .size(typography.caption)
                     .font(typography.caption_font),
-                row![
-                    text(ICON_DESKTOP)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    text("Bureau")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
-                .spacing(spacing.sm),
-                row![
-                    text(ICON_DOWNLOAD)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    text("Téléchargement")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
-                .spacing(spacing.sm),
-                row![
-                    text(ICON_DOCUMENTS)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    text("Documents")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
-                .spacing(spacing.sm),
-                row![
-                    text(ICON_GALLERY)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    text("Images")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
-                .spacing(spacing.sm),
-                row![
-                    text(ICON_MUSIC)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    text("Musique")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
-                .spacing(spacing.sm),
-                row![
-                    text(ICON_VIDEO)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    text("Vidéos")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
-                .spacing(spacing.sm),
+                sidebar_button(ICON_DESKTOP, "Bureau", desktop_dir),
+                sidebar_button(ICON_DOWNLOAD, "Téléchargement", downloads_dir),
+                sidebar_button(ICON_DOCUMENTS, "Documents", documents_dir),
+                sidebar_button(ICON_GALLERY, "Images", pictures_dir),
+                sidebar_button(ICON_MUSIC, "Musique", music_dir),
+                sidebar_button(ICON_VIDEO, "Vidéos", video_dir),
                 text("—")
                     .size(typography.caption)
                     .font(typography.caption_font),

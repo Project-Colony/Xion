@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::{Component, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -8,7 +8,7 @@ use iced::font::{Family, Style, Weight};
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{
     button, column, container, horizontal_space, image, progress_bar, row, scrollable, text,
-    vertical_space,
+    text_input, vertical_space,
 };
 use iced::{
     Alignment, Background, Border, Color, Element, Font, Length, Subscription, Task, Theme, border,
@@ -20,7 +20,7 @@ use crate::core::{
 };
 use crate::filesystem::{FsEntry, FsEntryType, ListOptions, LocalFileSystem, Page, PageRequest};
 use crate::services::{
-    DirectoryLoader, HistoryService, ThumbnailService, VirtualList, VirtualWindow,
+    DirectoryLoader, FavoritesService, HistoryService, ThumbnailService, VirtualList, VirtualWindow,
     generate_thumbnail,
 };
 use crate::ui::{
@@ -238,6 +238,36 @@ struct TabState {
     path: PathBuf,
 }
 
+fn build_default_favorites() -> FavoritesService {
+    let mut favorites = FavoritesService::default();
+    if let Some(user_dirs) = UserDirs::new() {
+        let candidates = [
+            Some(user_dirs.home_dir().to_path_buf()),
+            user_dirs.desktop_dir().map(|path| path.to_path_buf()),
+            user_dirs.download_dir().map(|path| path.to_path_buf()),
+            user_dirs.document_dir().map(|path| path.to_path_buf()),
+            user_dirs.picture_dir().map(|path| path.to_path_buf()),
+            user_dirs.audio_dir().map(|path| path.to_path_buf()),
+            user_dirs.video_dir().map(|path| path.to_path_buf()),
+        ];
+
+        for candidate in candidates.into_iter().flatten() {
+            if candidate.exists() {
+                favorites.add(candidate);
+            }
+        }
+    }
+    favorites
+}
+
+fn root_path_for(path: &PathBuf) -> Option<PathBuf> {
+    if path.is_absolute() {
+        path.ancestors().last().map(|ancestor| ancestor.to_path_buf())
+    } else {
+        None
+    }
+}
+
 #[derive(Debug)]
 pub struct XionApp {
     state: AppState,
@@ -256,7 +286,9 @@ pub struct XionApp {
     modifiers: ModifiersState,
     context_menu_open: bool,
     last_action: Option<String>,
+    address_input: String,
     config_manager: ConfigManager,
+    favorites: FavoritesService,
     tabs: Vec<TabState>,
     active_tab: usize,
 }
@@ -281,6 +313,7 @@ impl XionApp {
             tab.path = path.clone();
         }
         self.state.route.path = path;
+        self.address_input = self.state.route.path.display().to_string();
     }
 
     fn navigate_to(&mut self, path: PathBuf) -> Task<UiMessage> {
@@ -401,6 +434,8 @@ impl XionApp {
             Duration::from_secs(state.config.cache.thumbnail_ttl_seconds),
         );
         let entries = PagedEntries::new(0, page_size);
+        let address_input = state.route.path.display().to_string();
+        let favorites = build_default_favorites();
         let mut app = Self {
             state,
             history,
@@ -418,7 +453,9 @@ impl XionApp {
             modifiers: ModifiersState::default(),
             context_menu_open: false,
             last_action: None,
+            address_input,
             config_manager,
+            favorites,
             tabs,
             active_tab: 0,
         };
@@ -489,6 +526,29 @@ impl XionApp {
             }
             UiMessage::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers;
+            }
+            UiMessage::AddressInputChanged(value) => {
+                self.address_input = value;
+            }
+            UiMessage::AddressInputSubmitted => {
+                let trimmed = self.address_input.trim();
+                if !trimmed.is_empty() {
+                    let mut target = PathBuf::from(trimmed);
+                    if !target.is_absolute() {
+                        target = self.state.route.path.join(target);
+                    }
+                    if target.is_dir() {
+                        tasks.push(self.navigate_to(target));
+                    } else if target.exists() {
+                        self.last_action = Some(format!(
+                            "Le chemin pointe vers un fichier : {}",
+                            target.display()
+                        ));
+                    } else {
+                        self.last_action =
+                            Some(format!("Chemin introuvable : {}", target.display()));
+                    }
+                }
             }
             UiMessage::Scroll(viewport) => {
                 self.scroll_offset = viewport.offset_y;
@@ -982,51 +1042,6 @@ impl XionApp {
         Task::batch(tasks)
     }
 
-    fn breadcrumbs(&self) -> Element<'_, UiMessage> {
-        let typography = UiTokens::default().typography;
-        let mut row = row![];
-        let mut current_path = PathBuf::new();
-        let mut has_component = false;
-
-        for component in self.state.route.path.components() {
-            let label = match component {
-                Component::Prefix(prefix) => prefix.as_os_str().to_string_lossy().to_string(),
-                Component::RootDir => String::from(std::path::MAIN_SEPARATOR),
-                Component::CurDir => ".".to_string(),
-                Component::ParentDir => "..".to_string(),
-                Component::Normal(part) => part.to_string_lossy().to_string(),
-            };
-
-            if !has_component {
-                has_component = true;
-            } else {
-                row = row.push(
-                    text("›")
-                        .size(typography.caption)
-                        .font(typography.caption_font),
-                );
-            }
-
-            current_path.push(component.as_os_str());
-            let target = current_path.clone();
-            row = row.push(
-                button(text(label).size(typography.body).font(typography.body_font))
-                    .padding([2, 6])
-                    .on_press(UiMessage::NavigateTo(target)),
-            );
-        }
-
-        if !has_component {
-            row = row.push(
-                text("—")
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-            );
-        }
-
-        row.align_y(Alignment::Center).spacing(6).into()
-    }
-
     fn view(&self) -> Element<'_, UiMessage> {
         let tokens = UiTokens::default();
         let colors = tokens.colors;
@@ -1132,6 +1147,23 @@ impl XionApp {
                 }
             };
 
+        let section_title = |label: &str| {
+            text(label)
+                .size(typography.caption)
+                .font(typography.caption_font)
+                .style(move |_| iced::widget::text::Style {
+                    color: Some(colors.text_muted),
+                })
+        };
+
+        let format_sidebar_label = |path: &PathBuf| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .filter(|label| !label.is_empty())
+                .map(|label| label.to_string())
+                .unwrap_or_else(|| path.display().to_string())
+        };
+
         let tab_button = |label: String, active: bool| {
             button(text(label).size(typography.body).font(typography.body_font))
                 .padding([spacing.xs, spacing.md])
@@ -1188,8 +1220,14 @@ impl XionApp {
         tabs = tabs.push(tab_button(ICON_NEW.to_string(), false).on_press(UiMessage::AddTab));
         let tabs = tabs.spacing(spacing.sm);
 
-        let address_bar = container(self.breadcrumbs())
-            .padding([spacing.xs, spacing.md])
+        let address_input = text_input("Chemin…", &self.address_input)
+            .on_input(UiMessage::AddressInputChanged)
+            .on_submit(UiMessage::AddressInputSubmitted)
+            .size(typography.body)
+            .font(typography.body_font)
+            .padding([spacing.xs, spacing.md]);
+
+        let address_bar = container(address_input)
             .width(Length::Fill)
             .style(move |_| iced::widget::container::Style {
                 background: Some(Background::Color(colors.panel_background)),
@@ -1521,22 +1559,44 @@ impl XionApp {
             })
         });
 
+        let mut quick_access = column![section_title("Accès rapide")].spacing(spacing.xs);
+        quick_access = quick_access.push(sidebar_button(ICON_HOME, "Accueil", home_dir.clone()));
+        quick_access =
+            quick_access.push(sidebar_button(ICON_DESKTOP, "Bureau", desktop_dir.clone()));
+        quick_access =
+            quick_access.push(sidebar_button(ICON_DOWNLOAD, "Téléchargements", downloads_dir));
+
+        let mut favorites_section = column![section_title("Favoris")].spacing(spacing.xs);
+        if self.favorites.list().is_empty() {
+            favorites_section = favorites_section.push(
+                text("Aucun favori")
+                    .size(typography.caption)
+                    .font(typography.caption_font),
+            );
+        } else {
+            for favorite in self.favorites.list() {
+                let label = format_sidebar_label(favorite);
+                favorites_section = favorites_section
+                    .push(sidebar_button(ICON_FOLDER, &label, Some(favorite.clone())));
+            }
+        }
+
+        let mut drive_section = column![section_title("Lecteurs")].spacing(spacing.xs);
+        if let Some(root_path) = root_path_for(&self.state.route.path) {
+            let label = format_sidebar_label(&root_path);
+            drive_section = drive_section
+                .push(sidebar_button(ICON_DRIVE, &label, Some(root_path)));
+        } else {
+            drive_section = drive_section.push(
+                text("Aucun lecteur")
+                    .size(typography.caption)
+                    .font(typography.caption_font),
+            );
+        }
+        drive_section = drive_section.push(sidebar_button(ICON_NETWORK, "Réseau", None));
+
         let sidebar = container(
             column![
-                sidebar_button(ICON_HOME, "Accueil", home_dir.clone()),
-                sidebar_button(ICON_GALLERY, "Galerie", pictures_dir.clone()),
-                text("—")
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-                sidebar_button(ICON_DESKTOP, "Bureau", desktop_dir),
-                sidebar_button(ICON_DOWNLOAD, "Téléchargement", downloads_dir),
-                sidebar_button(ICON_DOCUMENTS, "Documents", documents_dir),
-                sidebar_button(ICON_GALLERY, "Images", pictures_dir),
-                sidebar_button(ICON_MUSIC, "Musique", music_dir),
-                sidebar_button(ICON_VIDEO, "Vidéos", video_dir),
-                text("—")
-                    .size(typography.caption)
-                    .font(typography.caption_font),
                 container(
                     row![
                         text(ICON_PC)
@@ -1554,24 +1614,14 @@ impl XionApp {
                     border: border::rounded(6.0).color(colors.accent).width(1.0),
                     ..Default::default()
                 }),
-                row![
-                    text(ICON_DRIVE)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    text("Disque local (C:)")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
-                .spacing(spacing.sm),
-                row![
-                    text(ICON_NETWORK)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    text("Réseau")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
-                .spacing(spacing.sm)
+                quick_access,
+                favorites_section,
+                drive_section,
+                section_title("Raccourcis"),
+                sidebar_button(ICON_DOCUMENTS, "Documents", documents_dir),
+                sidebar_button(ICON_GALLERY, "Images", pictures_dir),
+                sidebar_button(ICON_MUSIC, "Musique", music_dir),
+                sidebar_button(ICON_VIDEO, "Vidéos", video_dir)
             ]
             .spacing(spacing.sm),
         )

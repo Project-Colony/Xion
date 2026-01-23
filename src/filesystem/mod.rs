@@ -1,7 +1,6 @@
 pub mod access;
 pub mod cache;
 pub mod metadata;
-pub mod operations;
 pub mod paging;
 pub mod watcher;
 
@@ -10,6 +9,5 @@ pub use access::{
 };
 pub use cache::{DirectoryCache, MetadataCache, TimedCache};
 pub use metadata::FsMetadata;
-pub use operations::{FileOperationKind, LocalFileOperations, OperationFailure, OperationReport};
 pub use paging::{Page, PageRequest};
 pub use watcher::{FileWatcher, NoopFileWatcher, WatchEvent, WatchEventKind};

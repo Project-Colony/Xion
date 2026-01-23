@@ -8,8 +8,9 @@ use iced::widget::{
     button, column, container, horizontal_space, image, progress_bar, row, scrollable, text,
     vertical_space,
 };
+use iced::font::{Family, Style, Weight};
 use iced::{
-    Alignment, Background, Border, Color, Element, Length, Subscription, Task, Theme, border,
+    Alignment, Background, Border, Color, Element, Font, Length, Subscription, Task, Theme, border,
     keyboard, mouse,
 };
 
@@ -29,6 +30,34 @@ const OVERSCAN: usize = 6;
 const CACHE_SIZE: usize = 256;
 const CACHE_TTL_SECONDS: u64 = 45;
 const PAGE_SIZE: usize = 120;
+const FONT_NAME: &str = "JetBrains Mono";
+const JETBRAINS_MONO_REGULAR: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Regular.ttf");
+const JETBRAINS_MONO_ITALIC: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Italic.ttf");
+const JETBRAINS_MONO_THIN: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Thin.ttf");
+const JETBRAINS_MONO_THIN_ITALIC: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-ThinItalic.ttf");
+const JETBRAINS_MONO_EXTRA_LIGHT: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-ExtraLight.ttf");
+const JETBRAINS_MONO_EXTRA_LIGHT_ITALIC: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-ExtraLightItalic.ttf");
+const JETBRAINS_MONO_LIGHT: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Light.ttf");
+const JETBRAINS_MONO_LIGHT_ITALIC: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-LightItalic.ttf");
+const JETBRAINS_MONO_MEDIUM: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Medium.ttf");
+const JETBRAINS_MONO_MEDIUM_ITALIC: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-MediumItalic.ttf");
+const JETBRAINS_MONO_SEMI_BOLD: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-SemiBold.ttf");
+const JETBRAINS_MONO_SEMI_BOLD_ITALIC: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-SemiBoldItalic.ttf");
+const JETBRAINS_MONO_BOLD: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-Bold.ttf");
+const JETBRAINS_MONO_BOLD_ITALIC: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-BoldItalic.ttf");
+const JETBRAINS_MONO_EXTRA_BOLD: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-ExtraBold.ttf");
+const JETBRAINS_MONO_EXTRA_BOLD_ITALIC: &[u8] =
+    include_bytes!("../../ui/Assets/Fonts/JetBrainsMono-ExtraBoldItalic.ttf");
 
 #[derive(Debug, Clone, Copy)]
 struct UiColors {
@@ -59,6 +88,9 @@ struct UiTypography {
     title: u16,
     body: u16,
     caption: u16,
+    title_font: Font,
+    body_font: Font,
+    caption_font: Font,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -95,6 +127,22 @@ impl Default for UiTokens {
                 title: 16,
                 body: 14,
                 caption: 12,
+                title_font: Font {
+                    family: Family::Name(FONT_NAME),
+                    weight: Weight::Semibold,
+                    ..Font::DEFAULT
+                },
+                body_font: Font {
+                    family: Family::Name(FONT_NAME),
+                    weight: Weight::Normal,
+                    ..Font::DEFAULT
+                },
+                caption_font: Font {
+                    family: Family::Name(FONT_NAME),
+                    weight: Weight::Light,
+                    style: Style::Italic,
+                    ..Font::DEFAULT
+                },
             },
         }
     }
@@ -791,6 +839,7 @@ impl XionApp {
     }
 
     fn breadcrumbs(&self) -> Element<'_, UiMessage> {
+        let typography = UiTokens::default().typography;
         let mut row = row![];
         let mut current_path = PathBuf::new();
         let mut has_component = false;
@@ -807,20 +856,32 @@ impl XionApp {
             if !has_component {
                 has_component = true;
             } else {
-                row = row.push(text("›"));
+                row = row.push(
+                    text("›")
+                        .size(typography.caption)
+                        .font(typography.caption_font),
+                );
             }
 
             current_path.push(component.as_os_str());
             let target = current_path.clone();
             row = row.push(
-                button(text(label))
+                button(
+                    text(label)
+                        .size(typography.body)
+                        .font(typography.body_font),
+                )
                     .padding([2, 6])
                     .on_press(UiMessage::NavigateTo(target)),
             );
         }
 
         if !has_component {
-            row = row.push(text("—"));
+            row = row.push(
+                text("—")
+                    .size(typography.caption)
+                    .font(typography.caption_font),
+            );
         }
 
         row.align_y(Alignment::Center).spacing(6).into()
@@ -833,7 +894,11 @@ impl XionApp {
         let typography = tokens.typography;
 
         let toolbar_button = |label: String| {
-            button(text(label).size(typography.body))
+            button(
+                text(label)
+                    .size(typography.body)
+                    .font(typography.body_font),
+            )
                 .padding([spacing.xs, spacing.sm])
                 .style(move |_theme: &Theme, status: ButtonStatus| {
                     let mut style = iced::widget::button::Style {
@@ -861,7 +926,11 @@ impl XionApp {
         };
 
         let tab_button = |label: String, active: bool| {
-            button(text(label).size(typography.body))
+            button(
+                text(label)
+                    .size(typography.body)
+                    .font(typography.body_font),
+            )
                 .padding([spacing.xs, spacing.md])
                 .style(move |_theme: &Theme, status: ButtonStatus| {
                     let mut style = iced::widget::button::Style {
@@ -883,15 +952,15 @@ impl XionApp {
         };
 
         let back_button = if self.history.can_back() {
-            toolbar_button("←".to_string()).on_press(UiMessage::Back)
+            toolbar_button("⟵".to_string()).on_press(UiMessage::Back)
         } else {
-            toolbar_button("←".to_string())
+            toolbar_button("⟵".to_string())
         };
 
         let forward_button = if self.history.can_forward() {
-            toolbar_button("→".to_string()).on_press(UiMessage::Forward)
+            toolbar_button("⟶".to_string()).on_press(UiMessage::Forward)
         } else {
-            toolbar_button("→".to_string())
+            toolbar_button("⟶".to_string())
         };
 
         let refresh_button = toolbar_button("⟳".to_string()).on_press(UiMessage::Refresh);
@@ -899,8 +968,8 @@ impl XionApp {
         let navigation = row![back_button, forward_button, refresh_button].spacing(spacing.sm);
 
         let tabs = row![
-            tab_button("Ce PC".to_string(), true),
-            tab_button("+".to_string(), false)
+            tab_button("💻 Ce PC".to_string(), true),
+            tab_button("＋".to_string(), false)
         ]
         .spacing(spacing.sm);
 
@@ -913,7 +982,11 @@ impl XionApp {
                 ..Default::default()
             });
 
-        let search_bar = container(text("Rechercher dans : Ce PC").size(typography.caption))
+        let search_bar = container(
+            text("🔍 Rechercher dans : Ce PC")
+                .size(typography.caption)
+                .font(typography.caption_font),
+        )
             .padding([spacing.xs, spacing.md])
             .width(Length::Fixed(240.0))
             .style(move |_| iced::widget::container::Style {
@@ -923,26 +996,26 @@ impl XionApp {
             });
 
         let command_bar = row![
-            toolbar_button("Nouveau".to_string()),
-            toolbar_button("Couper".to_string()),
-            toolbar_button("Copier".to_string()),
-            toolbar_button("Coller".to_string()),
-            toolbar_button("Trier".to_string()),
-            toolbar_button("Afficher".to_string()),
-            toolbar_button("...".to_string()),
-            toolbar_button("Actions".to_string())
+            toolbar_button("➕ Nouveau".to_string()),
+            toolbar_button("✂️ Couper".to_string()),
+            toolbar_button("📋 Copier".to_string()),
+            toolbar_button("📌 Coller".to_string()),
+            toolbar_button("↕️ Trier".to_string()),
+            toolbar_button("🖼️ Afficher".to_string()),
+            toolbar_button("⋯".to_string()),
+            toolbar_button("⚙️ Actions".to_string())
                 .on_press(UiMessage::ToggleContextMenu(!self.context_menu_open))
         ]
         .spacing(spacing.sm);
 
         let context_actions = row![
-            toolbar_button("Ouvrir".to_string())
+            toolbar_button("📂 Ouvrir".to_string())
                 .on_press(UiMessage::ContextAction(ContextAction::Open,)),
-            toolbar_button("Renommer".to_string())
+            toolbar_button("✏️ Renommer".to_string())
                 .on_press(UiMessage::ContextAction(ContextAction::Rename,)),
-            toolbar_button("Supprimer".to_string())
+            toolbar_button("🗑️ Supprimer".to_string())
                 .on_press(UiMessage::ContextAction(ContextAction::Delete,)),
-            toolbar_button("Copier le chemin".to_string())
+            toolbar_button("🔗 Copier le chemin".to_string())
                 .on_press(UiMessage::ContextAction(ContextAction::CopyPath),)
         ]
         .spacing(spacing.sm);
@@ -987,13 +1060,21 @@ impl XionApp {
 
         let drive_summary = container(
             column![
-                text("Périphériques et lecteurs").size(typography.title),
+                text("Périphériques et lecteurs")
+                    .size(typography.title)
+                    .font(typography.title_font),
                 row![
-                    text("🖥️"),
+                    text("🖥️")
+                        .size(typography.body)
+                        .font(typography.body_font),
                     column![
-                        text("Disque local (C:)"),
+                        text("Disque local (C:)")
+                            .size(typography.body)
+                            .font(typography.body_font),
                         progress_bar(0.0..=1.0, 0.12),
-                        text("109 Go libres sur 930 Go").size(typography.caption)
+                        text("109 Go libres sur 930 Go")
+                            .size(typography.caption)
+                            .font(typography.caption_font)
                     ]
                     .spacing(spacing.sm)
                 ]
@@ -1011,19 +1092,32 @@ impl XionApp {
 
         let list_content = if let Some(message) = &self.error {
             column![
-                text("Impossible de charger le dossier").size(typography.title),
-                text(message),
-                button(text("Réessayer")).on_press(UiMessage::Refresh)
+                text("Impossible de charger le dossier")
+                    .size(typography.title)
+                    .font(typography.title_font),
+                text(message)
+                    .size(typography.body)
+                    .font(typography.body_font),
+                button(
+                    text("Réessayer")
+                        .size(typography.body)
+                        .font(typography.body_font),
+                )
+                .on_press(UiMessage::Refresh)
             ]
             .spacing(spacing.sm)
         } else if self.is_loading && self.entries.total == 0 {
             column![
-                text("Chargement du dossier…").size(typography.title),
+                text("Chargement du dossier…")
+                    .size(typography.title)
+                    .font(typography.title_font),
                 progress_bar(0.0..=1.0, 0.4)
             ]
             .spacing(spacing.md)
         } else if self.entries.total == 0 {
-            column![text("Dossier vide")]
+            column![text("Dossier vide")
+                .size(typography.body)
+                .font(typography.body_font)]
         } else {
             let window = self.virtual_window();
             let mut list = column![];
@@ -1051,7 +1145,10 @@ impl XionApp {
                             .map(|path| path == &entry.path)
                             .unwrap_or(false);
                         let leading: Element<'_, UiMessage> = match entry.entry_type {
-                            FsEntryType::Directory => text("📁").into(),
+                            FsEntryType::Directory => text("📁")
+                                .size(typography.body)
+                                .font(typography.body_font)
+                                .into(),
                             FsEntryType::File => self
                                 .thumbnail_handles
                                 .get(&entry.path)
@@ -1065,13 +1162,28 @@ impl XionApp {
                                         ))
                                         .into()
                                 })
-                                .unwrap_or_else(|| text("📄").into()),
-                            FsEntryType::Symlink => text("🔗").into(),
-                            FsEntryType::Other => text("❓").into(),
+                                .unwrap_or_else(|| {
+                                    text("📄")
+                                        .size(typography.body)
+                                        .font(typography.body_font)
+                                        .into()
+                                }),
+                            FsEntryType::Symlink => text("🔗")
+                                .size(typography.body)
+                                .font(typography.body_font)
+                                .into(),
+                            FsEntryType::Other => text("❓")
+                                .size(typography.body)
+                                .font(typography.body_font)
+                                .into(),
                         };
                         let open_button: Element<'_, UiMessage> =
                             if entry.entry_type == FsEntryType::Directory {
-                                button(text("Ouvrir").size(typography.caption))
+                                button(
+                                    text("Ouvrir")
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
                                     .padding([spacing.xs, spacing.sm])
                                     .on_press(UiMessage::ActivateEntry(entry.path.clone()))
                                     .into()
@@ -1080,7 +1192,9 @@ impl XionApp {
                             };
                         let entry_row = row![
                             leading,
-                            text(&entry.name).size(typography.body),
+                            text(&entry.name)
+                                .size(typography.body)
+                                .font(typography.body_font),
                             horizontal_space(),
                             open_button
                         ]
@@ -1119,7 +1233,14 @@ impl XionApp {
                             .on_press(message)
                     }
                     None => {
-                        let placeholder = row![text("⏳"), text("Chargement…")]
+                        let placeholder = row![
+                            text("⏳")
+                                .size(typography.body)
+                                .font(typography.body_font),
+                            text("Chargement…")
+                                .size(typography.body)
+                                .font(typography.body_font)
+                        ]
                             .spacing(spacing.md)
                             .align_y(Alignment::Center);
                         button(placeholder)
@@ -1159,8 +1280,12 @@ impl XionApp {
                 column![
                     drive_summary,
                     list_content,
-                    text(selection_status).size(typography.caption),
-                    text(action_status).size(typography.caption)
+                    text(selection_status)
+                        .size(typography.caption)
+                        .font(typography.caption_font),
+                    text(action_status)
+                        .size(typography.caption)
+                        .font(typography.caption_font)
                 ]
                 .spacing(spacing.xl),
             )
@@ -1176,18 +1301,76 @@ impl XionApp {
 
         let sidebar = container(
             column![
-                row![text("🏠"), text("Accueil").size(typography.body)].spacing(spacing.sm),
-                row![text("🖼️"), text("Galerie").size(typography.body)].spacing(spacing.sm),
-                text("—").size(typography.caption),
-                row![text("🗂️"), text("Bureau").size(typography.body)].spacing(spacing.sm),
-                row![text("⬇️"), text("Téléchargement").size(typography.body)].spacing(spacing.sm),
-                row![text("📄"), text("Documents").size(typography.body)].spacing(spacing.sm),
-                row![text("🖼️"), text("Images").size(typography.body)].spacing(spacing.sm),
-                row![text("🎵"), text("Musique").size(typography.body)].spacing(spacing.sm),
-                row![text("🎬"), text("Vidéos").size(typography.body)].spacing(spacing.sm),
-                text("—").size(typography.caption),
+                row![
+                    text("🏠").size(typography.body).font(typography.body_font),
+                    text("Accueil")
+                        .size(typography.body)
+                        .font(typography.body_font)
+                ]
+                .spacing(spacing.sm),
+                row![
+                    text("🖼️").size(typography.body).font(typography.body_font),
+                    text("Galerie")
+                        .size(typography.body)
+                        .font(typography.body_font)
+                ]
+                .spacing(spacing.sm),
+                text("—")
+                    .size(typography.caption)
+                    .font(typography.caption_font),
+                row![
+                    text("🗂️").size(typography.body).font(typography.body_font),
+                    text("Bureau")
+                        .size(typography.body)
+                        .font(typography.body_font)
+                ]
+                .spacing(spacing.sm),
+                row![
+                    text("⬇️").size(typography.body).font(typography.body_font),
+                    text("Téléchargement")
+                        .size(typography.body)
+                        .font(typography.body_font)
+                ]
+                .spacing(spacing.sm),
+                row![
+                    text("📄").size(typography.body).font(typography.body_font),
+                    text("Documents")
+                        .size(typography.body)
+                        .font(typography.body_font)
+                ]
+                .spacing(spacing.sm),
+                row![
+                    text("🖼️").size(typography.body).font(typography.body_font),
+                    text("Images")
+                        .size(typography.body)
+                        .font(typography.body_font)
+                ]
+                .spacing(spacing.sm),
+                row![
+                    text("🎵").size(typography.body).font(typography.body_font),
+                    text("Musique")
+                        .size(typography.body)
+                        .font(typography.body_font)
+                ]
+                .spacing(spacing.sm),
+                row![
+                    text("🎬").size(typography.body).font(typography.body_font),
+                    text("Vidéos")
+                        .size(typography.body)
+                        .font(typography.body_font)
+                ]
+                .spacing(spacing.sm),
+                text("—")
+                    .size(typography.caption)
+                    .font(typography.caption_font),
                 container(
-                    row![text("💻"), text("Ce PC").size(typography.body)].spacing(spacing.sm)
+                    row![
+                        text("💻").size(typography.body).font(typography.body_font),
+                        text("Ce PC")
+                            .size(typography.body)
+                            .font(typography.body_font)
+                    ]
+                    .spacing(spacing.sm)
                 )
                 .padding([spacing.xs, spacing.sm])
                 .style(move |_| iced::widget::container::Style {
@@ -1195,9 +1378,20 @@ impl XionApp {
                     border: border::rounded(6.0).color(colors.accent).width(1.0),
                     ..Default::default()
                 }),
-                row![text("💽"), text("Disque local (C:)").size(typography.body)]
-                    .spacing(spacing.sm),
-                row![text("🌐"), text("Réseau").size(typography.body)].spacing(spacing.sm)
+                row![
+                    text("💽").size(typography.body).font(typography.body_font),
+                    text("Disque local (C:)")
+                        .size(typography.body)
+                        .font(typography.body_font)
+                ]
+                .spacing(spacing.sm),
+                row![
+                    text("🌐").size(typography.body).font(typography.body_font),
+                    text("Réseau")
+                        .size(typography.body)
+                        .font(typography.body_font)
+                ]
+                .spacing(spacing.sm)
             ]
             .spacing(spacing.sm),
         )
@@ -1248,6 +1442,23 @@ pub fn run() -> iced::Result {
         XionApp::view,
     )
     .theme(|_| Theme::Light)
+    .font(JETBRAINS_MONO_REGULAR)
+    .font(JETBRAINS_MONO_ITALIC)
+    .font(JETBRAINS_MONO_THIN)
+    .font(JETBRAINS_MONO_THIN_ITALIC)
+    .font(JETBRAINS_MONO_EXTRA_LIGHT)
+    .font(JETBRAINS_MONO_EXTRA_LIGHT_ITALIC)
+    .font(JETBRAINS_MONO_LIGHT)
+    .font(JETBRAINS_MONO_LIGHT_ITALIC)
+    .font(JETBRAINS_MONO_MEDIUM)
+    .font(JETBRAINS_MONO_MEDIUM_ITALIC)
+    .font(JETBRAINS_MONO_SEMI_BOLD)
+    .font(JETBRAINS_MONO_SEMI_BOLD_ITALIC)
+    .font(JETBRAINS_MONO_BOLD)
+    .font(JETBRAINS_MONO_BOLD_ITALIC)
+    .font(JETBRAINS_MONO_EXTRA_BOLD)
+    .font(JETBRAINS_MONO_EXTRA_BOLD_ITALIC)
+    .default_font(Font::with_name(FONT_NAME))
     .subscription(XionApp::subscription)
     .run_with(XionApp::new)
 }

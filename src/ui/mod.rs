@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use crate::core::AppConfig;
@@ -24,7 +25,24 @@ pub struct Route {
 #[derive(Debug, Clone)]
 pub struct NavigationState {
     pub focused_pane: PaneKind,
-    pub selection: Option<PathBuf>,
+    pub selection: SelectionState,
+}
+
+#[derive(Debug, Clone)]
+pub struct SelectionState {
+    pub selected: HashSet<PathBuf>,
+    pub focused: Option<PathBuf>,
+    pub anchor: Option<PathBuf>,
+}
+
+impl SelectionState {
+    pub fn new() -> Self {
+        Self {
+            selected: HashSet::new(),
+            focused: None,
+            anchor: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -45,7 +63,7 @@ impl AppState {
             },
             navigation: NavigationState {
                 focused_pane: PaneKind::List,
-                selection: None,
+                selection: SelectionState::new(),
             },
         }
     }
@@ -58,7 +76,15 @@ pub enum UiMessage {
     Forward,
     Refresh,
     FocusPane(PaneKind),
-    SelectEntry(PathBuf),
+    SelectEntry {
+        path: PathBuf,
+        kind: SelectionKind,
+    },
+    ActivateEntry(PathBuf),
+    KeyboardCommand(KeyboardCommand),
+    ToggleContextMenu(bool),
+    ContextAction(ContextAction),
+    ModifiersChanged(ModifiersState),
     Scroll(ScrollViewport),
     PageLoaded {
         path: PathBuf,
@@ -69,6 +95,44 @@ pub enum UiMessage {
         path: PathBuf,
         thumbnail: Option<Thumbnail>,
     },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SelectionKind {
+    Single,
+    Toggle,
+    Range,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum KeyboardCommand {
+    MoveUp { extend: bool },
+    MoveDown { extend: bool },
+    MoveHome { extend: bool },
+    MoveEnd { extend: bool },
+    Activate,
+    Back,
+    Forward,
+    Refresh,
+    SelectAll,
+    ClearSelection,
+    ToggleContextMenu,
+    CyclePaneFocus,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ModifiersState {
+    pub shift: bool,
+    pub control: bool,
+    pub alt: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ContextAction {
+    Open,
+    Rename,
+    Delete,
+    CopyPath,
 }
 
 #[derive(Debug, Clone, Copy)]

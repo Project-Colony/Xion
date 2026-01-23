@@ -77,6 +77,6 @@ UI (messages) -> AppState -> services (historique) -> filesystem (listes)
 
 ## Prochaines itérations
 
-1. [ ] Brancher les services dans `AppState`.
+1. [x] Brancher les services dans `AppState`.
 2. [ ] Introduire la virtualisation de listes dans l'UI.
-3. [ ] Passer à une boucle Iced pour intégrer le routing réel.
+3. [x] Passer à une boucle Iced pour intégrer le routing réel.

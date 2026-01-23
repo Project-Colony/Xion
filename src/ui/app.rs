@@ -1386,7 +1386,7 @@ impl XionApp {
                                         .size(typography.caption)
                                         .font(typography.caption_font)
                                 ]
-                                .spacing(spacing.xs)
+                                .spacing(spacing.sm)
                             ]
                             .spacing(spacing.md)
                             .align_y(Alignment::Center)

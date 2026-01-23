@@ -18,10 +18,13 @@ use iced::{
 use crate::core::{
     ConfigManager, EntryFilterConfig, KeyInput, KeyKind, NamedKey, SortKeyConfig, SortOrderConfig,
 };
-use crate::filesystem::{FsEntry, FsEntryType, ListOptions, LocalFileSystem, Page, PageRequest};
+use crate::filesystem::{
+    FileOperationKind, FsEntry, FsEntryType, ListOptions, LocalFileOperations, LocalFileSystem,
+    OperationReport, Page, PageRequest,
+};
 use crate::services::{
-    DirectoryLoader, FavoritesService, HistoryService, ThumbnailService, VirtualList, VirtualWindow,
-    generate_thumbnail,
+    DirectoryLoader, FavoritesService, HistoryService, ThumbnailService, VirtualList,
+    VirtualWindow, generate_thumbnail,
 };
 use crate::ui::{
     AppState, ContextAction, KeyboardCommand, ModifiersState, ScrollViewport, SelectionKind,
@@ -263,7 +266,9 @@ fn build_default_favorites() -> FavoritesService {
 
 fn root_path_for(path: &PathBuf) -> Option<PathBuf> {
     if path.is_absolute() {
-        path.ancestors().last().map(|ancestor| ancestor.to_path_buf())
+        path.ancestors()
+            .last()
+            .map(|ancestor| ancestor.to_path_buf())
     } else {
         None
     }
@@ -287,7 +292,10 @@ fn disk_usage_for(path: &Path) -> Option<DiskUsage> {
                 total: disk.total_space(),
                 available: disk.available_space(),
             };
-            if best_match.as_ref().map_or(true, |(best_depth, _)| depth > *best_depth) {
+            if best_match
+                .as_ref()
+                .map_or(true, |(best_depth, _)| depth > *best_depth)
+            {
                 best_match = Some((depth, usage));
             }
         }
@@ -308,6 +316,24 @@ fn drive_label(root_path: &Path) -> String {
     } else {
         format!("Disque local ({})", label)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClipboardKind {
+    Copy,
+    Cut,
+}
+
+#[derive(Debug, Default, Clone)]
+struct ClipboardState {
+    kind: Option<ClipboardKind>,
+    items: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+struct RenameDialog {
+    path: PathBuf,
+    input: String,
 }
 
 #[derive(Debug)]
@@ -333,6 +359,8 @@ pub struct XionApp {
     favorites: FavoritesService,
     tabs: Vec<TabState>,
     active_tab: usize,
+    clipboard: ClipboardState,
+    rename_dialog: Option<RenameDialog>,
 }
 
 impl XionApp {
@@ -500,6 +528,8 @@ impl XionApp {
             favorites,
             tabs,
             active_tab: 0,
+            clipboard: ClipboardState::default(),
+            rename_dialog: None,
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -637,6 +667,30 @@ impl XionApp {
                         self.thumbnail_misses.insert(path);
                     }
                 }
+            }
+            UiMessage::ClipboardCut => {
+                self.capture_clipboard(ClipboardKind::Cut);
+            }
+            UiMessage::ClipboardCopy => {
+                self.capture_clipboard(ClipboardKind::Copy);
+            }
+            UiMessage::ClipboardPaste => {
+                tasks.push(self.paste_clipboard());
+            }
+            UiMessage::RenameInputChanged(value) => {
+                if let Some(dialog) = &mut self.rename_dialog {
+                    dialog.input = value;
+                }
+            }
+            UiMessage::RenameSubmit => {
+                tasks.push(self.submit_rename());
+            }
+            UiMessage::RenameCancel => {
+                self.rename_dialog = None;
+            }
+            UiMessage::FileOperationFinished(report) => {
+                self.handle_operation_report(&report);
+                tasks.push(self.refresh_entries());
             }
         }
 
@@ -883,7 +937,181 @@ impl XionApp {
 
         match action {
             ContextAction::Open => self.activate_focused_entry(),
-            _ => Task::none(),
+            ContextAction::Rename => self.open_rename_dialog(),
+            ContextAction::Delete => self.delete_selection(),
+            ContextAction::CopyPath => {
+                self.copy_selection_path();
+                Task::none()
+            }
+        }
+    }
+
+    fn selected_paths(&self) -> Vec<PathBuf> {
+        self.state
+            .navigation
+            .selection
+            .selected
+            .iter()
+            .cloned()
+            .collect()
+    }
+
+    fn capture_clipboard(&mut self, kind: ClipboardKind) {
+        let items = self.selected_paths();
+        if items.is_empty() {
+            self.last_action = Some("Aucune sélection à mettre en presse-papiers".to_string());
+            return;
+        }
+        let label = match kind {
+            ClipboardKind::Copy => "Copie",
+            ClipboardKind::Cut => "Déplacement",
+        };
+        self.clipboard.kind = Some(kind);
+        self.clipboard.items = items;
+        self.last_action = Some(format!(
+            "{} : {} élément(s)",
+            label,
+            self.clipboard.items.len()
+        ));
+    }
+
+    fn paste_clipboard(&mut self) -> Task<UiMessage> {
+        let Some(kind) = self.clipboard.kind else {
+            self.last_action = Some("Presse-papiers vide".to_string());
+            return Task::none();
+        };
+        if self.clipboard.items.is_empty() {
+            self.last_action = Some("Presse-papiers vide".to_string());
+            return Task::none();
+        }
+
+        let items = self.clipboard.items.clone();
+        let destination = self.state.route.path.clone();
+        Task::perform(
+            async move {
+                let operations = LocalFileOperations::new();
+                match kind {
+                    ClipboardKind::Copy => operations.copy_items(&items, &destination),
+                    ClipboardKind::Cut => operations.move_items(&items, &destination),
+                }
+            },
+            UiMessage::FileOperationFinished,
+        )
+    }
+
+    fn open_rename_dialog(&mut self) -> Task<UiMessage> {
+        let selection = &self.state.navigation.selection;
+        if selection.selected.len() != 1 {
+            self.last_action = Some("Renommage : sélectionnez un seul élément".to_string());
+            return Task::none();
+        }
+        let path = selection
+            .selected
+            .iter()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| self.state.route.path.clone());
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("")
+            .to_string();
+        if name.is_empty() {
+            self.last_action = Some("Renommage impossible".to_string());
+            return Task::none();
+        }
+        self.rename_dialog = Some(RenameDialog { path, input: name });
+        Task::none()
+    }
+
+    fn submit_rename(&mut self) -> Task<UiMessage> {
+        let Some(mut dialog) = self.rename_dialog.take() else {
+            return Task::none();
+        };
+        let trimmed = dialog.input.trim();
+        if trimmed.is_empty() {
+            self.last_action = Some("Renommage : nom invalide".to_string());
+            self.rename_dialog = Some(dialog);
+            return Task::none();
+        }
+        if Path::new(trimmed).components().count() > 1 {
+            self.last_action = Some("Renommage : le nom doit être simple".to_string());
+            self.rename_dialog = Some(dialog);
+            return Task::none();
+        }
+        let Some(parent) = dialog.path.parent() else {
+            self.last_action = Some("Renommage impossible".to_string());
+            return Task::none();
+        };
+        let target = parent.join(trimmed);
+        if target == dialog.path {
+            self.last_action = Some("Renommage : nom identique".to_string());
+            return Task::none();
+        }
+        let source = dialog.path.clone();
+        Task::perform(
+            async move { LocalFileOperations::new().rename_item(&source, &target) },
+            UiMessage::FileOperationFinished,
+        )
+    }
+
+    fn delete_selection(&mut self) -> Task<UiMessage> {
+        let items = self.selected_paths();
+        if items.is_empty() {
+            self.last_action = Some("Aucune sélection à supprimer".to_string());
+            return Task::none();
+        }
+        self.clear_selection();
+        Task::perform(
+            async move { LocalFileOperations::new().delete_items(&items) },
+            UiMessage::FileOperationFinished,
+        )
+    }
+
+    fn copy_selection_path(&mut self) {
+        let selection = &self.state.navigation.selection;
+        if selection.selected.len() == 1 {
+            if let Some(path) = selection.selected.iter().next() {
+                self.last_action = Some(format!("Chemin copié : {}", path.display()));
+                return;
+            }
+        }
+        self.last_action = Some("Sélectionnez un élément pour copier le chemin".to_string());
+    }
+
+    fn handle_operation_report(&mut self, report: &OperationReport) {
+        let success = report.succeeded.len();
+        let failure = report.failed.len();
+        let base_message = match report.action {
+            FileOperationKind::Copy => format!("Copie : {} ok", success),
+            FileOperationKind::Move => format!("Déplacement : {} ok", success),
+            FileOperationKind::Rename => {
+                if success == 1 {
+                    report
+                        .succeeded
+                        .first()
+                        .map(|path| format!("Renommé : {}", path.display()))
+                        .unwrap_or_else(|| "Renommage terminé".to_string())
+                } else {
+                    format!("Renommage : {} ok", success)
+                }
+            }
+            FileOperationKind::Delete => format!("Suppression : {} ok", success),
+        };
+        let full_message = if failure > 0 {
+            format!("{base_message} / {failure} erreur(s)")
+        } else {
+            base_message
+        };
+        self.last_action = Some(full_message);
+        if report.action == FileOperationKind::Move && failure == 0 {
+            self.clipboard = ClipboardState::default();
+        }
+        if matches!(
+            report.action,
+            FileOperationKind::Rename | FileOperationKind::Delete
+        ) {
+            self.rename_dialog = None;
         }
     }
 
@@ -1090,9 +1318,7 @@ impl XionApp {
         let spacing = tokens.spacing;
         let typography = tokens.typography;
         let user_dirs = UserDirs::new();
-        let home_dir = user_dirs
-            .as_ref()
-            .map(|dirs| dirs.home_dir().to_path_buf());
+        let home_dir = user_dirs.as_ref().map(|dirs| dirs.home_dir().to_path_buf());
         let desktop_dir = user_dirs
             .as_ref()
             .and_then(|dirs| dirs.desktop_dir().map(|path| path.to_path_buf()));
@@ -1145,12 +1371,8 @@ impl XionApp {
                 let icon = icon.to_string();
                 let label = label.to_string();
                 let content: Element<'_, UiMessage> = row![
-                    text(icon)
-                    .size(typography.body)
-                    .font(typography.body_font),
-                    text(label)
-                    .size(typography.body)
-                    .font(typography.body_font)
+                    text(icon).size(typography.body).font(typography.body_font),
+                    text(label).size(typography.body).font(typography.body_font)
                 ]
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center)
@@ -1283,9 +1505,12 @@ impl XionApp {
             .map(|tab| tab.title.as_str())
             .unwrap_or("Ce PC");
         let search_bar = container(
-            text(format!("{} Rechercher dans : {}", ICON_SEARCH, active_tab_title))
-                .size(typography.caption)
-                .font(typography.caption_font),
+            text(format!(
+                "{} Rechercher dans : {}",
+                ICON_SEARCH, active_tab_title
+            ))
+            .size(typography.caption)
+            .font(typography.caption_font),
         )
         .padding([spacing.xs, spacing.md])
         .width(Length::Fixed(240.0))
@@ -1295,11 +1520,32 @@ impl XionApp {
             ..Default::default()
         });
 
+        let has_selection = !self.state.navigation.selection.selected.is_empty();
+        let has_clipboard = self.clipboard.kind.is_some() && !self.clipboard.items.is_empty();
+
+        let cut_button = if has_selection {
+            toolbar_button(format!("{} Couper", ICON_CUT)).on_press(UiMessage::ClipboardCut)
+        } else {
+            toolbar_button(format!("{} Couper", ICON_CUT))
+        };
+
+        let copy_button = if has_selection {
+            toolbar_button(format!("{} Copier", ICON_COPY)).on_press(UiMessage::ClipboardCopy)
+        } else {
+            toolbar_button(format!("{} Copier", ICON_COPY))
+        };
+
+        let paste_button = if has_clipboard {
+            toolbar_button(format!("{} Coller", ICON_PASTE)).on_press(UiMessage::ClipboardPaste)
+        } else {
+            toolbar_button(format!("{} Coller", ICON_PASTE))
+        };
+
         let command_bar = row![
             toolbar_button(format!("{} Nouveau", ICON_NEW)),
-            toolbar_button(format!("{} Couper", ICON_CUT)),
-            toolbar_button(format!("{} Copier", ICON_COPY)),
-            toolbar_button(format!("{} Coller", ICON_PASTE)),
+            cut_button,
+            copy_button,
+            paste_button,
             toolbar_button(format!("{} Trier", ICON_SORT)),
             toolbar_button(format!("{} Afficher", ICON_VIEW)),
             toolbar_button(ICON_MORE.to_string()),
@@ -1525,6 +1771,35 @@ impl XionApp {
             list
         };
 
+        let rename_prompt = if let Some(dialog) = &self.rename_dialog {
+            let input = text_input("Nouveau nom…", &dialog.input)
+                .on_input(UiMessage::RenameInputChanged)
+                .on_submit(UiMessage::RenameSubmit)
+                .size(typography.body)
+                .font(typography.body_font)
+                .padding([spacing.xs, spacing.md]);
+            container(
+                row![
+                    text("Renommer :")
+                        .size(typography.body)
+                        .font(typography.body_font),
+                    input,
+                    toolbar_button("Valider".to_string()).on_press(UiMessage::RenameSubmit),
+                    toolbar_button("Annuler".to_string()).on_press(UiMessage::RenameCancel)
+                ]
+                .spacing(spacing.sm)
+                .align_y(Alignment::Center),
+            )
+            .padding([spacing.sm, spacing.md])
+            .style(move |_| iced::widget::container::Style {
+                background: Some(Background::Color(colors.panel_background)),
+                border: border::rounded(8.0).color(colors.border).width(1.0),
+                ..Default::default()
+            })
+        } else {
+            container(row![])
+        };
+
         let selection = &self.state.navigation.selection;
         let selection_status = if selection.selected.is_empty() {
             "Sélection : —".to_string()
@@ -1548,6 +1823,7 @@ impl XionApp {
         let list = scrollable(
             container(
                 column![
+                    rename_prompt,
                     list_content,
                     text(selection_status)
                         .size(typography.caption)
@@ -1568,14 +1844,19 @@ impl XionApp {
             })
         });
 
-        let mut quick_access = column![section_title("Accès rapide".to_string())].spacing(spacing.xs);
+        let mut quick_access =
+            column![section_title("Accès rapide".to_string())].spacing(spacing.xs);
         quick_access = quick_access.push(sidebar_button(ICON_HOME, "Accueil", home_dir.clone()));
         quick_access =
             quick_access.push(sidebar_button(ICON_DESKTOP, "Bureau", desktop_dir.clone()));
-        quick_access =
-            quick_access.push(sidebar_button(ICON_DOWNLOAD, "Téléchargements", downloads_dir));
+        quick_access = quick_access.push(sidebar_button(
+            ICON_DOWNLOAD,
+            "Téléchargements",
+            downloads_dir,
+        ));
 
-        let mut favorites_section = column![section_title("Favoris".to_string())].spacing(spacing.xs);
+        let mut favorites_section =
+            column![section_title("Favoris".to_string())].spacing(spacing.xs);
         if self.favorites.list().is_empty() {
             favorites_section = favorites_section.push(
                 text("Aucun favori")
@@ -1585,8 +1866,11 @@ impl XionApp {
         } else {
             for favorite in self.favorites.list() {
                 let label = format_sidebar_label(favorite);
-                favorites_section = favorites_section
-                    .push(sidebar_button(ICON_FOLDER, &label, Some(favorite.clone())));
+                favorites_section = favorites_section.push(sidebar_button(
+                    ICON_FOLDER,
+                    &label,
+                    Some(favorite.clone()),
+                ));
             }
         }
 
@@ -1647,8 +1931,8 @@ impl XionApp {
                 );
             } else {
                 let label = format_sidebar_label(&root_path);
-                drive_section = drive_section
-                    .push(sidebar_button(ICON_DRIVE, &label, Some(root_path)));
+                drive_section =
+                    drive_section.push(sidebar_button(ICON_DRIVE, &label, Some(root_path)));
             }
         } else {
             drive_section = drive_section.push(

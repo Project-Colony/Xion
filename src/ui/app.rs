@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -14,8 +15,10 @@ use iced::widget::{
 };
 use iced::{
     Alignment, Background, Border, Color, Element, Font, Length, Point, Subscription, Task, Theme,
-    border, keyboard, mouse,
+    border, keyboard, mouse, time,
 };
+use ::image::codecs::gif::GifDecoder;
+use ::image::AnimationDecoder;
 
 use crate::core::{
     ConfigManager, EntryFilterConfig, KeyInput, KeyKind, NamedKey, SortKeyConfig, SortOrderConfig,
@@ -27,7 +30,7 @@ use crate::filesystem::{
 };
 use crate::services::{
     DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService, PreviewImageService,
-    ThumbnailService, VirtualList, VirtualWindow, generate_thumbnail,
+    ThumbnailService, VirtualList, VirtualWindow, generate_preview, generate_thumbnail,
 };
 use crate::ui::{
     AppState, ContextAction, KeyboardCommand, ModifiersState, RouteKind, ScrollViewport,
@@ -359,6 +362,23 @@ struct RenameDialog {
     input: String,
 }
 
+#[derive(Debug, Clone)]
+struct AnimatedFrame {
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+    delay: Duration,
+}
+
+#[derive(Debug, Clone)]
+struct AnimatedPreview {
+    path: PathBuf,
+    frames: Vec<AnimatedFrame>,
+    current: usize,
+    next_frame_at: Instant,
+    handle: image::Handle,
+}
+
 #[derive(Debug)]
 pub struct XionApp {
     state: AppState,
@@ -373,6 +393,7 @@ pub struct XionApp {
     preview_handles: HashMap<PathBuf, image::Handle>,
     previews_in_flight: HashSet<PathBuf>,
     preview_misses: HashSet<PathBuf>,
+    animated_preview: Option<AnimatedPreview>,
     entries: PagedEntries,
     stale_entries: Option<PagedEntries>,
     pending_pages: HashSet<usize>,
@@ -631,6 +652,7 @@ impl XionApp {
             preview_handles: HashMap::new(),
             previews_in_flight: HashSet::new(),
             preview_misses: HashSet::new(),
+            animated_preview: None,
             entries,
             stale_entries: None,
             pending_pages: HashSet::new(),
@@ -940,18 +962,34 @@ impl XionApp {
                 if is_selected {
                     match preview {
                         Some(preview) => {
-                            self.preview_handles.insert(
-                                path.clone(),
-                                image::Handle::from_bytes(preview.bytes.clone()),
-                            );
-                            self.preview_images.insert(path.clone(), preview);
-                            self.preview_misses.remove(&path);
+                            if is_gif_preview(&preview) {
+                                self.preview_handles.remove(&path);
+                                self.preview_images.remove(&path);
+                                if let Some(animated) =
+                                    build_animated_preview(path.clone(), &preview)
+                                {
+                                    self.animated_preview = Some(animated);
+                                    self.preview_misses.remove(&path);
+                                } else {
+                                    self.preview_misses.insert(path);
+                                }
+                            } else {
+                                self.preview_handles.insert(
+                                    path.clone(),
+                                    image::Handle::from_bytes(preview.bytes.clone()),
+                                );
+                                self.preview_images.insert(path.clone(), preview);
+                                self.preview_misses.remove(&path);
+                            }
                         }
                         None => {
                             self.preview_misses.insert(path);
                         }
                     }
                 }
+            }
+            UiMessage::AnimatedPreviewTick(now) => {
+                self.advance_animated_preview(now);
             }
             UiMessage::ClipboardCut => {
                 self.capture_clipboard(ClipboardKind::Cut);
@@ -996,7 +1034,7 @@ impl XionApp {
 
     fn subscription(&self) -> Subscription<UiMessage> {
         let shortcuts = self.state.config.shortcuts.clone();
-        iced::event::listen().map(move |event| match event {
+        let mut subscriptions = vec![iced::event::listen().map(move |event| match event {
             iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
                 UiMessage::ModifiersChanged(ModifiersState {
                     shift: modifiers.shift(),
@@ -1013,7 +1051,13 @@ impl XionApp {
                 UiMessage::CursorMoved(position)
             }
             _ => UiMessage::Noop,
-        })
+        })];
+
+        if self.animated_preview.is_some() {
+            subscriptions.push(time::every(Duration::from_millis(30)).map(UiMessage::AnimatedPreviewTick));
+        }
+
+        Subscription::batch(subscriptions)
     }
 
     fn selection_kind_from_modifiers(&self) -> SelectionKind {
@@ -1655,6 +1699,23 @@ impl XionApp {
         self.preview_misses.clear();
         self.previews_in_flight.clear();
         self.preview_images.clear();
+        self.animated_preview = None;
+    }
+
+    fn advance_animated_preview(&mut self, now: Instant) {
+        let Some(animated) = &mut self.animated_preview else {
+            return;
+        };
+
+        if animated.frames.is_empty() || now < animated.next_frame_at {
+            return;
+        }
+
+        animated.current = (animated.current + 1) % animated.frames.len();
+        let frame = &animated.frames[animated.current];
+        animated.handle =
+            image::Handle::from_rgba(frame.width, frame.height, frame.pixels.clone());
+        animated.next_frame_at = now + frame.delay;
     }
 
     fn cycle_focus(&mut self) {
@@ -1841,6 +1902,12 @@ impl XionApp {
             return Task::none();
         }
 
+        if let Some(animated) = &self.animated_preview {
+            if animated.path == entry_path {
+                return Task::none();
+            }
+        }
+
         if let Some(preview) = self.preview_images.get(&entry_path) {
             if !self.preview_handles.contains_key(&entry_path) {
                 self.preview_handles.insert(
@@ -1863,7 +1930,7 @@ impl XionApp {
         self.previews_in_flight.insert(path.clone());
         Task::perform(
             async move {
-                let preview = generate_thumbnail(path.as_path(), preview_size);
+                let preview = generate_preview(path.as_path(), preview_size);
                 (path, preview)
             },
             |(path, preview)| UiMessage::PreviewLoaded { path, preview },
@@ -3081,21 +3148,33 @@ impl XionApp {
                     .max(120.0)
                     .min(220.0);
                 let preview_media: Element<'_, UiMessage> = match entry.entry_type {
-                    FsEntryType::File => self
-                        .preview_handles
-                        .get(&entry.path)
-                        .map(|handle| {
-                            image(handle.clone())
+                    FsEntryType::File => {
+                        if let Some(animated) = self
+                            .animated_preview
+                            .as_ref()
+                            .filter(|animated| animated.path == entry.path)
+                        {
+                            image(animated.handle.clone())
                                 .width(Length::Fixed(preview_media_size))
                                 .height(Length::Fixed(preview_media_size))
                                 .into()
-                        })
-                        .unwrap_or_else(|| {
-                            text(ICON_LOADING)
-                                .size(typography.title)
-                                .font(typography.title_font)
-                                .into()
-                        }),
+                        } else {
+                            self.preview_handles
+                                .get(&entry.path)
+                                .map(|handle| {
+                                    image(handle.clone())
+                                        .width(Length::Fixed(preview_media_size))
+                                        .height(Length::Fixed(preview_media_size))
+                                        .into()
+                                })
+                                .unwrap_or_else(|| {
+                                    text(ICON_LOADING)
+                                        .size(typography.title)
+                                        .font(typography.title_font)
+                                        .into()
+                                })
+                        }
+                    }
                     _ => text(icon)
                         .size(typography.title)
                         .font(typography.title_font)
@@ -3422,6 +3501,62 @@ fn list_options_from_config(list_config: crate::core::ListConfig) -> ListOptions
         },
         name_query: None,
     }
+}
+
+fn is_gif_preview(preview: &crate::services::Thumbnail) -> bool {
+    preview.mime.as_deref() == Some("image/gif")
+        || preview.bytes.starts_with(b"GIF87a")
+        || preview.bytes.starts_with(b"GIF89a")
+}
+
+fn build_animated_preview(
+    path: PathBuf,
+    preview: &crate::services::Thumbnail,
+) -> Option<AnimatedPreview> {
+    let decoder = GifDecoder::new(Cursor::new(preview.bytes.as_slice())).ok()?;
+    let frames = decoder.into_frames().collect_frames().ok()?;
+    if frames.is_empty() {
+        return None;
+    }
+
+    let animated_frames: Vec<AnimatedFrame> = frames
+        .into_iter()
+        .map(|frame| {
+            let delay = gif_frame_delay(&frame);
+            let buffer = frame.into_buffer();
+            let (width, height) = buffer.dimensions();
+            AnimatedFrame {
+                width,
+                height,
+                pixels: buffer.into_raw(),
+                delay,
+            }
+        })
+        .collect();
+
+    let first = animated_frames.first()?;
+    let first_delay = first.delay;
+    let first_width = first.width;
+    let first_height = first.height;
+    let first_pixels = first.pixels.clone();
+    Some(AnimatedPreview {
+        path,
+        frames: animated_frames,
+        current: 0,
+        next_frame_at: Instant::now() + first_delay,
+        handle: image::Handle::from_rgba(first_width, first_height, first_pixels),
+    })
+}
+
+fn gif_frame_delay(frame: &::image::Frame) -> Duration {
+    let delay = frame.delay();
+    let (numer, denom) = delay.numer_denom_ms();
+    let ms = if denom == 0 {
+        0
+    } else {
+        (numer as u64) / (denom as u64)
+    };
+    Duration::from_millis(ms.max(20))
 }
 
 #[derive(Debug)]

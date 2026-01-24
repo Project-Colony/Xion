@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crate::core::{AppConfig, SortKeyConfig};
 use crate::filesystem::{FsEntry, OperationReport, Page};
@@ -156,6 +157,7 @@ pub enum UiMessage {
         path: PathBuf,
         preview: Option<Thumbnail>,
     },
+    AnimatedPreviewTick(Instant),
     ClipboardCut,
     ClipboardCopy,
     ClipboardPaste,

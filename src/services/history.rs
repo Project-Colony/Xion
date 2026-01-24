@@ -50,4 +50,8 @@ impl HistoryService {
     pub fn can_forward(&self) -> bool {
         matches!(self.cursor, Some(index) if index + 1 < self.entries.len())
     }
+
+    pub fn entries(&self) -> &[PathBuf] {
+        &self.entries
+    }
 }

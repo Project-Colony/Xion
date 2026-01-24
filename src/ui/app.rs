@@ -9,12 +9,12 @@ use iced::alignment::Horizontal;
 use iced::font::{Family, Style, Weight};
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{
-    button, column, container, horizontal_space, image, progress_bar, row, scrollable, text,
-    text_input, vertical_space,
+    button, column, container, horizontal_space, image, mouse_area, opaque, progress_bar, row,
+    scrollable, stack, text, text_input, vertical_space,
 };
 use iced::{
-    Alignment, Background, Border, Color, Element, Font, Length, Subscription, Task, Theme, border,
-    keyboard, mouse,
+    Alignment, Background, Border, Color, Element, Font, Length, Point, Subscription, Task, Theme,
+    border, keyboard, mouse,
 };
 
 use crate::core::{
@@ -363,6 +363,8 @@ pub struct XionApp {
     error: Option<String>,
     modifiers: ModifiersState,
     context_menu_open: bool,
+    context_menu_position: Option<Point>,
+    cursor_position: Option<Point>,
     last_action: Option<String>,
     address_input: String,
     search_input: String,
@@ -561,6 +563,8 @@ impl XionApp {
             error: None,
             modifiers: ModifiersState::default(),
             context_menu_open: false,
+            context_menu_position: None,
+            cursor_position: None,
             last_action: None,
             address_input,
             search_input: String::new(),
@@ -592,6 +596,9 @@ impl XionApp {
         let mut tasks = Vec::new();
         match message {
             UiMessage::Noop => {}
+            UiMessage::CursorMoved(position) => {
+                self.cursor_position = Some(position);
+            }
             UiMessage::NavigateTo(path) => {
                 tasks.push(self.navigate_to(path));
             }
@@ -657,6 +664,11 @@ impl XionApp {
             }
             UiMessage::ToggleContextMenu(force_open) => {
                 self.context_menu_open = force_open;
+                if force_open {
+                    self.context_menu_position = self.cursor_position;
+                } else {
+                    self.context_menu_position = None;
+                }
             }
             UiMessage::ContextAction(action) => {
                 tasks.push(self.apply_context_action(action));
@@ -827,11 +839,11 @@ impl XionApp {
                     .map(UiMessage::KeyboardCommand)
                     .unwrap_or(UiMessage::Noop)
             }
+            iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                UiMessage::CursorMoved(position)
+            }
             iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
                 UiMessage::ToggleContextMenu(true)
-            }
-            iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                UiMessage::ToggleContextMenu(false)
             }
             _ => UiMessage::Noop,
         })
@@ -967,6 +979,7 @@ impl XionApp {
             selection.anchor = None;
         }
         self.context_menu_open = false;
+        self.context_menu_position = None;
     }
 
     fn selected_entry<'a>(&'a self, entries: &'a PagedEntries) -> Option<&'a FsEntry> {
@@ -1031,6 +1044,11 @@ impl XionApp {
             }
             KeyboardCommand::ToggleContextMenu => {
                 self.context_menu_open = !self.context_menu_open;
+                if self.context_menu_open {
+                    self.context_menu_position = self.cursor_position;
+                } else {
+                    self.context_menu_position = None;
+                }
                 Task::none()
             }
             KeyboardCommand::CyclePaneFocus => {
@@ -1042,6 +1060,7 @@ impl XionApp {
 
     fn apply_context_action(&mut self, action: ContextAction) -> Task<UiMessage> {
         self.context_menu_open = false;
+        self.context_menu_position = None;
         let selection = &self.state.navigation.selection;
         let selected_label = if selection.selected.len() == 1 {
             selection
@@ -1433,6 +1452,7 @@ impl XionApp {
         selection.focused = None;
         selection.anchor = None;
         self.context_menu_open = false;
+        self.context_menu_position = None;
     }
 
     fn cycle_focus(&mut self) {
@@ -1893,20 +1913,43 @@ impl XionApp {
         ]
         .spacing(spacing.sm);
 
-        let context_menu =
-            if self.context_menu_open && !self.state.navigation.selection.selected.is_empty() {
-                Some(
-                    container(context_actions)
-                        .padding([spacing.sm, spacing.md])
-                        .style(move |_| iced::widget::container::Style {
-                            background: Some(Background::Color(colors.panel_background)),
-                            border: border::rounded(8.0).color(colors.border).width(1.0),
-                            ..Default::default()
-                        }),
-                )
-            } else {
-                None
-            };
+        let context_menu: Option<Element<'_, UiMessage>> = if self.context_menu_open
+            && !self.state.navigation.selection.selected.is_empty()
+        {
+            let position = self.context_menu_position.unwrap_or(Point::ORIGIN);
+            let position_x = position.x.max(0.0);
+            let position_y = position.y.max(0.0);
+            let menu = container(context_actions)
+                .padding([spacing.sm, spacing.md])
+                .style(move |_| iced::widget::container::Style {
+                    background: Some(Background::Color(colors.panel_background)),
+                    border: border::rounded(8.0).color(colors.border).width(1.0),
+                    ..Default::default()
+                });
+            let menu_layer: Element<'_, UiMessage> = container(
+                column![
+                    vertical_space().height(Length::Fixed(position_y)),
+                    row![
+                        horizontal_space().width(Length::Fixed(position_x)),
+                        opaque(menu)
+                    ]
+                ]
+                .spacing(0),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
+            let dismiss_layer: Element<'_, UiMessage> = mouse_area(
+                container(row![])
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .on_press(UiMessage::ToggleContextMenu(false))
+            .into();
+            Some(stack![dismiss_layer, menu_layer].into())
+        } else {
+            None
+        };
 
         let header = container(
             column![
@@ -1914,8 +1957,7 @@ impl XionApp {
                 row![navigation, address_bar, search_bar, loading_badge]
                     .spacing(spacing.md)
                     .align_y(Alignment::Center),
-                command_bar,
-                context_menu.unwrap_or_else(|| container(row![]))
+                command_bar
             ]
             .spacing(spacing.sm),
         )
@@ -2743,12 +2785,16 @@ impl XionApp {
             .align_x(Alignment::Start)
             .height(Length::Fill);
 
-        container(content)
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.chrome_background)),
-                ..Default::default()
-            })
-            .into()
+        let base = container(content).style(move |_| iced::widget::container::Style {
+            background: Some(Background::Color(colors.chrome_background)),
+            ..Default::default()
+        });
+
+        if let Some(menu) = context_menu {
+            stack![base.into(), menu].into()
+        } else {
+            base.into()
+        }
     }
 }
 

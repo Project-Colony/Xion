@@ -11,5 +11,5 @@ pub use history::HistoryService;
 pub use loader::DirectoryLoader;
 pub use network::NetworkDiscoveryService;
 pub use search::{SearchIndex, SearchIndexOptions, SearchQuery, SearchService};
-pub use thumbnails::{PreviewImageService, Thumbnail, ThumbnailService, generate_thumbnail};
+pub use thumbnails::{Thumbnail, ThumbnailService, generate_thumbnail};
 pub use virtualization::{VirtualList, VirtualWindow};

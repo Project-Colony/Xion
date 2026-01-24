@@ -101,8 +101,6 @@ const ICON_OPEN: &str = "";
 const ICON_RENAME: &str = "";
 const ICON_DELETE: &str = "";
 const ICON_CLOSE: &str = "";
-const ICON_CHEVRON_RIGHT: &str = "";
-const ICON_CHEVRON_DOWN: &str = "";
 
 const LOADING_INDICATOR_DELAY: Duration = Duration::from_millis(75);
 const DOUBLE_CLICK_THRESHOLD: Duration = Duration::from_millis(500);
@@ -250,14 +248,6 @@ struct TabState {
     path: PathBuf,
 }
 
-#[derive(Debug, Clone)]
-struct TreeNode {
-    path: PathBuf,
-    depth: usize,
-    is_expanded: bool,
-    is_loading: bool,
-}
-
 fn build_default_favorites() -> FavoritesService {
     let mut favorites = FavoritesService::default();
     if let Some(user_dirs) = UserDirs::new() {
@@ -364,10 +354,6 @@ pub struct XionApp {
     entries: PagedEntries,
     stale_entries: Option<PagedEntries>,
     pending_pages: HashSet<usize>,
-    tree_cache: HashMap<PathBuf, Vec<FsEntry>>,
-    tree_expanded: HashSet<PathBuf>,
-    tree_loading: HashSet<PathBuf>,
-    tree_errors: HashMap<PathBuf, String>,
     is_loading: bool,
     is_refreshing: bool,
     show_loading_indicator: bool,
@@ -395,65 +381,6 @@ pub struct XionApp {
 }
 
 impl XionApp {
-    fn reset_tree_state(&mut self) {
-        self.tree_cache.clear();
-        self.tree_expanded.clear();
-        self.tree_loading.clear();
-        self.tree_errors.clear();
-    }
-
-    fn request_tree_children(&mut self, path: PathBuf) -> Task<UiMessage> {
-        if self.tree_loading.contains(&path) {
-            return Task::none();
-        }
-
-        self.tree_loading.insert(path.clone());
-        self.tree_errors.remove(&path);
-        let list_config = self.state.config.list.clone();
-
-        Task::perform(
-            async move {
-                let mut options = list_options_from_config(list_config);
-                options.filter = crate::filesystem::EntryFilter::OnlyDirectories;
-                options.sort_by = crate::filesystem::SortKey::Name;
-                options.sort_order = crate::filesystem::SortOrder::Asc;
-                options.name_query = None;
-                options.directories_first = true;
-                let filesystem = LocalFileSystem::new();
-                let result = filesystem
-                    .list_dir(&path, options)
-                    .map_err(|error| error.to_string());
-                (path, result)
-            },
-            |(path, result)| UiMessage::TreeLoaded { path, result },
-        )
-    }
-
-    fn expand_tree_to_path(&mut self, path: PathBuf) -> Task<UiMessage> {
-        let Some(root) = root_path_for(&path) else {
-            return Task::none();
-        };
-
-        let mut tasks = Vec::new();
-        let mut ancestors = path
-            .ancestors()
-            .map(|ancestor| ancestor.to_path_buf())
-            .collect::<Vec<_>>();
-        if !ancestors.contains(&root) {
-            ancestors.push(root);
-        }
-        ancestors.reverse();
-
-        for ancestor in ancestors {
-            self.tree_expanded.insert(ancestor.clone());
-            if !self.tree_cache.contains_key(&ancestor) {
-                tasks.push(self.request_tree_children(ancestor));
-            }
-        }
-
-        Task::batch(tasks)
-    }
-
     fn refresh_entries(&mut self) -> Task<UiMessage> {
         let page_size = self.entries.page_size;
         if self.entries.total > 0 {
@@ -491,10 +418,7 @@ impl XionApp {
     fn navigate_to(&mut self, path: PathBuf) -> Task<UiMessage> {
         self.update_active_tab_path(path.clone());
         self.history.record(path);
-        Task::batch(vec![
-            self.expand_tree_to_path(self.state.route.path.clone()),
-            self.refresh_entries(),
-        ])
+        self.refresh_entries()
     }
 
     fn address_target_from_input(&self) -> Option<PathBuf> {
@@ -592,10 +516,7 @@ impl XionApp {
             .unwrap_or_else(|| self.state.config.start_path.clone());
         self.update_active_tab_path(active_path.clone());
         self.history.record(active_path);
-        Task::batch(vec![
-            self.expand_tree_to_path(self.state.route.path.clone()),
-            self.refresh_entries(),
-        ])
+        self.refresh_entries()
     }
 
     fn switch_tab(&mut self, index: usize) -> Task<UiMessage> {
@@ -606,10 +527,7 @@ impl XionApp {
         let path = self.tabs[index].path.clone();
         self.update_active_tab_path(path.clone());
         self.history.record(path);
-        Task::batch(vec![
-            self.expand_tree_to_path(self.state.route.path.clone()),
-            self.refresh_entries(),
-        ])
+        self.refresh_entries()
     }
 
     fn close_tab(&mut self, index: usize) -> Task<UiMessage> {
@@ -626,10 +544,7 @@ impl XionApp {
             let path = tab.path.clone();
             self.update_active_tab_path(path.clone());
             self.history.record(path);
-            return Task::batch(vec![
-                self.expand_tree_to_path(self.state.route.path.clone()),
-                self.refresh_entries(),
-            ]);
+            return self.refresh_entries();
         }
         Task::none()
     }
@@ -675,10 +590,6 @@ impl XionApp {
             entries,
             stale_entries: None,
             pending_pages: HashSet::new(),
-            tree_cache: HashMap::new(),
-            tree_expanded: HashSet::new(),
-            tree_loading: HashSet::new(),
-            tree_errors: HashMap::new(),
             is_loading: false,
             is_refreshing: false,
             show_loading_indicator: false,
@@ -715,10 +626,8 @@ impl XionApp {
                     .join(" | ")
             ));
         }
-        let mut tasks = Vec::new();
-        tasks.push(app.refresh_entries());
-        tasks.push(app.expand_tree_to_path(state.route.path.clone()));
-        (app, Task::batch(tasks))
+        let task = app.refresh_entries();
+        (app, task)
     }
 
     fn update(&mut self, message: UiMessage) -> Task<UiMessage> {
@@ -753,7 +662,6 @@ impl XionApp {
                 self.history_menu_position = None;
                 if let Some(path) = self.history.back() {
                     self.update_active_tab_path(path);
-                    tasks.push(self.expand_tree_to_path(self.state.route.path.clone()));
                     tasks.push(self.refresh_entries());
                 }
             }
@@ -762,7 +670,6 @@ impl XionApp {
                 self.history_menu_position = None;
                 if let Some(path) = self.history.forward() {
                     self.update_active_tab_path(path);
-                    tasks.push(self.expand_tree_to_path(self.state.route.path.clone()));
                     tasks.push(self.refresh_entries());
                 }
             }
@@ -885,14 +792,6 @@ impl XionApp {
                     tasks.push(self.request_all_pages());
                 }
             }
-            UiMessage::ToggleTreeNode(path) => {
-                if !self.tree_expanded.remove(&path) {
-                    self.tree_expanded.insert(path.clone());
-                    if !self.tree_cache.contains_key(&path) {
-                        tasks.push(self.request_tree_children(path));
-                    }
-                }
-            }
             UiMessage::Scroll(viewport) => {
                 self.scroll_offset = viewport.offset_y;
                 self.viewport_height = viewport.viewport_height.max(1.0);
@@ -955,18 +854,6 @@ impl XionApp {
 
                 if self.normalized_search_query().is_some() {
                     tasks.push(self.request_all_pages());
-                }
-            }
-            UiMessage::TreeLoaded { path, result } => {
-                self.tree_loading.remove(&path);
-                match result {
-                    Ok(entries) => {
-                        self.tree_cache.insert(path, entries);
-                        self.tree_errors.remove(&path);
-                    }
-                    Err(error) => {
-                        self.tree_errors.insert(path, error);
-                    }
                 }
             }
             UiMessage::ThumbnailLoaded { path, thumbnail } => {
@@ -1101,8 +988,7 @@ impl XionApp {
         }
 
         self.state.config = new_config;
-        self.reset_tree_state();
-        self.expand_tree_to_path(self.state.route.path.clone())
+        Task::none()
     }
 
     fn apply_selection(&mut self, path: PathBuf, kind: SelectionKind) {
@@ -1702,27 +1588,6 @@ impl XionApp {
             overscan: self.state.config.view.overscan,
         };
         virtual_list.visible_range(self.scroll_offset, total)
-    }
-
-    fn collect_tree_nodes(&self, path: &PathBuf, depth: usize, nodes: &mut Vec<TreeNode>) {
-        let is_expanded = self.tree_expanded.contains(path);
-        let is_loading = self.tree_loading.contains(path);
-        nodes.push(TreeNode {
-            path: path.clone(),
-            depth,
-            is_expanded,
-            is_loading,
-        });
-
-        if is_expanded {
-            if let Some(children) = self.tree_cache.get(path) {
-                for child in children {
-                    if child.entry_type == FsEntryType::Directory {
-                        self.collect_tree_nodes(&child.path, depth + 1, nodes);
-                    }
-                }
-            }
-        }
     }
 
     fn request_visible_thumbnails(&mut self) -> Task<UiMessage> {
@@ -2940,161 +2805,6 @@ impl XionApp {
             ..Default::default()
         });
 
-        let tree_label = |path: &PathBuf| {
-            if path.parent().is_none() {
-                drive_label(path)
-            } else {
-                path.file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| path.display().to_string())
-            }
-        };
-
-        let tree_node_row = |node: &TreeNode| {
-            let is_current = self.state.route.path == node.path;
-            let icon = if node.is_expanded {
-                ICON_CHEVRON_DOWN
-            } else {
-                ICON_CHEVRON_RIGHT
-            };
-            let indent = spacing.sm + node.depth as f32 * spacing.sm;
-            let label = tree_label(&node.path);
-
-            let toggle_button = button(
-                text(icon)
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-            )
-            .padding([spacing.xs, spacing.xs])
-            .style(move |_theme: &Theme, status: ButtonStatus| {
-                let mut style = iced::widget::button::Style {
-                    text_color: colors.text_muted,
-                    ..Default::default()
-                };
-                if matches!(status, ButtonStatus::Hovered) {
-                    style.background = Some(Background::Color(colors.hover));
-                }
-                style
-            })
-            .on_press(UiMessage::ToggleTreeNode(node.path.clone()));
-
-            let label_button = button(text(label).size(typography.body).font(typography.body_font))
-                .padding([spacing.xs, spacing.sm])
-                .width(Length::Fill)
-                .style(move |_theme: &Theme, status: ButtonStatus| {
-                    let mut style = iced::widget::button::Style {
-                        text_color: colors.text_primary,
-                        ..Default::default()
-                    };
-
-                    if is_current {
-                        style.background = Some(Background::Color(colors.selection));
-                        style.border = border::rounded(6.0)
-                            .color(colors.selection_border)
-                            .width(1.0);
-                    } else if matches!(status, ButtonStatus::Hovered) {
-                        style.background = Some(Background::Color(colors.hover));
-                    }
-
-                    style
-                })
-                .on_press(UiMessage::NavigateTo(node.path.clone()));
-
-            container(row![toggle_button, label_button].spacing(spacing.xs))
-                .padding([spacing.xs, spacing.sm, spacing.xs, indent])
-                .width(Length::Fill)
-        };
-
-        let mut tree_column =
-            column![section_title("Arborescence".to_string())].spacing(spacing.xs);
-        if let Some(root) = root_path_for(&self.state.route.path) {
-            let mut nodes = Vec::new();
-            self.collect_tree_nodes(&root, 0, &mut nodes);
-            if nodes.is_empty() {
-                tree_column = tree_column.push(
-                    text("Aucun dossier")
-                        .size(typography.caption)
-                        .font(typography.caption_font),
-                );
-            } else {
-                for node in nodes {
-                    let has_cached_children = self.tree_cache.contains_key(&node.path);
-                    tree_column = tree_column.push(tree_node_row(&node));
-                    if node.is_expanded {
-                        if let Some(error) = self.tree_errors.get(&node.path) {
-                            tree_column = tree_column.push(
-                                container(
-                                    text(format!("Erreur : {}", error))
-                                        .size(typography.caption)
-                                        .font(typography.caption_font)
-                                        .style(move |_| iced::widget::text::Style {
-                                            color: Some(colors.text_muted),
-                                        }),
-                                )
-                                .padding([
-                                    spacing.xs,
-                                    spacing.sm,
-                                    spacing.xs,
-                                    spacing.sm + (node.depth as f32 + 1.0) * spacing.sm,
-                                ]),
-                            );
-                        } else if node.is_loading && !has_cached_children {
-                            tree_column = tree_column.push(
-                                container(
-                                    text("Chargement…")
-                                        .size(typography.caption)
-                                        .font(typography.caption_font)
-                                        .style(move |_| iced::widget::text::Style {
-                                            color: Some(colors.text_muted),
-                                        }),
-                                )
-                                .padding([
-                                    spacing.xs,
-                                    spacing.sm,
-                                    spacing.xs,
-                                    spacing.sm + (node.depth as f32 + 1.0) * spacing.sm,
-                                ]),
-                            );
-                        } else if let Some(children) = self.tree_cache.get(&node.path) {
-                            if children.is_empty() {
-                                tree_column = tree_column.push(
-                                    container(
-                                        text("Aucun dossier")
-                                            .size(typography.caption)
-                                            .font(typography.caption_font)
-                                            .style(move |_| iced::widget::text::Style {
-                                                color: Some(colors.text_muted),
-                                            }),
-                                    )
-                                    .padding([
-                                        spacing.xs,
-                                        spacing.sm,
-                                        spacing.xs,
-                                        spacing.sm + (node.depth as f32 + 1.0) * spacing.sm,
-                                    ]),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            tree_column = tree_column.push(
-                text("Aucune racine")
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-            );
-        }
-
-        let tree_panel = container(scrollable(tree_column).height(Length::Fill))
-            .padding(spacing.md)
-            .width(Length::Fixed(240.0))
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.panel_background)),
-                border: border::rounded(10.0).color(colors.border).width(1.0),
-                ..Default::default()
-            });
-
         let preview_row = |label: String, value: String| {
             row![
                 container(
@@ -3229,7 +2939,6 @@ impl XionApp {
 
         let body = row![
             sidebar.width(Length::Fixed(220.0)),
-            tree_panel,
             container(list)
                 .width(Length::Fill)
                 .height(Length::Fill)

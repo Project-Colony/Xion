@@ -152,10 +152,6 @@ pub enum UiMessage {
         path: PathBuf,
         thumbnail: Option<Thumbnail>,
     },
-    PreviewLoaded {
-        path: PathBuf,
-        preview: Option<Thumbnail>,
-    },
     ClipboardCut,
     ClipboardCopy,
     ClipboardPaste,

@@ -2493,8 +2493,8 @@ impl XionApp {
                     .align_y(Alignment::Center),
                     progress_bar(0.0..=1.0, used_ratio).height(Length::Fixed(6.0)),
                     text(format!("{} Go libres sur {} Go", free_gb, total_gb))
-                        .size(typography.body)
-                        .font(typography.body_font)
+                        .size(typography.caption)
+                        .font(typography.caption_font)
                 ]
                 .spacing(spacing.xs)
                 .into();

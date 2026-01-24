@@ -274,6 +274,7 @@ pub struct ViewConfig {
     pub thumbnail_size: u32,
     pub row_height: f32,
     pub overscan: usize,
+    pub columns: Vec<ViewColumn>,
 }
 
 impl Default for ViewConfig {
@@ -282,8 +283,22 @@ impl Default for ViewConfig {
             thumbnail_size: 48,
             row_height: 32.0,
             overscan: 6,
+            columns: vec![
+                ViewColumn::Name,
+                ViewColumn::Type,
+                ViewColumn::Size,
+                ViewColumn::Modified,
+            ],
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ViewColumn {
+    Name,
+    Type,
+    Size,
+    Modified,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -447,6 +462,15 @@ enum EntryFilterConfigFile {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum ViewColumnConfigFile {
+    Name,
+    Type,
+    Size,
+    Modified,
+}
+
+#[derive(Debug, Deserialize)]
 struct CacheConfigFile {
     thumbnail_entries: Option<usize>,
     thumbnail_ttl_seconds: Option<u64>,
@@ -459,6 +483,7 @@ struct ViewConfigFile {
     thumbnail_size: Option<u32>,
     row_height: Option<f32>,
     overscan: Option<usize>,
+    columns: Option<Vec<ViewColumnConfigFile>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -653,6 +678,19 @@ fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarning>) -> Ap
         if let Some(overscan) = view.overscan {
             config.view.overscan = validated_overscan(overscan, config.view.overscan, warnings);
         }
+        if let Some(columns) = view.columns {
+            let columns = columns
+                .into_iter()
+                .map(|column| match column {
+                    ViewColumnConfigFile::Name => ViewColumn::Name,
+                    ViewColumnConfigFile::Type => ViewColumn::Type,
+                    ViewColumnConfigFile::Size => ViewColumn::Size,
+                    ViewColumnConfigFile::Modified => ViewColumn::Modified,
+                })
+                .collect::<Vec<_>>();
+            config.view.columns =
+                validated_view_columns(columns, config.view.columns.clone(), warnings);
+        }
     }
     if let Some(paging) = file.paging {
         if let Some(page_size) = paging.page_size {
@@ -763,6 +801,21 @@ fn validated_overscan(value: usize, fallback: usize, warnings: &mut Vec<ConfigWa
             message: format!("overscan hors limites (max {MAX_OVERSCAN}), fallback sur {fallback}"),
         });
         fallback
+    }
+}
+
+fn validated_view_columns(
+    value: Vec<ViewColumn>,
+    fallback: Vec<ViewColumn>,
+    warnings: &mut Vec<ConfigWarning>,
+) -> Vec<ViewColumn> {
+    if value.is_empty() {
+        warnings.push(ConfigWarning {
+            message: "view.columns vide, fallback sur la configuration par défaut".to_string(),
+        });
+        fallback
+    } else {
+        value
     }
 }
 

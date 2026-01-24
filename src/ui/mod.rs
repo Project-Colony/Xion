@@ -92,7 +92,6 @@ pub enum UiMessage {
     AddressInputChanged(String),
     AddressInputSubmitted,
     Scroll(ScrollViewport),
-    LoadingDelayElapsed(u64),
     PageLoaded {
         path: PathBuf,
         page_index: usize,

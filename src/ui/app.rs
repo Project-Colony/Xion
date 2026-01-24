@@ -99,8 +99,6 @@ const ICON_RENAME: &str = "";
 const ICON_DELETE: &str = "";
 const ICON_CLOSE: &str = "";
 
-const LOADING_INDICATOR_DELAY: Duration = Duration::from_millis(75);
-
 #[derive(Debug, Clone, Copy)]
 struct UiColors {
     chrome_background: Color,
@@ -348,12 +346,8 @@ pub struct XionApp {
     thumbnails_in_flight: HashSet<PathBuf>,
     thumbnail_misses: HashSet<PathBuf>,
     entries: PagedEntries,
-    stale_entries: Option<PagedEntries>,
     pending_pages: HashSet<usize>,
     is_loading: bool,
-    is_refreshing: bool,
-    show_loading_indicator: bool,
-    loading_generation: u64,
     scroll_offset: f32,
     viewport_height: f32,
     error: Option<String>,
@@ -371,29 +365,17 @@ pub struct XionApp {
 
 impl XionApp {
     fn refresh_entries(&mut self) -> Task<UiMessage> {
-        let page_size = self.entries.page_size;
-        if self.entries.total > 0 {
-            self.stale_entries = Some(std::mem::replace(
-                &mut self.entries,
-                PagedEntries::new(0, page_size),
-            ));
-        } else {
-            self.entries.reset();
-            self.stale_entries = None;
-        }
+        self.entries.reset();
         self.error = None;
         self.scroll_offset = 0.0;
+        self.thumbnail_handles.clear();
+        self.thumbnails_in_flight.clear();
+        self.thumbnail_misses.clear();
         self.pending_pages.clear();
         self.is_loading = true;
-        self.is_refreshing = true;
-        self.show_loading_indicator = false;
-        self.loading_generation = self.loading_generation.wrapping_add(1);
         self.clear_selection();
 
-        let mut tasks = Vec::new();
-        tasks.push(self.request_page(0));
-        tasks.push(self.schedule_loading_indicator(self.loading_generation));
-        Task::batch(tasks)
+        self.request_page(0)
     }
 
     fn update_active_tab_path(&mut self, path: PathBuf) {
@@ -441,16 +423,6 @@ impl XionApp {
                 page_index,
                 result,
             },
-        )
-    }
-
-    fn schedule_loading_indicator(&self, generation: u64) -> Task<UiMessage> {
-        Task::perform(
-            async move {
-                iced::time::sleep(LOADING_INDICATOR_DELAY).await;
-                generation
-            },
-            UiMessage::LoadingDelayElapsed,
         )
     }
 
@@ -543,12 +515,8 @@ impl XionApp {
             thumbnails_in_flight: HashSet::new(),
             thumbnail_misses: HashSet::new(),
             entries,
-            stale_entries: None,
             pending_pages: HashSet::new(),
             is_loading: false,
-            is_refreshing: false,
-            show_loading_indicator: false,
-            loading_generation: 0,
             scroll_offset: 0.0,
             viewport_height: 480.0,
             error: None,
@@ -659,15 +627,6 @@ impl XionApp {
                 self.viewport_height = viewport.viewport_height.max(1.0);
                 tasks.push(self.ensure_visible_pages());
             }
-            UiMessage::LoadingDelayElapsed(generation) => {
-                if self.is_refreshing
-                    && self.is_loading
-                    && generation == self.loading_generation
-                    && self.entries.total == 0
-                {
-                    self.show_loading_indicator = true;
-                }
-            }
             UiMessage::PageLoaded {
                 path,
                 page_index,
@@ -682,9 +641,6 @@ impl XionApp {
                     Ok(page) => {
                         self.entries.apply_page(page_index, page);
                         self.error = None;
-                        if self.is_refreshing {
-                            self.stale_entries = None;
-                        }
                         tasks.push(self.ensure_visible_pages());
                     }
                     Err(message) => {
@@ -694,8 +650,6 @@ impl XionApp {
 
                 if self.pending_pages.is_empty() {
                     self.is_loading = false;
-                    self.is_refreshing = false;
-                    self.show_loading_indicator = false;
                 }
             }
             UiMessage::ThumbnailLoaded { path, thumbnail } => {
@@ -1296,16 +1250,12 @@ impl XionApp {
     }
 
     fn virtual_window(&self) -> VirtualWindow {
-        self.virtual_window_for(self.entries.total)
-    }
-
-    fn virtual_window_for(&self, total: usize) -> VirtualWindow {
         let virtual_list = VirtualList {
             item_height: self.state.config.view.row_height,
             viewport_height: self.viewport_height,
             overscan: self.state.config.view.overscan,
         };
-        virtual_list.visible_range(self.scroll_offset, total)
+        virtual_list.visible_range(self.scroll_offset, self.entries.total)
     }
 
     fn request_visible_thumbnails(&mut self) -> Task<UiMessage> {
@@ -1604,31 +1554,6 @@ impl XionApp {
         ]
         .spacing(spacing.sm);
 
-        let loading_badge: Element<'_, UiMessage> = if self.show_loading_indicator {
-            let content: Element<'_, UiMessage> = row![
-                text("Chargement…")
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-                progress_bar(0.0..=1.0, 0.5)
-                    .height(Length::Fixed(4.0))
-                    .width(Length::Fixed(64.0)),
-            ]
-            .spacing(spacing.xs)
-            .align_y(Alignment::Center)
-            .into();
-
-            container(content)
-                .padding([spacing.xs, spacing.sm])
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.hover)),
-                    border: border::rounded(999.0).color(colors.border).width(1.0),
-                    ..Default::default()
-                })
-                .into()
-        } else {
-            container(row![]).into()
-        };
-
         let context_actions = row![
             toolbar_button(format!("{} Ouvrir", ICON_OPEN))
                 .on_press(UiMessage::ContextAction(ContextAction::Open,)),
@@ -1659,7 +1584,7 @@ impl XionApp {
         let header = container(
             column![
                 row![tabs].spacing(8).align_y(Alignment::Center),
-                row![navigation, address_bar, search_bar, loading_badge]
+                row![navigation, address_bar, search_bar]
                     .spacing(spacing.md)
                     .align_y(Alignment::Center),
                 command_bar,
@@ -1679,12 +1604,6 @@ impl XionApp {
             ..Default::default()
         });
 
-        let display_entries = if self.is_refreshing && self.entries.total == 0 {
-            self.stale_entries.as_ref().unwrap_or(&self.entries)
-        } else {
-            &self.entries
-        };
-
         let list_content = if let Some(message) = &self.error {
             column![
                 text("Impossible de charger le dossier")
@@ -1701,16 +1620,22 @@ impl XionApp {
                 .on_press(UiMessage::Refresh)
             ]
             .spacing(spacing.sm)
-        } else if display_entries.total == 0 && !self.is_loading {
+        } else if self.is_loading && self.entries.total == 0 {
+            column![
+                text("Chargement du dossier…")
+                    .size(typography.title)
+                    .font(typography.title_font),
+                progress_bar(0.0..=1.0, 0.4)
+            ]
+            .spacing(spacing.md)
+        } else if self.entries.total == 0 {
             column![
                 text("Dossier vide")
                     .size(typography.body)
                     .font(typography.body_font)
             ]
-        } else if display_entries.total == 0 {
-            column![]
         } else {
-            let window = self.virtual_window_for(display_entries.total);
+            let window = self.virtual_window();
             let mut list = column![];
 
             if window.padding_top > 0.0 {
@@ -1718,7 +1643,7 @@ impl XionApp {
             }
 
             for index in window.start..window.end {
-                let entry = display_entries.get(index);
+                let entry = self.entries.get(index);
                 list = list.push(match entry {
                     Some(entry) => {
                         let is_selected = self

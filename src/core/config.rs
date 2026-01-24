@@ -15,6 +15,10 @@ const MIN_PAGE_SIZE: usize = 24;
 const MAX_PAGE_SIZE: usize = 2048;
 const MIN_ROW_HEIGHT: f32 = 20.0;
 const MAX_ROW_HEIGHT: f32 = 72.0;
+const MIN_GRID_COLUMNS: usize = 1;
+const MAX_GRID_COLUMNS: usize = 12;
+const MIN_GRID_ROW_HEIGHT: f32 = 72.0;
+const MAX_GRID_ROW_HEIGHT: f32 = 240.0;
 const MAX_OVERSCAN: usize = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -271,8 +275,11 @@ impl Default for CacheConfig {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewConfig {
+    pub mode: ViewMode,
     pub thumbnail_size: u32,
     pub row_height: f32,
+    pub grid_columns: usize,
+    pub grid_row_height: f32,
     pub overscan: usize,
     pub columns: Vec<ViewColumn>,
 }
@@ -280,8 +287,11 @@ pub struct ViewConfig {
 impl Default for ViewConfig {
     fn default() -> Self {
         Self {
+            mode: ViewMode::List,
             thumbnail_size: 48,
             row_height: 32.0,
+            grid_columns: 4,
+            grid_row_height: 140.0,
             overscan: 6,
             columns: vec![
                 ViewColumn::Name,
@@ -299,6 +309,21 @@ pub enum ViewColumn {
     Type,
     Size,
     Modified,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewMode {
+    List,
+    Grid,
+}
+
+impl ViewMode {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::List => Self::Grid,
+            Self::Grid => Self::List,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -471,6 +496,13 @@ enum ViewColumnConfigFile {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum ViewModeConfigFile {
+    List,
+    Grid,
+}
+
+#[derive(Debug, Deserialize)]
 struct CacheConfigFile {
     thumbnail_entries: Option<usize>,
     thumbnail_ttl_seconds: Option<u64>,
@@ -480,8 +512,11 @@ struct CacheConfigFile {
 
 #[derive(Debug, Deserialize)]
 struct ViewConfigFile {
+    mode: Option<ViewModeConfigFile>,
     thumbnail_size: Option<u32>,
     row_height: Option<f32>,
+    grid_columns: Option<usize>,
+    grid_row_height: Option<f32>,
     overscan: Option<usize>,
     columns: Option<Vec<ViewColumnConfigFile>>,
 }
@@ -667,6 +702,12 @@ fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarning>) -> Ap
         }
     }
     if let Some(view) = file.view {
+        if let Some(mode) = view.mode {
+            config.view.mode = match mode {
+                ViewModeConfigFile::List => ViewMode::List,
+                ViewModeConfigFile::Grid => ViewMode::Grid,
+            };
+        }
         if let Some(thumbnail_size) = view.thumbnail_size {
             config.view.thumbnail_size =
                 validated_thumbnail_size(thumbnail_size, config.view.thumbnail_size, warnings);
@@ -674,6 +715,14 @@ fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarning>) -> Ap
         if let Some(row_height) = view.row_height {
             config.view.row_height =
                 validated_row_height(row_height, config.view.row_height, warnings);
+        }
+        if let Some(grid_columns) = view.grid_columns {
+            config.view.grid_columns =
+                validated_grid_columns(grid_columns, config.view.grid_columns, warnings);
+        }
+        if let Some(grid_row_height) = view.grid_row_height {
+            config.view.grid_row_height =
+                validated_grid_row_height(grid_row_height, config.view.grid_row_height, warnings);
         }
         if let Some(overscan) = view.overscan {
             config.view.overscan = validated_overscan(overscan, config.view.overscan, warnings);
@@ -787,6 +836,38 @@ fn validated_row_height(value: f32, fallback: f32, warnings: &mut Vec<ConfigWarn
             message: format!(
                 "row_height hors limites ({}-{}), fallback sur {fallback}",
                 MIN_ROW_HEIGHT, MAX_ROW_HEIGHT
+            ),
+        });
+        fallback
+    }
+}
+
+fn validated_grid_columns(
+    value: usize,
+    fallback: usize,
+    warnings: &mut Vec<ConfigWarning>,
+) -> usize {
+    if (MIN_GRID_COLUMNS..=MAX_GRID_COLUMNS).contains(&value) {
+        value
+    } else {
+        warnings.push(ConfigWarning {
+            message: format!(
+                "grid_columns hors limites ({}-{}), fallback sur {fallback}",
+                MIN_GRID_COLUMNS, MAX_GRID_COLUMNS
+            ),
+        });
+        fallback
+    }
+}
+
+fn validated_grid_row_height(value: f32, fallback: f32, warnings: &mut Vec<ConfigWarning>) -> f32 {
+    if (MIN_GRID_ROW_HEIGHT..=MAX_GRID_ROW_HEIGHT).contains(&value) {
+        value
+    } else {
+        warnings.push(ConfigWarning {
+            message: format!(
+                "grid_row_height hors limites ({}-{}), fallback sur {fallback}",
+                MIN_GRID_ROW_HEIGHT, MAX_GRID_ROW_HEIGHT
             ),
         });
         fallback

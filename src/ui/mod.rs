@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use crate::core::{AppConfig, SortKeyConfig};
 use crate::filesystem::{FsEntry, OperationReport, Page};
 use crate::services::Thumbnail;
-use iced::Point;
 
 pub mod app;
 
@@ -73,7 +72,6 @@ impl AppState {
 #[derive(Debug, Clone)]
 pub enum UiMessage {
     Noop,
-    CursorMoved(Point),
     NavigateTo(PathBuf),
     AddTab,
     SwitchTab(usize),

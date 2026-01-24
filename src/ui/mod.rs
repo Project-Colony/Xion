@@ -17,10 +17,52 @@ pub enum PaneKind {
     Preview,
 }
 
+pub const NETWORK_ROUTE: &str = "network://";
+
+#[derive(Debug, Clone)]
+pub enum RouteKind {
+    Local(PathBuf),
+    Network,
+}
+
 #[derive(Debug, Clone)]
 pub struct Route {
     pub pane: PaneKind,
-    pub path: PathBuf,
+    pub kind: RouteKind,
+}
+
+impl Route {
+    pub fn local_path(&self) -> Option<&PathBuf> {
+        match &self.kind {
+            RouteKind::Local(path) => Some(path),
+            RouteKind::Network => None,
+        }
+    }
+
+    pub fn key(&self) -> PathBuf {
+        match &self.kind {
+            RouteKind::Local(path) => path.clone(),
+            RouteKind::Network => PathBuf::from(NETWORK_ROUTE),
+        }
+    }
+
+    pub fn address_label(&self) -> String {
+        match &self.kind {
+            RouteKind::Local(path) => path.display().to_string(),
+            RouteKind::Network => NETWORK_ROUTE.to_string(),
+        }
+    }
+
+    pub fn display_label(&self) -> String {
+        match &self.kind {
+            RouteKind::Local(path) => path.display().to_string(),
+            RouteKind::Network => "Réseau".to_string(),
+        }
+    }
+
+    pub fn is_network(&self) -> bool {
+        matches!(self.kind, RouteKind::Network)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -60,7 +102,7 @@ impl AppState {
             config,
             route: Route {
                 pane: PaneKind::List,
-                path: start_path,
+                kind: RouteKind::Local(start_path),
             },
             navigation: NavigationState {
                 focused_pane: PaneKind::List,

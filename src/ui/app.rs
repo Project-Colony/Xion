@@ -26,12 +26,12 @@ use crate::filesystem::{
     LocalFileOperations, LocalFileSystem, OperationReport, Page, PageRequest, SortKey, SortOrder,
 };
 use crate::services::{
-    DirectoryLoader, FavoritesService, HistoryService, ThumbnailService, VirtualList,
-    VirtualWindow, generate_thumbnail,
+    DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService, ThumbnailService,
+    VirtualList, VirtualWindow, generate_thumbnail,
 };
 use crate::ui::{
-    AppState, ContextAction, KeyboardCommand, ModifiersState, ScrollViewport, SelectionKind,
-    UiMessage,
+    AppState, ContextAction, KeyboardCommand, ModifiersState, RouteKind, ScrollViewport,
+    SelectionKind, UiMessage, NETWORK_ROUTE,
 };
 use sysinfo::Disks;
 
@@ -285,6 +285,18 @@ fn root_path_for(path: &PathBuf) -> Option<PathBuf> {
     }
 }
 
+fn is_network_path(path: &Path) -> bool {
+    path.to_string_lossy().starts_with(NETWORK_ROUTE)
+}
+
+fn route_kind_from_path(path: &Path) -> RouteKind {
+    if is_network_path(path) {
+        RouteKind::Network
+    } else {
+        RouteKind::Local(path.to_path_buf())
+    }
+}
+
 #[derive(Clone, Copy)]
 struct DiskUsage {
     total: u64,
@@ -352,6 +364,7 @@ pub struct XionApp {
     state: AppState,
     history: HistoryService,
     directory_loader: Arc<Mutex<DirectoryLoader>>,
+    network_discovery: NetworkDiscoveryService,
     thumbnails: ThumbnailService,
     thumbnail_handles: HashMap<PathBuf, image::Handle>,
     thumbnails_in_flight: HashSet<PathBuf>,
@@ -419,8 +432,8 @@ impl XionApp {
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             tab.path = path.clone();
         }
-        self.state.route.path = path;
-        self.address_input = self.state.route.path.display().to_string();
+        self.state.route.kind = route_kind_from_path(&path);
+        self.address_input = self.state.route.address_label();
     }
 
     fn navigate_to(&mut self, path: PathBuf) -> Task<UiMessage> {
@@ -436,7 +449,9 @@ impl XionApp {
         }
         let mut target = PathBuf::from(trimmed);
         if !target.is_absolute() {
-            target = self.state.route.path.join(target);
+            if let Some(base_path) = self.state.route.local_path() {
+                target = base_path.join(target);
+            }
         }
         Some(target)
     }
@@ -446,7 +461,7 @@ impl XionApp {
         let mut suggestions = Vec::new();
         let mut seen = HashSet::new();
         for entry in self.history.entries().iter().rev() {
-            if entry == &self.state.route.path {
+            if entry == &self.state.route.key() {
                 continue;
             }
             let display = entry.display().to_string();
@@ -470,9 +485,11 @@ impl XionApp {
 
         let offset = page_index * self.entries.page_size;
         let page_request = PageRequest::new(offset, self.entries.page_size);
-        let path = self.state.route.path.clone();
+        let route_key = self.state.route.key();
+        let route_kind = self.state.route.kind.clone();
         let list_config = self.state.config.list.clone();
         let loader = Arc::clone(&self.directory_loader);
+        let network_discovery = self.network_discovery.clone();
 
         self.pending_pages.insert(page_index);
         self.is_loading = true;
@@ -480,14 +497,19 @@ impl XionApp {
         Task::perform(
             async move {
                 let options = list_options_from_config(list_config);
-                let filesystem = LocalFileSystem::new();
-                let result = match loader.lock() {
-                    Ok(mut loader) => loader
-                        .load_page(&filesystem, &path, options, page_request)
-                        .map_err(|error| error.to_string()),
-                    Err(_) => Err("Le chargeur de dossiers est indisponible.".to_string()),
+                let result = match route_kind {
+                    RouteKind::Local(path) => {
+                        let filesystem = LocalFileSystem::new();
+                        match loader.lock() {
+                            Ok(mut loader) => loader
+                                .load_page(&filesystem, &path, options, page_request)
+                                .map_err(|error| error.to_string()),
+                            Err(_) => Err("Le chargeur de dossiers est indisponible.".to_string()),
+                        }
+                    }
+                    RouteKind::Network => Ok(network_discovery.list_page(options, page_request)),
                 };
-                (path, page_index, result)
+                (route_key, page_index, result)
             },
             |(path, page_index, result)| UiMessage::PageLoaded {
                 path,
@@ -565,10 +587,10 @@ impl XionApp {
         let config = config_load.config;
         let state = AppState::new(config);
         let mut history = HistoryService::default();
-        history.record(state.route.path.clone());
+        history.record(state.route.key());
         let tabs = vec![TabState {
             title: "Ce PC".to_string(),
-            path: state.route.path.clone(),
+            path: state.route.key(),
         }];
 
         let directory_loader = Arc::new(Mutex::new(DirectoryLoader::new(
@@ -585,12 +607,13 @@ impl XionApp {
             Duration::from_secs(state.config.cache.thumbnail_ttl_seconds),
         );
         let entries = PagedEntries::new(0, page_size);
-        let address_input = state.route.path.display().to_string();
+        let address_input = state.route.address_label();
         let favorites = build_default_favorites();
         let mut app = Self {
             state,
             history,
             directory_loader,
+            network_discovery: NetworkDiscoveryService::new(),
             thumbnails,
             thumbnail_handles: HashMap::new(),
             thumbnails_in_flight: HashSet::new(),
@@ -781,7 +804,9 @@ impl XionApp {
                 self.history_menu_open = false;
                 self.history_menu_position = None;
                 if let Some(target) = self.address_target_from_input() {
-                    if target.is_dir() {
+                    if is_network_path(&target) {
+                        tasks.push(self.navigate_to(target));
+                    } else if target.is_dir() {
                         tasks.push(self.navigate_to(target));
                     } else if target.exists() {
                         self.last_action = Some(format!(
@@ -844,7 +869,7 @@ impl XionApp {
                 page_index,
                 result,
             } => {
-                if path != self.state.route.path {
+                if path != self.state.route.key() {
                     return Task::batch(tasks);
                 }
 
@@ -997,8 +1022,13 @@ impl XionApp {
             self.thumbnails_in_flight.clear();
         }
 
-        if self.state.route.path == self.state.config.start_path {
-            self.state.route.path = new_config.start_path.clone();
+        if self
+            .state
+            .route
+            .local_path()
+            .is_some_and(|path| path == &self.state.config.start_path)
+        {
+            self.state.route.kind = RouteKind::Local(new_config.start_path.clone());
         }
 
         if !load.warnings.is_empty() {
@@ -1120,7 +1150,7 @@ impl XionApp {
             KeyboardCommand::Back => {
                 if self.history.can_back() {
                     if let Some(path) = self.history.back() {
-                        self.state.route.path = path;
+                        self.update_active_tab_path(path);
                         return self.refresh_entries();
                     }
                 }
@@ -1129,7 +1159,7 @@ impl XionApp {
             KeyboardCommand::Forward => {
                 if self.history.can_forward() {
                     if let Some(path) = self.history.forward() {
-                        self.state.route.path = path;
+                        self.update_active_tab_path(path);
                         return self.refresh_entries();
                     }
                 }
@@ -1235,7 +1265,10 @@ impl XionApp {
         }
 
         let items = self.clipboard.items.clone();
-        let destination = self.state.route.path.clone();
+        let Some(destination) = self.state.route.local_path().cloned() else {
+            self.last_action = Some("Opération indisponible en vue réseau".to_string());
+            return Task::none();
+        };
         Task::perform(
             async move {
                 let operations = LocalFileOperations::new();
@@ -1259,7 +1292,11 @@ impl XionApp {
             .iter()
             .next()
             .cloned()
-            .unwrap_or_else(|| self.state.route.path.clone());
+            .or_else(|| self.state.route.local_path().cloned());
+        let Some(path) = path else {
+            self.last_action = Some("Renommage indisponible en vue réseau".to_string());
+            return Task::none();
+        };
         let name = path
             .file_name()
             .and_then(|name| name.to_str())
@@ -1381,6 +1418,13 @@ impl XionApp {
             .find(|entry| entry.path == path)
         {
             if entry.entry_type == FsEntryType::Directory {
+                if self.state.route.is_network() {
+                    self.last_action = Some(format!(
+                        "Connexion au partage : {}",
+                        entry.path.display()
+                    ));
+                    return Task::none();
+                }
                 return self.navigate_to(entry.path.clone());
             }
         }
@@ -2674,23 +2718,26 @@ impl XionApp {
             })
         });
 
-        let tree_root = root_path_for(&self.state.route.path)
-            .unwrap_or_else(|| self.state.route.path.clone());
-        let tree_options = ListOptions {
-            show_hidden: self.state.config.list.show_hidden,
-            sort_by: SortKey::Name,
-            sort_order: SortOrder::Asc,
-            directories_first: true,
-            filter: EntryFilter::OnlyDirectories,
-            name_query: None,
+        let tree_nodes = if let Some(current_path) = self.state.route.local_path() {
+            let tree_root = root_path_for(current_path).unwrap_or_else(|| current_path.clone());
+            let tree_options = ListOptions {
+                show_hidden: self.state.config.list.show_hidden,
+                sort_by: SortKey::Name,
+                sort_order: SortOrder::Asc,
+                directories_first: true,
+                filter: EntryFilter::OnlyDirectories,
+                name_query: None,
+            };
+            build_tree_nodes(
+                &LocalFileSystem::new(),
+                &tree_root,
+                current_path,
+                TREE_MAX_DEPTH,
+                &tree_options,
+            )
+        } else {
+            Vec::new()
         };
-        let tree_nodes = build_tree_nodes(
-            &LocalFileSystem::new(),
-            &tree_root,
-            &self.state.route.path,
-            TREE_MAX_DEPTH,
-            &tree_options,
-        );
 
         let mut tree_section =
             column![section_title("Arborescence".to_string())].spacing(spacing.xs);
@@ -2798,7 +2845,12 @@ impl XionApp {
         }
 
         let mut drive_section = column![section_title("Lecteurs".to_string())].spacing(spacing.xs);
-        if let Some(root_path) = root_path_for(&self.state.route.path) {
+        if let Some(root_path) = self
+            .state
+            .route
+            .local_path()
+            .and_then(root_path_for)
+        {
             if let Some(usage) = disk_usage_for(&root_path) {
                 let total_gb = format_gigabytes(usage.total);
                 let free_gb = format_gigabytes(usage.available);
@@ -2867,7 +2919,7 @@ impl XionApp {
         drive_section = drive_section.push(sidebar_button(
             ICON_NETWORK,
             "Réseau",
-            Some(PathBuf::from("network://")),
+            Some(PathBuf::from(NETWORK_ROUTE)),
         ));
 
         let sidebar = container(
@@ -3435,7 +3487,7 @@ fn key_input_from_event(key: keyboard::Key, modifiers: keyboard::Modifiers) -> O
 
 pub fn run() -> iced::Result {
     iced::application(
-        |state: &XionApp| format!("Xion — {}", state.state.route.path.display()),
+        |state: &XionApp| format!("Xion — {}", state.state.route.display_label()),
         XionApp::update,
         XionApp::view,
     )

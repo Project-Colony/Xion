@@ -142,6 +142,7 @@ pub enum UiMessage {
     SearchInputChanged(String),
     SearchInputSubmitted,
     Scroll(ScrollViewport),
+    TreeScroll(ScrollViewport),
     ChangeSort(SortKeyConfig),
     LoadingDelayElapsed(u64),
     PageLoaded {

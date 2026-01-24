@@ -112,6 +112,7 @@ const TREE_MAX_CHILDREN: usize = 120;
 const TREE_MIN_HEIGHT: f32 = 140.0;
 const TREE_MAX_HEIGHT: f32 = 420.0;
 const TREE_RESIZE_BAR_HEIGHT: f32 = 10.0;
+const TREE_ROW_HEIGHT: f32 = 28.0;
 const PREVIEW_MIN_WIDTH: f32 = 220.0;
 const PREVIEW_MAX_WIDTH: f32 = 420.0;
 const PREVIEW_RESIZE_BAR_WIDTH: f32 = 6.0;
@@ -406,6 +407,8 @@ pub struct XionApp {
     loading_generation: u64,
     scroll_offset: f32,
     viewport_height: f32,
+    tree_scroll_offset: f32,
+    tree_viewport_height: f32,
     error: Option<String>,
     modifiers: ModifiersState,
     context_menu_open: bool,
@@ -668,6 +671,8 @@ impl XionApp {
             loading_generation: 0,
             scroll_offset: 0.0,
             viewport_height: 480.0,
+            tree_scroll_offset: 0.0,
+            tree_viewport_height: 240.0,
             error: None,
             modifiers: ModifiersState::default(),
             context_menu_open: false,
@@ -718,6 +723,7 @@ impl XionApp {
                     if let Some((start_y, start_height)) = self.tree_resize_anchor {
                         let next_height = start_height + (position.y - start_y);
                         self.tree_height = next_height.clamp(TREE_MIN_HEIGHT, TREE_MAX_HEIGHT);
+                        self.tree_viewport_height = self.tree_height.max(1.0);
                     }
                 }
                 if self.preview_resizing {
@@ -890,6 +896,10 @@ impl XionApp {
                 self.scroll_offset = viewport.offset_y;
                 self.viewport_height = viewport.viewport_height.max(1.0);
                 tasks.push(self.ensure_visible_pages());
+            }
+            UiMessage::TreeScroll(viewport) => {
+                self.tree_scroll_offset = viewport.offset_y;
+                self.tree_viewport_height = viewport.viewport_height.max(1.0);
             }
             UiMessage::ChangeSort(sort_key) => {
                 if self.state.config.list.sort_key == sort_key {
@@ -1820,6 +1830,15 @@ impl XionApp {
             overscan: self.state.config.view.overscan,
         };
         virtual_list.visible_range(self.scroll_offset, total)
+    }
+
+    fn tree_virtual_window(&self, total: usize) -> VirtualWindow {
+        let virtual_list = VirtualList {
+            item_height: TREE_ROW_HEIGHT,
+            viewport_height: self.tree_viewport_height,
+            overscan: self.state.config.view.overscan,
+        };
+        virtual_list.visible_range(self.tree_scroll_offset, total)
     }
 
     fn request_visible_thumbnails(&mut self) -> Task<UiMessage> {
@@ -2951,8 +2970,7 @@ impl XionApp {
             Vec::new()
         };
 
-        let mut tree_section =
-            column![section_title("Arborescence".to_string())].spacing(spacing.xs);
+        let mut tree_section = column![].spacing(spacing.xs);
         if tree_nodes.is_empty() {
             tree_section = tree_section.push(
                 text("Arborescence indisponible")
@@ -2963,7 +2981,16 @@ impl XionApp {
                     }),
             );
         } else {
-            for node in tree_nodes {
+            let window = self.tree_virtual_window(tree_nodes.len());
+            if window.padding_top > 0.0 {
+                tree_section = tree_section
+                    .push(vertical_space().height(Length::Fixed(window.padding_top)));
+            }
+            for node in tree_nodes
+                .iter()
+                .skip(window.start)
+                .take(window.len())
+            {
                 let label = node.label.clone();
                 let path = node.path.clone();
                 let selected = node.selected;
@@ -3014,10 +3041,23 @@ impl XionApp {
 
                 tree_section = tree_section.push(button);
             }
+            if window.padding_bottom > 0.0 {
+                tree_section = tree_section
+                    .push(vertical_space().height(Length::Fixed(window.padding_bottom)));
+            }
         }
-        let tree_panel = scrollable(tree_section)
-            .height(Length::Fixed(self.tree_height))
-            .width(Length::Fill);
+        let tree_panel = column![
+            section_title("Arborescence".to_string()),
+            scrollable(tree_section)
+                .height(Length::Fixed(self.tree_height))
+                .width(Length::Fill)
+                .on_scroll(|viewport| UiMessage::TreeScroll(ScrollViewport {
+                    offset_y: viewport.absolute_offset().y,
+                    viewport_height: viewport.bounds().height,
+                    content_height: viewport.content_bounds().height,
+                }))
+        ]
+        .spacing(spacing.xs);
 
         let tree_resize_bar: Element<'_, UiMessage> = mouse_area(
             container(row![])

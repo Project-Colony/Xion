@@ -47,7 +47,7 @@ Créer un explorateur de fichiers en Rust inspiré de Windows File Explorer, Fil
 - [ ] Ajouter des diagrammes d'interaction (modules + flux de données).
 - [ ] Décrire le cycle de rendu Iced et le modèle d'état.
 - [x] Documenter les stratégies de cache (métadonnées + thumbnails).
-- [ ] Documenter l'indexation et la recherche avancée.
+- [x] Documenter l'indexation et la recherche avancée.
 
 ## Vérification documentaire (checklist)
 
@@ -65,3 +65,4 @@ Créer un explorateur de fichiers en Rust inspiré de Windows File Explorer, Fil
 
 - `docs/architecture.md` : architecture modulaire et responsabilités des domaines.
 - `docs/ui-routing.md` : structure de routing UI et messages de navigation.
+- `docs/search.md` : indexation locale et filtres de recherche avancée.

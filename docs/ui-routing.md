@@ -68,4 +68,4 @@ NavigationState {
 - [ ] Arbre latéral actif (lecteurs, quick access, favoris) connecté au routing.
 - [ ] Barre d'adresse éditable + historique.
 - [ ] Prévisualisation enrichie (métadonnées, image, aperçu texte).
-- [x] Drag & drop entre panneaux + multi-sélection.
+- [ ] Drag & drop entre panneaux + multi-sélection.

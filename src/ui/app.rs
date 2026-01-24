@@ -3323,7 +3323,7 @@ impl XionApp {
             preview_panel
         ]
         .height(Length::Fill)
-        .spacing(spacing.md);
+        .spacing(spacing.xs);
 
         let selection = &self.state.navigation.selection;
         let selection_status = if selection.selected.is_empty() {

@@ -1555,6 +1555,14 @@ impl XionApp {
         offset
     }
 
+    fn visible_entries(&self) -> &PagedEntries {
+        if self.is_refreshing && self.entries.total == 0 {
+            self.stale_entries.as_ref().unwrap_or(&self.entries)
+        } else {
+            &self.entries
+        }
+    }
+
     fn entries_in_selection_box(&self) -> Vec<PathBuf> {
         let rect = match self.selection_box_rect() {
             Some(rect) => rect,
@@ -1564,11 +1572,7 @@ impl XionApp {
             Some(bounds) => bounds,
             None => return Vec::new(),
         };
-        let display_entries = if self.is_refreshing && self.entries.total == 0 {
-            self.stale_entries.as_ref().unwrap_or(&self.entries)
-        } else {
-            &self.entries
-        };
+        let display_entries = self.visible_entries();
         let filtered_indices = self.filtered_indices_for(display_entries);
         let view_mode = self.state.config.view.mode;
         let total_entries = filtered_indices
@@ -1776,6 +1780,27 @@ impl XionApp {
         let anchor_index = anchor_path
             .as_ref()
             .and_then(|anchor_path| self.index_for_path(anchor_path));
+        let range_paths = if matches!(selection_kind, SelectionKind::Range) {
+            if let (Some(anchor), Some(target)) = (anchor_index, target_index) {
+                let visible_entries = self.visible_entries();
+                let (start, end) = if anchor <= target {
+                    (anchor, target)
+                } else {
+                    (target, anchor)
+                };
+                let mut paths = Vec::new();
+                for index in start..=end {
+                    if let Some(entry) = visible_entries.get(index) {
+                        paths.push(entry.path.clone());
+                    }
+                }
+                Some(paths)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         let selection = &mut self.state.navigation.selection;
         match selection_kind {
@@ -1796,20 +1821,10 @@ impl XionApp {
             }
             SelectionKind::Range => {
                 let anchor_path = anchor_path.unwrap_or_else(|| path.clone());
-                let target = target_index;
-                let anchor = anchor_index;
-
-                if let (Some(anchor), Some(target)) = (anchor, target) {
+                if let Some(paths) = range_paths {
                     selection.selected.clear();
-                    let (start, end) = if anchor <= target {
-                        (anchor, target)
-                    } else {
-                        (target, anchor)
-                    };
-                    for index in start..=end {
-                        if let Some(entry) = self.entries.get(index) {
-                            selection.selected.insert(entry.path.clone());
-                        }
+                    for path in paths {
+                        selection.selected.insert(path);
                     }
                     selection.focused = Some(path.clone());
                     selection.anchor = Some(anchor_path);
@@ -2149,7 +2164,7 @@ impl XionApp {
     }
 
     fn index_for_path(&self, path: &PathBuf) -> Option<usize> {
-        self.entries.items.iter().position(|entry| {
+        self.visible_entries().items.iter().position(|entry| {
             entry
                 .as_ref()
                 .map(|entry| &entry.path == path)
@@ -3066,11 +3081,7 @@ impl XionApp {
             ..Default::default()
         });
 
-        let display_entries = if self.is_refreshing && self.entries.total == 0 {
-            self.stale_entries.as_ref().unwrap_or(&self.entries)
-        } else {
-            &self.entries
-        };
+        let display_entries = self.visible_entries();
 
         let column_specs = column_specs(&self.state.config.view.columns);
         let filtered_indices = self.filtered_indices_for(display_entries);

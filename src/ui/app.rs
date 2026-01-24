@@ -31,9 +31,9 @@ use crate::filesystem::{
     Page, PageRequest, SortKey, SortOrder, WatchEvent,
 };
 use crate::services::{
-    DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService,
-    PreviewImageService, ThumbnailService, VirtualList, VirtualWindow, generate_preview,
-    generate_thumbnail,
+    DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService, PreviewImageService,
+    SearchIndex, SearchIndexOptions, SearchQuery, SearchService, ThumbnailService, VirtualList,
+    VirtualWindow, generate_preview, generate_thumbnail,
 };
 use crate::ui::{
     AppState, ContextAction, KeyboardCommand, ModifiersState, NETWORK_ROUTE, RouteKind,
@@ -458,6 +458,10 @@ pub struct XionApp {
     last_action: Option<String>,
     address_input: String,
     search_input: String,
+    search_index: Option<SearchIndex>,
+    search_index_path: Option<PathBuf>,
+    search_indexing: bool,
+    search_index_matches: Option<usize>,
     config_manager: ConfigManager,
     favorites: FavoritesService,
     tabs: Vec<TabState>,
@@ -496,10 +500,15 @@ impl XionApp {
         self.show_loading_indicator = false;
         self.loading_generation = self.loading_generation.wrapping_add(1);
         self.clear_selection();
+        self.search_index = None;
+        self.search_index_matches = None;
+        self.search_index_path = None;
+        self.search_indexing = false;
 
         let mut tasks = Vec::new();
         tasks.push(self.request_page(0));
         tasks.push(self.schedule_loading_indicator(self.loading_generation));
+        tasks.push(self.start_search_indexing());
         Task::batch(tasks)
     }
 
@@ -521,6 +530,63 @@ impl XionApp {
                 ));
             }
         }
+    }
+
+    fn start_search_indexing(&mut self) -> Task<UiMessage> {
+        let Some(path) = self.state.route.local_path().cloned() else {
+            self.search_index = None;
+            self.search_index_matches = None;
+            self.search_index_path = None;
+            self.search_indexing = false;
+            return Task::none();
+        };
+
+        let filesystem_config = self.state.config.filesystem.clone();
+        let list_config = self.state.config.list.clone();
+        let list_options = list_options_from_config(list_config);
+        let options = SearchIndexOptions {
+            include_hidden: list_options.show_hidden,
+            recursive: false,
+        };
+
+        self.search_index = None;
+        self.search_index_matches = None;
+        self.search_index_path = Some(path.clone());
+        self.search_indexing = true;
+
+        let index_path = path.clone();
+        let message_path = path.clone();
+        Task::perform(
+            async move {
+                let filesystem = LocalFileSystem::from_config(filesystem_config);
+                SearchService::default()
+                    .build_index_with_options(&filesystem, &index_path, options, list_options)
+                    .map_err(|error| error.to_string())
+            },
+            move |result| UiMessage::SearchIndexBuilt {
+                path: message_path.clone(),
+                result,
+            },
+        )
+    }
+
+    fn update_search_index_matches(&mut self) {
+        let Some(query) = self.normalized_search_query() else {
+            self.search_index_matches = None;
+            return;
+        };
+
+        let Some(index) = self.search_index.as_ref() else {
+            self.search_index_matches = None;
+            return;
+        };
+
+        let search_query = SearchQuery {
+            text: Some(query),
+            ..SearchQuery::default()
+        };
+        let count = SearchService::default().count_index_matches(index, &search_query);
+        self.search_index_matches = Some(count);
     }
 
     fn poll_watcher(&mut self) -> Option<Vec<WatchEvent>> {
@@ -765,6 +831,10 @@ impl XionApp {
             last_action: None,
             address_input,
             search_input: String::new(),
+            search_index: None,
+            search_index_path: None,
+            search_indexing: false,
+            search_index_matches: None,
             config_manager,
             favorites,
             tabs,
@@ -969,6 +1039,7 @@ impl XionApp {
                 self.search_input = value;
                 self.scroll_offset = 0.0;
                 self.clear_selection();
+                self.update_search_index_matches();
                 if self.normalized_search_query().is_some() {
                     tasks.push(self.request_all_pages());
                 } else {
@@ -976,6 +1047,7 @@ impl XionApp {
                 }
             }
             UiMessage::SearchInputSubmitted => {
+                self.update_search_index_matches();
                 if self.normalized_search_query().is_some() {
                     tasks.push(self.request_all_pages());
                 }
@@ -1106,6 +1178,28 @@ impl XionApp {
                         }
                         None => {
                             self.preview_misses.insert(path);
+                        }
+                    }
+                }
+            }
+            UiMessage::SearchIndexBuilt { path, result } => {
+                if self.search_index_path.as_ref() == Some(&path) {
+                    match result {
+                        Ok(index) => {
+                            self.search_index = Some(index);
+                            self.search_indexing = false;
+                            self.update_search_index_matches();
+                            self.last_action = Some("Indexation terminée".to_string());
+                        }
+                        Err(error) => {
+                            self.search_index = None;
+                            self.search_indexing = false;
+                            self.search_index_matches = None;
+                            self.last_action = Some(format!(
+                                "Indexation impossible pour {} ({})",
+                                path.display(),
+                                error
+                            ));
                         }
                     }
                 }
@@ -3578,6 +3672,34 @@ impl XionApp {
                 .spacing(spacing.xs)
                 .align_y(Alignment::Center),
             );
+        }
+        if self.search_indexing {
+            status_left = status_left.push(
+                row![
+                    text(ICON_LOADING)
+                        .size(typography.caption)
+                        .font(typography.caption_font),
+                    text("Indexation…")
+                        .size(typography.caption)
+                        .font(typography.caption_font)
+                ]
+                .spacing(spacing.xs)
+                .align_y(Alignment::Center),
+            );
+        } else if let Some(count) = self.search_index_matches {
+            status_left = status_left.push(
+                text(format!("Résultats indexés : {count}"))
+                    .size(typography.caption)
+                    .font(typography.caption_font),
+            );
+        } else if let Some(index) = self.search_index.as_ref() {
+            if !index.is_empty() {
+                status_left = status_left.push(
+                    text(format!("Index prêt : {} éléments", index.len()))
+                        .size(typography.caption)
+                        .font(typography.caption_font),
+                );
+            }
         }
 
         let mut status_right = row![].spacing(spacing.md).align_y(Alignment::Center);

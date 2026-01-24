@@ -91,6 +91,8 @@ pub enum UiMessage {
     ModifiersChanged(ModifiersState),
     AddressInputChanged(String),
     AddressInputSubmitted,
+    SearchInputChanged(String),
+    SearchInputSubmitted,
     Scroll(ScrollViewport),
     ChangeSort(SortKeyConfig),
     LoadingDelayElapsed(u64),

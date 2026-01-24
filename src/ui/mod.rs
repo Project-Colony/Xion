@@ -144,6 +144,7 @@ pub enum UiMessage {
     Scroll(ScrollViewport),
     TreeScroll(ScrollViewport),
     ChangeSort(SortKeyConfig),
+    ToggleViewMode,
     LoadingDelayElapsed(u64),
     PageLoaded {
         path: PathBuf,

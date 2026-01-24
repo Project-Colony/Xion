@@ -94,7 +94,10 @@ pub fn generate_preview(path: &Path, max_size: u32) -> Option<Thumbnail> {
     let preview = image.thumbnail(max_size, max_size);
     let mut preview_bytes = Vec::new();
     preview
-        .write_to(&mut Cursor::new(&mut preview_bytes), image::ImageFormat::Png)
+        .write_to(
+            &mut Cursor::new(&mut preview_bytes),
+            image::ImageFormat::Png,
+        )
         .ok()?;
     Some(Thumbnail::new(preview_bytes, Some("image/png".to_string())))
 }

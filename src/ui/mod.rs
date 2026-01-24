@@ -89,6 +89,7 @@ pub enum UiMessage {
     ActivateEntry(PathBuf),
     KeyboardCommand(KeyboardCommand),
     ToggleContextMenu(bool),
+    OpenContextMenuForEntry(PathBuf),
     ContextAction(ContextAction),
     ModifiersChanged(ModifiersState),
     AddressInputChanged(String),

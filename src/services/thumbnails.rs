@@ -83,3 +83,28 @@ pub fn generate_thumbnail(path: &Path, max_size: u32) -> Option<Thumbnail> {
         .ok()?;
     Some(Thumbnail::new(bytes, Some("image/png".to_string())))
 }
+
+pub fn generate_preview(path: &Path, max_size: u32) -> Option<Thumbnail> {
+    let bytes = std::fs::read(path).ok()?;
+    if is_gif_path(path) || is_gif_header(&bytes) {
+        return Some(Thumbnail::new(bytes, Some("image/gif".to_string())));
+    }
+
+    let image = image::load_from_memory(&bytes).ok()?;
+    let preview = image.thumbnail(max_size, max_size);
+    let mut preview_bytes = Vec::new();
+    preview
+        .write_to(&mut Cursor::new(&mut preview_bytes), image::ImageFormat::Png)
+        .ok()?;
+    Some(Thumbnail::new(preview_bytes, Some("image/png".to_string())))
+}
+
+fn is_gif_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("gif"))
+}
+
+fn is_gif_header(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")
+}

@@ -164,6 +164,7 @@ pub enum UiMessage {
     RenameInputChanged(String),
     RenameSubmit,
     RenameCancel,
+    MouseReleased,
     TreeResizeStart,
     TreeResizeEnd,
     PreviewResizeStart,

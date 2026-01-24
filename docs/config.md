@@ -36,13 +36,9 @@ directory_entries = 256
 directory_ttl_seconds = 45
 
 [view]
-mode = "list"              # list | grid
 thumbnail_size = 48
 row_height = 32.0
-grid_columns = 4
-grid_row_height = 140.0
 overscan = 6
-columns = ["name", "type", "size", "modified"]
 
 [paging]
 page_size = 120

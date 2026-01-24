@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
 use directories::UserDirs;
@@ -103,6 +103,7 @@ const ICON_DELETE: &str = "";
 const ICON_CLOSE: &str = "";
 
 const LOADING_INDICATOR_DELAY: Duration = Duration::from_millis(75);
+const DOUBLE_CLICK_THRESHOLD: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Copy)]
 struct UiColors {
@@ -371,6 +372,8 @@ pub struct XionApp {
     active_tab: usize,
     clipboard: ClipboardState,
     rename_dialog: Option<RenameDialog>,
+    last_click_time: Option<Instant>,
+    last_clicked_path: Option<PathBuf>,
 }
 
 impl XionApp {
@@ -567,6 +570,8 @@ impl XionApp {
             active_tab: 0,
             clipboard: ClipboardState::default(),
             rename_dialog: None,
+            last_click_time: None,
+            last_clicked_path: None,
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -619,7 +624,30 @@ impl XionApp {
                 self.state.navigation.focused_pane = pane;
             }
             UiMessage::SelectEntry { path, kind } => {
-                self.apply_selection(path, kind);
+                let now = Instant::now();
+                if kind != SelectionKind::Single {
+                    self.last_click_time = None;
+                    self.last_clicked_path = None;
+                    self.apply_selection(path, kind);
+                } else {
+                    let is_double_click = self
+                        .last_clicked_path
+                        .as_ref()
+                        .is_some_and(|last_path| last_path == &path)
+                        && self
+                            .last_click_time
+                            .is_some_and(|last_click| now.duration_since(last_click)
+                                <= DOUBLE_CLICK_THRESHOLD);
+                    self.apply_selection(path.clone(), kind);
+                    if is_double_click {
+                        self.last_click_time = None;
+                        self.last_clicked_path = None;
+                        tasks.push(self.activate_entry(path));
+                    } else {
+                        self.last_click_time = Some(now);
+                        self.last_clicked_path = Some(path);
+                    }
+                }
             }
             UiMessage::ActivateEntry(path) => {
                 tasks.push(self.activate_entry(path));
@@ -2005,26 +2033,12 @@ impl XionApp {
                                             .font(typography.body_font)
                                             .into(),
                                     };
-                                    let open_button: Element<'_, UiMessage> =
-                                        if entry.entry_type == FsEntryType::Directory {
-                                            button(
-                                                text("Ouvrir")
-                                                    .size(typography.caption)
-                                                    .font(typography.caption_font),
-                                            )
-                                            .padding([spacing.xs, spacing.sm])
-                                            .on_press(UiMessage::ActivateEntry(entry.path.clone()))
-                                            .into()
-                                        } else {
-                                            container(row![]).into()
-                                        };
                                     let name_row = row![
                                         leading,
                                         text(&entry.name)
                                             .size(typography.body)
                                             .font(typography.body_font),
-                                        horizontal_space(),
-                                        open_button
+                                        horizontal_space()
                                     ]
                                     .spacing(spacing.sm)
                                     .align_y(Alignment::Center);
@@ -2175,26 +2189,12 @@ impl XionApp {
                                             .font(typography.body_font)
                                             .into(),
                                     };
-                                    let open_button: Element<'_, UiMessage> =
-                                        if entry.entry_type == FsEntryType::Directory {
-                                            button(
-                                                text("Ouvrir")
-                                                    .size(typography.caption)
-                                                    .font(typography.caption_font),
-                                            )
-                                            .padding([spacing.xs, spacing.sm])
-                                            .on_press(UiMessage::ActivateEntry(entry.path.clone()))
-                                            .into()
-                                        } else {
-                                            container(row![]).into()
-                                        };
                                     let name_row = row![
                                         leading,
                                         text(&entry.name)
                                             .size(typography.body)
                                             .font(typography.body_font),
-                                        horizontal_space(),
-                                        open_button
+                                        horizontal_space()
                                     ]
                                     .spacing(spacing.sm)
                                     .align_y(Alignment::Center);

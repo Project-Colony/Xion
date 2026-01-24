@@ -10,7 +10,7 @@ use iced::font::{Family, Style, Weight};
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{
     button, column, container, horizontal_space, image, mouse_area, opaque, progress_bar, row,
-    scrollable, stack, text, text_input, vertical_space,
+    scrollable, slider, stack, text, text_input, vertical_space,
 };
 use iced::{
     Alignment, Background, Border, Color, Element, Font, Length, Point, Subscription, Task, Theme,
@@ -22,8 +22,8 @@ use crate::core::{
     ViewColumn,
 };
 use crate::filesystem::{
-    FileOperationKind, FsEntry, FsEntryType, ListOptions, LocalFileOperations, LocalFileSystem,
-    OperationReport, Page, PageRequest,
+    EntryFilter, FileOperationKind, FileSystem, FsEntry, FsEntryType, ListOptions,
+    LocalFileOperations, LocalFileSystem, OperationReport, Page, PageRequest, SortKey, SortOrder,
 };
 use crate::services::{
     DirectoryLoader, FavoritesService, HistoryService, ThumbnailService, VirtualList,
@@ -104,6 +104,10 @@ const ICON_CLOSE: &str = "";
 
 const LOADING_INDICATOR_DELAY: Duration = Duration::from_millis(75);
 const DOUBLE_CLICK_THRESHOLD: Duration = Duration::from_millis(500);
+const TREE_MAX_DEPTH: usize = 4;
+const TREE_MAX_CHILDREN: usize = 120;
+const TREE_MIN_HEIGHT: f32 = 140.0;
+const TREE_MAX_HEIGHT: f32 = 420.0;
 
 #[derive(Debug, Clone, Copy)]
 struct UiColors {
@@ -378,6 +382,7 @@ pub struct XionApp {
     rename_dialog: Option<RenameDialog>,
     last_click_time: Option<Instant>,
     last_clicked_path: Option<PathBuf>,
+    tree_height: f32,
 }
 
 impl XionApp {
@@ -614,6 +619,7 @@ impl XionApp {
             rename_dialog: None,
             last_click_time: None,
             last_clicked_path: None,
+            tree_height: 240.0,
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -891,6 +897,9 @@ impl XionApp {
             }
             UiMessage::RenameCancel => {
                 self.rename_dialog = None;
+            }
+            UiMessage::TreeHeightChanged(value) => {
+                self.tree_height = value.clamp(TREE_MIN_HEIGHT, TREE_MAX_HEIGHT);
             }
             UiMessage::FileOperationFinished(report) => {
                 self.handle_operation_report(&report);
@@ -2655,7 +2664,7 @@ impl XionApp {
             container(row![])
         };
 
-        let mut list_column = column![rename_prompt, list_header, list_content].spacing(spacing.xl);
+        let list_column = column![rename_prompt, list_header, list_content].spacing(spacing.xl);
 
         let list = scrollable(container(list_column).padding(spacing.md)).on_scroll(|viewport| {
             UiMessage::Scroll(ScrollViewport {
@@ -2664,6 +2673,108 @@ impl XionApp {
                 content_height: viewport.content_bounds().height,
             })
         });
+
+        let tree_root = root_path_for(&self.state.route.path)
+            .unwrap_or_else(|| self.state.route.path.clone());
+        let tree_options = ListOptions {
+            show_hidden: self.state.config.list.show_hidden,
+            sort_by: SortKey::Name,
+            sort_order: SortOrder::Asc,
+            directories_first: true,
+            filter: EntryFilter::OnlyDirectories,
+            name_query: None,
+        };
+        let tree_nodes = build_tree_nodes(
+            &LocalFileSystem::new(),
+            &tree_root,
+            &self.state.route.path,
+            TREE_MAX_DEPTH,
+            &tree_options,
+        );
+
+        let mut tree_section =
+            column![section_title("Arborescence".to_string())].spacing(spacing.xs);
+        if tree_nodes.is_empty() {
+            tree_section = tree_section.push(
+                text("Arborescence indisponible")
+                    .size(typography.caption)
+                    .font(typography.caption_font)
+                    .style(move |_| iced::widget::text::Style {
+                        color: Some(colors.text_muted),
+                    }),
+            );
+        } else {
+            for node in tree_nodes {
+                let label = node.label.clone();
+                let path = node.path.clone();
+                let selected = node.selected;
+                let depth = node.depth;
+                let expanded = node.expanded;
+                let icon = if depth == 0 { ICON_PC } else { ICON_FOLDER };
+                let chevron = if expanded { "▾" } else { "▸" };
+                let indent = horizontal_space()
+                    .width(Length::Fixed(depth as f32 * (spacing.sm + 2.0)));
+                let content: Element<'_, UiMessage> = row![
+                    indent,
+                    text(chevron)
+                        .size(typography.caption)
+                        .font(typography.caption_font),
+                    text(icon).size(typography.body).font(typography.body_font),
+                    text(label).size(typography.body).font(typography.body_font)
+                ]
+                .spacing(spacing.xs)
+                .align_y(Alignment::Center)
+                .into();
+
+                let button = button(content)
+                    .padding([spacing.xs, spacing.sm])
+                    .width(Length::Fill)
+                    .style(move |_theme: &Theme, status: ButtonStatus| {
+                        let mut style = iced::widget::button::Style {
+                            text_color: colors.text_primary,
+                            ..Default::default()
+                        };
+
+                        if selected {
+                            style.background = Some(Background::Color(colors.selection));
+                            style.border =
+                                border::rounded(6.0).color(colors.selection_border).width(1.0);
+                        }
+
+                        if matches!(status, ButtonStatus::Hovered) {
+                            style.background = Some(Background::Color(colors.hover));
+                        }
+
+                        if matches!(status, ButtonStatus::Pressed) {
+                            style.background = Some(Background::Color(colors.pressed));
+                        }
+
+                        style
+                    })
+                    .on_press(UiMessage::NavigateTo(path));
+
+                tree_section = tree_section.push(button);
+            }
+        }
+        let tree_panel = scrollable(tree_section)
+            .height(Length::Fixed(self.tree_height))
+            .width(Length::Fill);
+
+        let tree_resize_bar: Element<'_, UiMessage> = container(
+            slider(
+                TREE_MIN_HEIGHT..=TREE_MAX_HEIGHT,
+                self.tree_height,
+                UiMessage::TreeHeightChanged,
+            )
+            .step(10.0),
+        )
+        .padding([spacing.xs, spacing.sm])
+        .style(move |_| iced::widget::container::Style {
+            background: Some(Background::Color(colors.chrome_background)),
+            border: border::rounded(6.0).color(colors.border).width(1.0),
+            ..Default::default()
+        })
+        .into();
 
         let mut quick_access =
             column![section_title("Accès rapide".to_string())].spacing(spacing.xs);
@@ -2766,23 +2877,8 @@ impl XionApp {
 
         let sidebar = container(
             column![
-                container(
-                    row![
-                        text(ICON_PC)
-                            .size(typography.body)
-                            .font(typography.body_font),
-                        text("Ce PC")
-                            .size(typography.body)
-                            .font(typography.body_font)
-                    ]
-                    .spacing(spacing.sm)
-                )
-                .padding([spacing.xs, spacing.sm])
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.selection)),
-                    border: border::rounded(6.0).color(colors.accent).width(1.0),
-                    ..Default::default()
-                }),
+                tree_panel,
+                tree_resize_bar,
                 quick_access,
                 favorites_section,
                 drive_section,
@@ -3177,6 +3273,92 @@ fn list_options_from_config(list_config: crate::core::ListConfig) -> ListOptions
             EntryFilterConfig::OnlyFiles => crate::filesystem::EntryFilter::OnlyFiles,
         },
         name_query: None,
+    }
+}
+
+#[derive(Debug)]
+struct TreeNode {
+    path: PathBuf,
+    label: String,
+    depth: usize,
+    expanded: bool,
+    selected: bool,
+}
+
+fn tree_label_for_path(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .filter(|label| !label.is_empty())
+        .map(|label| label.to_string())
+        .unwrap_or_else(|| path.display().to_string())
+}
+
+fn build_tree_nodes(
+    filesystem: &LocalFileSystem,
+    root: &Path,
+    current_path: &Path,
+    max_depth: usize,
+    options: &ListOptions,
+) -> Vec<TreeNode> {
+    let mut nodes = Vec::new();
+    if !root.exists() {
+        return nodes;
+    }
+    collect_tree_nodes(
+        filesystem,
+        root,
+        current_path,
+        0,
+        max_depth,
+        options,
+        &mut nodes,
+    );
+    nodes
+}
+
+fn collect_tree_nodes(
+    filesystem: &LocalFileSystem,
+    path: &Path,
+    current_path: &Path,
+    depth: usize,
+    max_depth: usize,
+    options: &ListOptions,
+    nodes: &mut Vec<TreeNode>,
+) {
+    let expanded = current_path.starts_with(path) && depth < max_depth;
+    nodes.push(TreeNode {
+        path: path.to_path_buf(),
+        label: tree_label_for_path(path),
+        depth,
+        expanded,
+        selected: current_path == path,
+    });
+
+    if !expanded {
+        return;
+    }
+
+    let entries: Vec<FsEntry> = match filesystem.list_dir(path, options.clone()) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+
+    let mut directories: Vec<FsEntry> = entries
+        .into_iter()
+        .filter(|entry| matches!(entry.entry_type, FsEntryType::Directory))
+        .collect();
+    directories.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    for entry in directories.into_iter().take(TREE_MAX_CHILDREN) {
+        collect_tree_nodes(
+            filesystem,
+            &entry.path,
+            current_path,
+            depth + 1,
+            max_depth,
+            options,
+            nodes,
+        );
     }
 }
 

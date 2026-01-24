@@ -17,8 +17,8 @@ use iced::widget::{
     scrollable, stack, text, text_input, vertical_space,
 };
 use iced::{
-    Alignment, Background, Border, Color, Element, Font, Length, Point, Subscription, Task, Theme,
-    border, keyboard, mouse, time,
+    Alignment, Background, Border, Color, Element, Font, Length, Point, Rectangle, Subscription,
+    Task, Theme, border, keyboard, mouse, time,
 };
 
 use crate::core::{
@@ -479,6 +479,9 @@ pub struct XionApp {
     drag_state: Option<DragState>,
     drag_candidate: Option<PathBuf>,
     drag_start_position: Option<Point>,
+    selection_box_start: Option<Point>,
+    selection_box_current: Option<Point>,
+    list_viewport_bounds: Option<Rectangle>,
     mouse_pressed: bool,
     ignore_next_navigation: Option<PathBuf>,
     tree_height: f32,
@@ -519,6 +522,8 @@ impl XionApp {
         self.drag_candidate = None;
         self.drag_start_position = None;
         self.mouse_pressed = false;
+        self.selection_box_start = None;
+        self.selection_box_current = None;
 
         let mut tasks = Vec::new();
         tasks.push(self.request_page(0));
@@ -861,6 +866,9 @@ impl XionApp {
             drag_state: None,
             drag_candidate: None,
             drag_start_position: None,
+            selection_box_start: None,
+            selection_box_current: None,
+            list_viewport_bounds: None,
             mouse_pressed: false,
             ignore_next_navigation: None,
             tree_height: 240.0,
@@ -910,6 +918,11 @@ impl XionApp {
                         let next_width =
                             (start_width - delta).clamp(PREVIEW_MIN_WIDTH, PREVIEW_MAX_WIDTH);
                         self.preview_width = next_width;
+                    }
+                }
+                if self.selection_box_start.is_some() && self.drag_candidate.is_none() {
+                    if let Some(content_point) = self.list_content_point(position, true) {
+                        self.selection_box_current = Some(content_point);
                     }
                 }
                 if self.mouse_pressed && self.drag_state.is_none() {
@@ -1012,6 +1025,22 @@ impl XionApp {
                 self.mouse_pressed = true;
                 self.drag_candidate = Some(path);
                 self.drag_start_position = self.cursor_position;
+                self.selection_box_start = None;
+                self.selection_box_current = None;
+            }
+            UiMessage::ListBackgroundPressed => {
+                if self.drag_state.is_some() || self.drag_candidate.is_some() {
+                    return Task::none();
+                }
+                self.mouse_pressed = true;
+                self.drag_candidate = None;
+                self.drag_start_position = None;
+                if let Some(position) = self.cursor_position {
+                    if let Some(content_point) = self.list_content_point(position, false) {
+                        self.selection_box_start = Some(content_point);
+                        self.selection_box_current = Some(content_point);
+                    }
+                }
             }
             UiMessage::SelectEntry { path, kind } => {
                 self.history_menu_open = false;
@@ -1130,6 +1159,7 @@ impl XionApp {
             UiMessage::Scroll(viewport) => {
                 self.scroll_offset = viewport.offset_y;
                 self.viewport_height = viewport.viewport_height.max(1.0);
+                self.list_viewport_bounds = Some(viewport.bounds);
                 tasks.push(self.ensure_visible_pages());
             }
             UiMessage::TreeScroll(viewport) => {
@@ -1346,6 +1376,13 @@ impl XionApp {
                 self.mouse_pressed = false;
                 self.drag_candidate = None;
                 self.drag_start_position = None;
+                if self.selection_box_start.is_some() {
+                    let kind = self.selection_kind_from_modifiers();
+                    let selected = self.entries_in_selection_box();
+                    self.apply_box_selection(selected, kind);
+                    self.selection_box_start = None;
+                    self.selection_box_current = None;
+                }
                 if self.drag_state.is_some() {
                     tasks.push(Task::perform(async {}, |_| UiMessage::FinalizeDrag));
                 }
@@ -1437,6 +1474,223 @@ impl XionApp {
             SelectionKind::Toggle
         } else {
             SelectionKind::Single
+        }
+    }
+
+    fn list_content_point(&self, position: Point, clamp: bool) -> Option<Point> {
+        let bounds = self.list_viewport_bounds?;
+        let mut local_x = position.x - bounds.x;
+        let mut local_y = position.y - bounds.y;
+
+        if clamp {
+            local_x = local_x.clamp(0.0, bounds.width.max(0.0));
+            local_y = local_y.clamp(0.0, bounds.height.max(0.0));
+        } else if local_x < 0.0 || local_y < 0.0 || local_x > bounds.width || local_y > bounds.height
+        {
+            return None;
+        }
+
+        Some(Point::new(local_x, local_y + self.scroll_offset))
+    }
+
+    fn selection_box_rect(&self) -> Option<Rectangle> {
+        let start = self.selection_box_start?;
+        let current = self.selection_box_current?;
+        let min_x = start.x.min(current.x);
+        let min_y = start.y.min(current.y);
+        let max_x = start.x.max(current.x);
+        let max_y = start.y.max(current.y);
+        Some(Rectangle {
+            x: min_x,
+            y: min_y,
+            width: max_x - min_x,
+            height: max_y - min_y,
+        })
+    }
+
+    fn filtered_indices_for(&self, entries: &PagedEntries) -> Option<Vec<usize>> {
+        let search_query = self.normalized_search_query()?;
+        let indices = entries
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                let entry = entry.as_ref()?;
+                if Self::matches_search(entry, &search_query) {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        Some(indices)
+    }
+
+    fn list_header_visible(
+        &self,
+        view_mode: ViewMode,
+        display_entries: &PagedEntries,
+        filtered_indices: Option<&Vec<usize>>,
+    ) -> bool {
+        if self.error.is_some() || !matches!(view_mode, ViewMode::List) {
+            return false;
+        }
+        if let Some(indices) = filtered_indices {
+            !indices.is_empty()
+        } else {
+            display_entries.total > 0 || self.is_loading
+        }
+    }
+
+    fn list_content_offset(&self, list_header_visible: bool) -> f32 {
+        let tokens = UiTokens::default();
+        let mut offset = tokens.spacing.md;
+        if self.rename_dialog.is_some() {
+            offset += self.state.config.view.row_height + tokens.spacing.xl;
+        }
+        if list_header_visible {
+            offset += tokens.typography.caption as f32 + tokens.spacing.xs * 2.0;
+            offset += tokens.spacing.xl;
+        }
+        offset
+    }
+
+    fn entries_in_selection_box(&self) -> Vec<PathBuf> {
+        let rect = match self.selection_box_rect() {
+            Some(rect) => rect,
+            None => return Vec::new(),
+        };
+        let bounds = match self.list_viewport_bounds {
+            Some(bounds) => bounds,
+            None => return Vec::new(),
+        };
+        let display_entries = if self.is_refreshing && self.entries.total == 0 {
+            self.stale_entries.as_ref().unwrap_or(&self.entries)
+        } else {
+            &self.entries
+        };
+        let filtered_indices = self.filtered_indices_for(display_entries);
+        let view_mode = self.state.config.view.mode;
+        let total_entries = filtered_indices
+            .as_ref()
+            .map_or(display_entries.total, |indices| indices.len());
+        if total_entries == 0 {
+            return Vec::new();
+        }
+        let list_header_visible =
+            self.list_header_visible(view_mode, display_entries, filtered_indices.as_ref());
+        let list_content_offset = self.list_content_offset(list_header_visible);
+        let tokens = UiTokens::default();
+        let list_padding = tokens.spacing.md;
+        let content_width = (bounds.width - list_padding * 2.0).max(1.0);
+        let entry_index_for = |display_index: usize| -> Option<usize> {
+            if let Some(indices) = &filtered_indices {
+                indices.get(display_index).copied()
+            } else {
+                Some(display_index)
+            }
+        };
+        let mut selected = Vec::new();
+
+        match view_mode {
+            ViewMode::List => {
+                let window = self.list_virtual_window_for(total_entries);
+                let row_height = self.state.config.view.row_height;
+                for display_index in window.start..window.end {
+                    let Some(actual_index) = entry_index_for(display_index) else {
+                        continue;
+                    };
+                    let Some(entry) = display_entries.get(actual_index) else {
+                        continue;
+                    };
+                    let local_index = display_index.saturating_sub(window.start) as f32;
+                    let item_y = list_content_offset + window.padding_top + local_index * row_height;
+                    let entry_rect = Rectangle {
+                        x: list_padding,
+                        y: item_y,
+                        width: content_width,
+                        height: row_height,
+                    };
+                    if rectangles_intersect(rect, entry_rect) {
+                        selected.push(entry.path.clone());
+                    }
+                }
+            }
+            ViewMode::Grid => {
+                let grid = self.grid_window_for(total_entries);
+                let tile_height = self.state.config.view.grid_row_height;
+                let columns = grid.columns.max(1);
+                let total_spacing = tokens.spacing.md * (columns.saturating_sub(1) as f32);
+                let tile_width = ((content_width - total_spacing) / columns as f32).max(1.0);
+                for row_index in grid.window.start..grid.window.end {
+                    let local_row = row_index.saturating_sub(grid.window.start) as f32;
+                    let item_y = list_content_offset + grid.window.padding_top + local_row * tile_height;
+                    for column_index in 0..columns {
+                        let display_index = row_index * columns + column_index;
+                        if display_index >= total_entries {
+                            continue;
+                        }
+                        let Some(actual_index) = entry_index_for(display_index) else {
+                            continue;
+                        };
+                        let Some(entry) = display_entries.get(actual_index) else {
+                            continue;
+                        };
+                        let item_x = list_padding
+                            + (tile_width + tokens.spacing.md) * column_index as f32;
+                        let entry_rect = Rectangle {
+                            x: item_x,
+                            y: item_y,
+                            width: tile_width,
+                            height: tile_height,
+                        };
+                        if rectangles_intersect(rect, entry_rect) {
+                            selected.push(entry.path.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        selected
+    }
+
+    fn apply_box_selection(&mut self, paths: Vec<PathBuf>, kind: SelectionKind) {
+        self.last_click_time = None;
+        self.last_clicked_path = None;
+        let selection = &mut self.state.navigation.selection;
+        match kind {
+            SelectionKind::Single => {
+                selection.selected = paths.iter().cloned().collect();
+                selection.focused = paths.first().cloned();
+                selection.anchor = paths.first().cloned();
+            }
+            SelectionKind::Toggle => {
+                for path in &paths {
+                    if selection.selected.contains(path) {
+                        selection.selected.remove(path);
+                    } else {
+                        selection.selected.insert(path.clone());
+                    }
+                }
+                if selection.focused.is_none() {
+                    selection.focused = paths.first().cloned();
+                }
+                if selection.anchor.is_none() {
+                    selection.anchor = paths.first().cloned();
+                }
+            }
+            SelectionKind::Range => {
+                for path in &paths {
+                    selection.selected.insert(path.clone());
+                }
+                if selection.focused.is_none() {
+                    selection.focused = paths.first().cloned();
+                }
+                if selection.anchor.is_none() {
+                    selection.anchor = paths.first().cloned();
+                }
+            }
         }
     }
 
@@ -2819,22 +3073,7 @@ impl XionApp {
         };
 
         let column_specs = column_specs(&self.state.config.view.columns);
-        let search_query = self.normalized_search_query();
-        let filtered_indices = search_query.as_ref().map(|query| {
-            display_entries
-                .items
-                .iter()
-                .enumerate()
-                .filter_map(|(index, entry)| {
-                    let entry = entry.as_ref()?;
-                    if Self::matches_search(entry, query) {
-                        Some(index)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-        });
+        let filtered_indices = self.filtered_indices_for(display_entries);
 
         let view_mode = self.state.config.view.mode;
         let is_filtered = filtered_indices.is_some();
@@ -3210,13 +3449,9 @@ impl XionApp {
             }
         };
 
-        let list_header: Element<'_, UiMessage> = if self.error.is_none()
-            && matches!(view_mode, ViewMode::List)
-            && if let Some(indices) = &filtered_indices {
-                !indices.is_empty()
-            } else {
-                display_entries.total > 0 || self.is_loading
-            } {
+        let list_header_visible =
+            self.list_header_visible(view_mode, display_entries, filtered_indices.as_ref());
+        let list_header: Element<'_, UiMessage> = if list_header_visible {
             let mut header_row = row![].spacing(spacing.md).align_y(Alignment::Center);
             for spec in &column_specs {
                 let is_active_sort = spec
@@ -3306,13 +3541,17 @@ impl XionApp {
 
         let list_column = column![rename_prompt, list_header, list_content].spacing(spacing.xl);
 
-        let list = scrollable(container(list_column).padding(spacing.md)).on_scroll(|viewport| {
-            UiMessage::Scroll(ScrollViewport {
-                offset_y: viewport.absolute_offset().y,
-                viewport_height: viewport.bounds().height,
-                content_height: viewport.content_bounds().height,
-            })
-        });
+        let list = mouse_area(
+            scrollable(container(list_column).padding(spacing.md)).on_scroll(|viewport| {
+                UiMessage::Scroll(ScrollViewport {
+                    offset_y: viewport.absolute_offset().y,
+                    viewport_height: viewport.bounds().height,
+                    content_height: viewport.content_bounds().height,
+                    bounds: viewport.bounds(),
+                })
+            }),
+        )
+        .on_press(UiMessage::ListBackgroundPressed);
 
         let tree_nodes = if let Some(current_path) = self.state.route.local_path() {
             let tree_root = root_path_for(current_path).unwrap_or_else(|| current_path.clone());
@@ -3421,6 +3660,7 @@ impl XionApp {
                     offset_y: viewport.absolute_offset().y,
                     viewport_height: viewport.bounds().height,
                     content_height: viewport.content_bounds().height,
+                    bounds: viewport.bounds(),
                 }))
         ]
         .spacing(spacing.xs);
@@ -3901,7 +4141,48 @@ impl XionApp {
                 layer
             });
 
+        let selection_overlay: Option<Element<'_, UiMessage>> = self
+            .selection_box_rect()
+            .and_then(|rect| self.list_viewport_bounds.map(|bounds| (rect, bounds)))
+            .map(|(rect, bounds)| {
+                let selection_x = (bounds.x + rect.x).max(0.0);
+                let selection_y = (bounds.y + rect.y - self.scroll_offset).max(0.0);
+                let selection_width = rect.width.max(0.0);
+                let selection_height = rect.height.max(0.0);
+                if selection_width == 0.0 || selection_height == 0.0 {
+                    return container(row![]).into();
+                }
+                let fill = Color {
+                    a: 0.2,
+                    ..colors.accent
+                };
+                let outline = container(row![])
+                    .width(Length::Fixed(selection_width))
+                    .height(Length::Fixed(selection_height))
+                    .style(move |_| iced::widget::container::Style {
+                        background: Some(Background::Color(fill)),
+                        border: border::rounded(2.0).color(colors.accent).width(1.0),
+                        ..Default::default()
+                    });
+                container(
+                    column![
+                        vertical_space().height(Length::Fixed(selection_y)),
+                        row![
+                            horizontal_space().width(Length::Fixed(selection_x)),
+                            opaque(outline)
+                        ]
+                    ]
+                    .spacing(0),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+            });
+
         let mut layered: Element<'_, UiMessage> = base;
+        if let Some(overlay) = selection_overlay {
+            layered = stack![layered, overlay].into();
+        }
         if let Some(overlay) = drag_overlay {
             layered = stack![layered, overlay].into();
         }
@@ -3995,6 +4276,14 @@ fn format_entry_size(entry: &FsEntry) -> String {
         FsEntryType::Directory => "—".to_string(),
         _ => format_bytes(entry.metadata.size),
     }
+}
+
+fn rectangles_intersect(a: Rectangle, b: Rectangle) -> bool {
+    let a_right = a.x + a.width;
+    let a_bottom = a.y + a.height;
+    let b_right = b.x + b.width;
+    let b_bottom = b.y + b.height;
+    a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
 }
 
 fn format_bytes(bytes: u64) -> String {

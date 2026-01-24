@@ -4283,7 +4283,7 @@ fn rectangles_intersect(a: Rectangle, b: Rectangle) -> bool {
     let a_bottom = a.y + a.height;
     let b_right = b.x + b.width;
     let b_bottom = b.y + b.height;
-    a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
+    a.x <= b_right && a_right >= b.x && a.y <= b_bottom && a_bottom >= b.y
 }
 
 fn format_bytes(bytes: u64) -> String {

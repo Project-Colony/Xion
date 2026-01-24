@@ -146,12 +146,6 @@ struct UiTokens {
     typography: UiTypography,
 }
 
-#[derive(Debug, Clone, Default)]
-struct DragState {
-    origin: Option<PathBuf>,
-    drop_target: Option<PathBuf>,
-}
-
 impl Default for UiTokens {
     fn default() -> Self {
         Self {
@@ -382,8 +376,6 @@ pub struct XionApp {
     rename_dialog: Option<RenameDialog>,
     last_click_time: Option<Instant>,
     last_clicked_path: Option<PathBuf>,
-    left_mouse_down: bool,
-    drag_state: DragState,
 }
 
 impl XionApp {
@@ -584,8 +576,6 @@ impl XionApp {
             rename_dialog: None,
             last_click_time: None,
             last_clicked_path: None,
-            left_mouse_down: false,
-            drag_state: DragState::default(),
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -608,22 +598,6 @@ impl XionApp {
             UiMessage::Noop => {}
             UiMessage::CursorMoved(position) => {
                 self.cursor_position = Some(position);
-            }
-            UiMessage::MouseButtonPressed(button) => {
-                if button == mouse::Button::Left {
-                    self.left_mouse_down = true;
-                }
-            }
-            UiMessage::MouseButtonReleased(button) => {
-                if button == mouse::Button::Left {
-                    self.left_mouse_down = false;
-                    if let Some(destination) = self.drag_state.drop_target.clone() {
-                        if self.drag_state.origin.is_some() {
-                            tasks.push(self.move_selection_to(destination));
-                        }
-                    }
-                    self.drag_state = DragState::default();
-                }
             }
             UiMessage::NavigateTo(path) => {
                 tasks.push(self.navigate_to(path));
@@ -657,29 +631,29 @@ impl XionApp {
                 self.state.navigation.focused_pane = pane;
             }
             UiMessage::SelectEntry { path, kind } => {
-                self.handle_select_entry(path, kind, &mut tasks);
-            }
-            UiMessage::BeginDrag { path, kind } => {
-                self.handle_select_entry(path.clone(), kind, &mut tasks);
-                self.drag_state.origin = Some(path);
-                self.drag_state.drop_target = None;
-            }
-            UiMessage::DragOverEntry(path) => {
-                if self.drag_state.origin.is_some()
-                    && self.left_mouse_down
-                    && !self.modifiers.control
-                {
-                    self.apply_selection(path, SelectionKind::Range);
-                }
-            }
-            UiMessage::DragEnterSidebar(path) => {
-                if self.drag_state.origin.is_some() {
-                    self.drag_state.drop_target = Some(path);
-                }
-            }
-            UiMessage::DragExitSidebar(path) => {
-                if self.drag_state.drop_target.as_ref() == Some(&path) {
-                    self.drag_state.drop_target = None;
+                let now = Instant::now();
+                if kind != SelectionKind::Single {
+                    self.last_click_time = None;
+                    self.last_clicked_path = None;
+                    self.apply_selection(path, kind);
+                } else {
+                    let is_double_click = self
+                        .last_clicked_path
+                        .as_ref()
+                        .is_some_and(|last_path| last_path == &path)
+                        && self
+                            .last_click_time
+                            .is_some_and(|last_click| now.duration_since(last_click)
+                                <= DOUBLE_CLICK_THRESHOLD);
+                    self.apply_selection(path.clone(), kind);
+                    if is_double_click {
+                        self.last_click_time = None;
+                        self.last_clicked_path = None;
+                        tasks.push(self.activate_entry(path));
+                    } else {
+                        self.last_click_time = Some(now);
+                        self.last_clicked_path = Some(path);
+                    }
                 }
             }
             UiMessage::ActivateEntry(path) => {
@@ -881,12 +855,6 @@ impl XionApp {
             iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
                 UiMessage::CursorMoved(position)
             }
-            iced::Event::Mouse(mouse::Event::ButtonPressed(button)) => {
-                UiMessage::MouseButtonPressed(button)
-            }
-            iced::Event::Mouse(mouse::Event::ButtonReleased(button)) => {
-                UiMessage::MouseButtonReleased(button)
-            }
             _ => UiMessage::Noop,
         })
     }
@@ -898,39 +866,6 @@ impl XionApp {
             SelectionKind::Toggle
         } else {
             SelectionKind::Single
-        }
-    }
-
-    fn handle_select_entry(
-        &mut self,
-        path: PathBuf,
-        kind: SelectionKind,
-        tasks: &mut Vec<Task<UiMessage>>,
-    ) {
-        let now = Instant::now();
-        if kind != SelectionKind::Single {
-            self.last_click_time = None;
-            self.last_clicked_path = None;
-            self.apply_selection(path, kind);
-        } else {
-            let is_double_click = self
-                .last_clicked_path
-                .as_ref()
-                .is_some_and(|last_path| last_path == &path)
-                && self
-                    .last_click_time
-                    .is_some_and(|last_click| {
-                        now.duration_since(last_click) <= DOUBLE_CLICK_THRESHOLD
-                    });
-            self.apply_selection(path.clone(), kind);
-            if is_double_click {
-                self.last_click_time = None;
-                self.last_clicked_path = None;
-                tasks.push(self.activate_entry(path));
-            } else {
-                self.last_click_time = Some(now);
-                self.last_clicked_path = Some(path);
-            }
         }
     }
 
@@ -1299,27 +1234,6 @@ impl XionApp {
             }
         }
         self.last_action = Some("Sélectionnez un élément pour copier le chemin".to_string());
-    }
-
-    fn move_selection_to(&mut self, destination: PathBuf) -> Task<UiMessage> {
-        if !destination.is_dir() {
-            self.last_action = Some("Déplacement : dossier cible invalide".to_string());
-            return Task::none();
-        }
-        let items = self.selected_paths();
-        if items.is_empty() {
-            self.last_action = Some("Aucune sélection à déplacer".to_string());
-            return Task::none();
-        }
-        if items.iter().all(|item| item.parent() == Some(destination.as_path())) {
-            self.last_action = Some("Déplacement : déjà dans ce dossier".to_string());
-            return Task::none();
-        }
-
-        Task::perform(
-            async move { LocalFileOperations::new().move_items(&items, &destination) },
-            UiMessage::FileOperationFinished,
-        )
     }
 
     fn handle_operation_report(&mut self, report: &OperationReport) {
@@ -1785,52 +1699,31 @@ impl XionApp {
                 .into();
 
                 match target {
-                    Some(path) => {
-                        let is_drop_target = self.drag_state.origin.is_some()
-                            && self.drag_state.drop_target.as_ref() == Some(&path);
-                        let enter_message = UiMessage::DragEnterSidebar(path.clone());
-                        let exit_message = UiMessage::DragExitSidebar(path.clone());
-                        mouse_area(
-                            button(content)
-                                .padding([spacing.xs, spacing.sm])
-                                .width(Length::Fill)
-                                .style(move |_theme: &Theme, status: ButtonStatus| {
-                                    let mut style = iced::widget::button::Style {
-                                        text_color: colors.text_primary,
-                                        ..Default::default()
-                                    };
+                    Some(path) => button(content)
+                        .padding([spacing.xs, spacing.sm])
+                        .width(Length::Fill)
+                        .style(move |_theme: &Theme, status: ButtonStatus| {
+                            let mut style = iced::widget::button::Style {
+                                text_color: colors.text_primary,
+                                ..Default::default()
+                            };
 
-                                    if is_drop_target {
-                                        style.background =
-                                            Some(Background::Color(colors.selection));
-                                        style.border = border::rounded(6.0)
-                                            .color(colors.selection_border)
-                                            .width(1.0);
-                                    }
+                            match status {
+                                ButtonStatus::Hovered => {
+                                    style.background = Some(Background::Color(colors.hover));
+                                    style.border =
+                                        border::rounded(6.0).color(colors.border).width(1.0);
+                                }
+                                ButtonStatus::Pressed => {
+                                    style.background = Some(Background::Color(colors.pressed));
+                                }
+                                ButtonStatus::Active | ButtonStatus::Disabled => {}
+                            }
 
-                                    match status {
-                                        ButtonStatus::Hovered => {
-                                            style.background =
-                                                Some(Background::Color(colors.hover));
-                                            style.border = border::rounded(6.0)
-                                                .color(colors.border)
-                                                .width(1.0);
-                                        }
-                                        ButtonStatus::Pressed => {
-                                            style.background =
-                                                Some(Background::Color(colors.pressed));
-                                        }
-                                        ButtonStatus::Active | ButtonStatus::Disabled => {}
-                                    }
-
-                                    style
-                                })
-                                .on_press(UiMessage::NavigateTo(path)),
-                        )
-                        .on_enter(enter_message)
-                        .on_exit(exit_message)
-                        .into()
-                    }
+                            style
+                        })
+                        .on_press(UiMessage::NavigateTo(path))
+                        .into(),
                     None => container(content)
                         .padding([spacing.xs, spacing.sm])
                         .width(Length::Fill)
@@ -2248,11 +2141,10 @@ impl XionApp {
                             entry_row = entry_row.push(cell);
                         }
                         let selection_kind = self.selection_kind_from_modifiers();
-                        let message = UiMessage::BeginDrag {
+                        let message = UiMessage::SelectEntry {
                             path: entry.path.clone(),
                             kind: selection_kind,
                         };
-                        let drag_over = UiMessage::DragOverEntry(entry.path.clone());
                         let context_path = entry.path.clone();
                         list = list.push(
                             mouse_area(
@@ -2283,10 +2175,8 @@ impl XionApp {
 
                                         style
                                     })
-                                    .on_press(UiMessage::Noop),
+                                    .on_press(message),
                             )
-                            .on_press(message)
-                            .on_enter(drag_over)
                             .on_right_press(UiMessage::OpenContextMenuForEntry(context_path)),
                         );
                     }
@@ -2413,11 +2303,10 @@ impl XionApp {
                             entry_row = entry_row.push(cell);
                         }
                         let selection_kind = self.selection_kind_from_modifiers();
-                        let message = UiMessage::BeginDrag {
+                        let message = UiMessage::SelectEntry {
                             path: entry.path.clone(),
                             kind: selection_kind,
                         };
-                        let drag_over = UiMessage::DragOverEntry(entry.path.clone());
                         let context_path = entry.path.clone();
                         mouse_area(
                             button(entry_row)
@@ -2445,10 +2334,8 @@ impl XionApp {
 
                                     style
                                 })
-                                .on_press(UiMessage::Noop),
+                                .on_press(message),
                         )
-                        .on_press(message)
-                        .on_enter(drag_over)
                         .on_right_press(UiMessage::OpenContextMenuForEntry(context_path))
                         .into()
                     }

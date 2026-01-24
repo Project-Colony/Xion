@@ -1488,7 +1488,7 @@ impl XionApp {
     }
 
     fn base_display_entries(&self) -> &PagedEntries {
-        if self.is_refreshing && self.entries.total == 0 {
+        if self.is_refreshing {
             self.stale_entries.as_ref().unwrap_or(&self.entries)
         } else {
             &self.entries
@@ -2198,7 +2198,7 @@ impl XionApp {
     }
 
     fn index_for_path(&self, path: &PathBuf) -> Option<usize> {
-        Self::index_for_path_in(&self.entries, path)
+        Self::index_for_path_in(self.display_entries(), path)
     }
 
     fn normalized_search_query(&self) -> Option<String> {

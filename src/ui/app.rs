@@ -4179,20 +4179,16 @@ impl XionApp {
                 .into()
             });
 
-        let mut layered: Element<'_, UiMessage> = base;
-        if let Some(overlay) = selection_overlay {
-            layered = stack![layered, overlay].into();
-        }
-        if let Some(overlay) = drag_overlay {
-            layered = stack![layered, overlay].into();
-        }
-        if let Some(menu) = history_menu {
-            layered = stack![layered, menu].into();
-        }
-        if let Some(menu) = context_menu {
-            layered = stack![layered, menu].into();
-        }
-        layered
+        let selection_layer: Element<'_, UiMessage> =
+            selection_overlay.unwrap_or_else(|| container(row![]).into());
+        let drag_layer: Element<'_, UiMessage> =
+            drag_overlay.unwrap_or_else(|| container(row![]).into());
+        let history_layer: Element<'_, UiMessage> =
+            history_menu.unwrap_or_else(|| container(row![]).into());
+        let context_layer: Element<'_, UiMessage> =
+            context_menu.unwrap_or_else(|| container(row![]).into());
+
+        stack![base, selection_layer, drag_layer, history_layer, context_layer].into()
     }
 }
 

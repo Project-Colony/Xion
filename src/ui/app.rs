@@ -112,6 +112,9 @@ const TREE_MAX_CHILDREN: usize = 120;
 const TREE_MIN_HEIGHT: f32 = 140.0;
 const TREE_MAX_HEIGHT: f32 = 420.0;
 const TREE_RESIZE_BAR_HEIGHT: f32 = 10.0;
+const PREVIEW_MIN_WIDTH: f32 = 220.0;
+const PREVIEW_MAX_WIDTH: f32 = 420.0;
+const PREVIEW_RESIZE_BAR_WIDTH: f32 = 6.0;
 
 #[derive(Debug, Clone, Copy)]
 struct UiColors {
@@ -424,6 +427,9 @@ pub struct XionApp {
     tree_height: f32,
     tree_resizing: bool,
     tree_resize_anchor: Option<(f32, f32)>,
+    preview_width: f32,
+    preview_resizing: bool,
+    preview_resize_anchor: Option<(f32, f32)>,
 }
 
 impl XionApp {
@@ -683,6 +689,9 @@ impl XionApp {
             tree_height: 240.0,
             tree_resizing: false,
             tree_resize_anchor: None,
+            preview_width: 280.0,
+            preview_resizing: false,
+            preview_resize_anchor: None,
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -709,6 +718,14 @@ impl XionApp {
                     if let Some((start_y, start_height)) = self.tree_resize_anchor {
                         let next_height = start_height + (position.y - start_y);
                         self.tree_height = next_height.clamp(TREE_MIN_HEIGHT, TREE_MAX_HEIGHT);
+                    }
+                }
+                if self.preview_resizing {
+                    if let Some((start_x, start_width)) = self.preview_resize_anchor {
+                        let delta = position.x - start_x;
+                        let next_width = (start_width - delta)
+                            .clamp(PREVIEW_MIN_WIDTH, PREVIEW_MAX_WIDTH);
+                        self.preview_width = next_width;
                     }
                 }
             }
@@ -1020,6 +1037,16 @@ impl XionApp {
             UiMessage::TreeResizeEnd => {
                 self.tree_resizing = false;
                 self.tree_resize_anchor = None;
+            }
+            UiMessage::PreviewResizeStart => {
+                self.preview_resizing = true;
+                self.preview_resize_anchor = self
+                    .cursor_position
+                    .map(|position| (position.x, self.preview_width));
+            }
+            UiMessage::PreviewResizeEnd => {
+                self.preview_resizing = false;
+                self.preview_resize_anchor = None;
             }
             UiMessage::FileOperationFinished(report) => {
                 self.handle_operation_report(&report);
@@ -3253,12 +3280,34 @@ impl XionApp {
                 .spacing(spacing.md),
         )
         .padding(spacing.md)
-        .width(Length::Fixed(280.0))
+        .width(Length::Fixed(self.preview_width))
         .style(move |_| iced::widget::container::Style {
             background: Some(Background::Color(colors.panel_background)),
             border: border::rounded(10.0).color(colors.border).width(1.0),
             ..Default::default()
         });
+
+        let preview_resize_bar: Element<'_, UiMessage> = mouse_area(
+            container(row![])
+                .width(Length::Fixed(PREVIEW_RESIZE_BAR_WIDTH))
+                .height(Length::Fill)
+                .style(move |_| iced::widget::container::Style {
+                    background: if self.preview_resizing {
+                        Some(Background::Color(colors.hover))
+                    } else {
+                        None
+                    },
+                    border: if self.preview_resizing {
+                        border::rounded(6.0).color(colors.border).width(1.0)
+                    } else {
+                        border::rounded(6.0).width(0.0)
+                    },
+                    ..Default::default()
+                }),
+        )
+        .on_press(UiMessage::PreviewResizeStart)
+        .on_release(UiMessage::PreviewResizeEnd)
+        .into();
 
         let body = row![
             sidebar.width(Length::Fixed(220.0)),
@@ -3270,10 +3319,11 @@ impl XionApp {
                     border: border::rounded(10.0).color(colors.border).width(1.0),
                     ..Default::default()
                 }),
+            preview_resize_bar,
             preview_panel
         ]
         .height(Length::Fill)
-        .spacing(spacing.md);
+        .spacing(spacing.xs);
 
         let selection = &self.state.navigation.selection;
         let selection_status = if selection.selected.is_empty() {

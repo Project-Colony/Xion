@@ -166,6 +166,8 @@ pub enum UiMessage {
     RenameCancel,
     TreeResizeStart,
     TreeResizeEnd,
+    PreviewResizeStart,
+    PreviewResizeEnd,
     FileOperationFinished(OperationReport),
 }
 

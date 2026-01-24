@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use crate::core::{AppConfig, SortKeyConfig};
 use crate::filesystem::{FsEntry, OperationReport, Page};
-use crate::services::{SearchIndex, Thumbnail};
+use crate::services::Thumbnail;
 use iced::Point;
 
 pub mod app;
@@ -158,10 +158,6 @@ pub enum UiMessage {
     PreviewLoaded {
         path: PathBuf,
         preview: Option<Thumbnail>,
-    },
-    SearchIndexBuilt {
-        path: PathBuf,
-        result: Result<SearchIndex, String>,
     },
     AnimatedPreviewTick(Instant),
     FileWatchTick,

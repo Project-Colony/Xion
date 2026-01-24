@@ -1048,16 +1048,6 @@ impl XionApp {
                 self.preview_resizing = false;
                 self.preview_resize_anchor = None;
             }
-            UiMessage::MouseReleased => {
-                if self.tree_resizing {
-                    self.tree_resizing = false;
-                    self.tree_resize_anchor = None;
-                }
-                if self.preview_resizing {
-                    self.preview_resizing = false;
-                    self.preview_resize_anchor = None;
-                }
-            }
             UiMessage::FileOperationFinished(report) => {
                 self.handle_operation_report(&report);
                 tasks.push(self.refresh_entries());
@@ -1086,9 +1076,6 @@ impl XionApp {
             }
             iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
                 UiMessage::CursorMoved(position)
-            }
-            iced::Event::Mouse(mouse::Event::ButtonReleased { button: mouse::Button::Left }) => {
-                UiMessage::MouseReleased
             }
             _ => UiMessage::Noop,
         })];

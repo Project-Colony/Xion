@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ::image::AnimationDecoder;
-use ::image::codecs::gif::GifDecoder;
 use chrono::{DateTime, Local};
 use directories::UserDirs;
 use iced::alignment::Horizontal;
@@ -19,23 +17,24 @@ use iced::{
     Alignment, Background, Border, Color, Element, Font, Length, Point, Subscription, Task, Theme,
     border, keyboard, mouse, time,
 };
+use ::image::codecs::gif::GifDecoder;
+use ::image::AnimationDecoder;
 
 use crate::core::{
     ConfigManager, EntryFilterConfig, KeyInput, KeyKind, NamedKey, SortKeyConfig, SortOrderConfig,
-    ViewColumn, ViewMode,
+    ViewColumn,
 };
 use crate::filesystem::{
     EntryFilter, FileOperationKind, FileSystem, FsEntry, FsEntryType, ListOptions,
     LocalFileOperations, LocalFileSystem, OperationReport, Page, PageRequest, SortKey, SortOrder,
 };
 use crate::services::{
-    DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService,
-    PreviewImageService, ThumbnailService, VirtualList, VirtualWindow, generate_preview,
-    generate_thumbnail,
+    DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService, PreviewImageService,
+    ThumbnailService, VirtualList, VirtualWindow, generate_preview, generate_thumbnail,
 };
 use crate::ui::{
-    AppState, ContextAction, KeyboardCommand, ModifiersState, NETWORK_ROUTE, RouteKind,
-    ScrollViewport, SelectionKind, UiMessage,
+    AppState, ContextAction, KeyboardCommand, ModifiersState, RouteKind, ScrollViewport,
+    SelectionKind, UiMessage, NETWORK_ROUTE,
 };
 use sysinfo::Disks;
 
@@ -253,13 +252,6 @@ impl PagedEntries {
     fn get(&self, index: usize) -> Option<&FsEntry> {
         self.items.get(index).and_then(|entry| entry.as_ref())
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct GridWindow {
-    window: VirtualWindow,
-    columns: usize,
-    total: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -737,8 +729,8 @@ impl XionApp {
                 if self.preview_resizing {
                     if let Some((start_x, start_width)) = self.preview_resize_anchor {
                         let delta = position.x - start_x;
-                        let next_width =
-                            (start_width - delta).clamp(PREVIEW_MIN_WIDTH, PREVIEW_MAX_WIDTH);
+                        let next_width = (start_width - delta)
+                            .clamp(PREVIEW_MIN_WIDTH, PREVIEW_MAX_WIDTH);
                         self.preview_width = next_width;
                     }
                 }
@@ -925,13 +917,6 @@ impl XionApp {
                 ));
                 tasks.push(self.refresh_entries());
             }
-            UiMessage::ToggleViewMode => {
-                self.state.config.view.mode = self.state.config.view.mode.toggle();
-                self.scroll_offset = 0.0;
-                self.clear_selection();
-                tasks.push(self.ensure_visible_pages());
-                tasks.push(self.request_visible_thumbnails());
-            }
             UiMessage::LoadingDelayElapsed(generation) => {
                 if self.is_refreshing
                     && self.is_loading
@@ -1096,33 +1081,30 @@ impl XionApp {
 
     fn subscription(&self) -> Subscription<UiMessage> {
         let shortcuts = self.state.config.shortcuts.clone();
-        let mut subscriptions = vec![iced::event::listen().map(move |event| {
-            match event {
-                iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
-                    UiMessage::ModifiersChanged(ModifiersState {
-                        shift: modifiers.shift(),
-                        control: modifiers.control(),
-                        alt: modifiers.alt(),
-                    })
-                }
-                iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
-                    command_from_key_press_with_shortcuts(&shortcuts, key, modifiers)
-                        .map(UiMessage::KeyboardCommand)
-                        .unwrap_or(UiMessage::Noop)
-                }
-                iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
-                    UiMessage::CursorMoved(position)
-                }
-                iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                    UiMessage::MouseReleased
-                }
-                _ => UiMessage::Noop,
+        let mut subscriptions = vec![iced::event::listen().map(move |event| match event {
+            iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
+                UiMessage::ModifiersChanged(ModifiersState {
+                    shift: modifiers.shift(),
+                    control: modifiers.control(),
+                    alt: modifiers.alt(),
+                })
             }
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+                command_from_key_press_with_shortcuts(&shortcuts, key, modifiers)
+                    .map(UiMessage::KeyboardCommand)
+                    .unwrap_or(UiMessage::Noop)
+            }
+            iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                UiMessage::CursorMoved(position)
+            }
+            iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                UiMessage::MouseReleased
+            }
+            _ => UiMessage::Noop,
         })];
 
         if self.animated_preview.is_some() {
-            subscriptions
-                .push(time::every(Duration::from_millis(30)).map(UiMessage::AnimatedPreviewTick));
+            subscriptions.push(time::every(Duration::from_millis(30)).map(UiMessage::AnimatedPreviewTick));
         }
 
         Subscription::batch(subscriptions)
@@ -1582,8 +1564,10 @@ impl XionApp {
         {
             if entry.entry_type == FsEntryType::Directory {
                 if self.state.route.is_network() {
-                    self.last_action =
-                        Some(format!("Connexion au partage : {}", entry.path.display()));
+                    self.last_action = Some(format!(
+                        "Connexion au partage : {}",
+                        entry.path.display()
+                    ));
                     return Task::none();
                 }
                 return self.navigate_to(entry.path.clone());
@@ -1779,7 +1763,8 @@ impl XionApp {
 
         animated.current = (animated.current + 1) % animated.frames.len();
         let frame = &animated.frames[animated.current];
-        animated.handle = image::Handle::from_rgba(frame.width, frame.height, frame.pixels.clone());
+        animated.handle =
+            image::Handle::from_rgba(frame.width, frame.height, frame.pixels.clone());
         animated.next_frame_at = now + frame.delay;
     }
 
@@ -1816,7 +1801,7 @@ impl XionApp {
             return self.request_all_pages();
         }
 
-        let window = self.entry_virtual_window();
+        let window = self.virtual_window();
         if window.len() == 0 {
             return Task::none();
         }
@@ -1834,50 +1819,17 @@ impl XionApp {
         Task::batch(tasks)
     }
 
-    fn entry_virtual_window(&self) -> VirtualWindow {
-        self.entry_virtual_window_for(self.entries.total)
+    fn virtual_window(&self) -> VirtualWindow {
+        self.virtual_window_for(self.entries.total)
     }
 
-    fn entry_virtual_window_for(&self, total: usize) -> VirtualWindow {
-        match self.state.config.view.mode {
-            ViewMode::List => self.list_virtual_window_for(total),
-            ViewMode::Grid => {
-                let grid = self.grid_window_for(total);
-                let start = grid.window.start * grid.columns;
-                let end = (grid.window.end * grid.columns).min(total);
-                VirtualWindow {
-                    start,
-                    end,
-                    padding_top: grid.window.padding_top,
-                    padding_bottom: grid.window.padding_bottom,
-                }
-            }
-        }
-    }
-
-    fn list_virtual_window_for(&self, total: usize) -> VirtualWindow {
+    fn virtual_window_for(&self, total: usize) -> VirtualWindow {
         let virtual_list = VirtualList {
             item_height: self.state.config.view.row_height,
             viewport_height: self.viewport_height,
             overscan: self.state.config.view.overscan,
         };
         virtual_list.visible_range(self.scroll_offset, total)
-    }
-
-    fn grid_window_for(&self, total: usize) -> GridWindow {
-        let columns = self.state.config.view.grid_columns.max(1);
-        let rows = (total + columns - 1) / columns;
-        let virtual_list = VirtualList {
-            item_height: self.state.config.view.grid_row_height,
-            viewport_height: self.viewport_height,
-            overscan: self.state.config.view.overscan,
-        };
-        let window = virtual_list.visible_range(self.scroll_offset, rows);
-        GridWindow {
-            window,
-            columns,
-            total,
-        }
     }
 
     fn tree_virtual_window(&self, total: usize) -> VirtualWindow {
@@ -1901,7 +1853,7 @@ impl XionApp {
             if indices.is_empty() {
                 return Task::none();
             }
-            let window = self.entry_virtual_window_for(indices.len());
+            let window = self.virtual_window_for(indices.len());
             if window.len() == 0 {
                 return Task::none();
             }
@@ -1946,7 +1898,7 @@ impl XionApp {
                 ));
             }
         } else {
-            let window = self.entry_virtual_window();
+            let window = self.virtual_window();
             if window.len() == 0 {
                 return Task::none();
             }
@@ -2390,19 +2342,13 @@ impl XionApp {
             toolbar_button(format!("{} Coller", ICON_PASTE))
         };
 
-        let view_label = match self.state.config.view.mode {
-            ViewMode::List => "Liste",
-            ViewMode::Grid => "Grille",
-        };
-
         let command_bar = row![
             toolbar_button(format!("{} Nouveau", ICON_NEW)),
             cut_button,
             copy_button,
             paste_button,
             toolbar_button(format!("{} Trier", ICON_SORT)),
-            toolbar_button(format!("{} Afficher: {}", ICON_VIEW, view_label))
-                .on_press(UiMessage::ToggleViewMode),
+            toolbar_button(format!("{} Afficher", ICON_VIEW)),
             toolbar_button(ICON_MORE.to_string()),
             toolbar_button(format!("{} Actions", ICON_ACTIONS))
                 .on_press(UiMessage::ToggleContextMenu(!self.context_menu_open))
@@ -2526,142 +2472,6 @@ impl XionApp {
                 .collect::<Vec<_>>()
         });
 
-        let view_mode = self.state.config.view.mode;
-        let is_filtered = filtered_indices.is_some();
-        let total_entries = filtered_indices
-            .as_ref()
-            .map_or(display_entries.total, |indices| indices.len());
-        let entry_index_for = |display_index: usize| -> Option<usize> {
-            if let Some(indices) = &filtered_indices {
-                indices.get(display_index).copied()
-            } else {
-                Some(display_index)
-            }
-        };
-        let entry_leading = |entry: &FsEntry| -> Element<'_, UiMessage> {
-            match entry.entry_type {
-                FsEntryType::Directory => text(ICON_FOLDER)
-                    .size(typography.body)
-                    .font(typography.body_font)
-                    .into(),
-                FsEntryType::File => self
-                    .thumbnail_handles
-                    .get(&entry.path)
-                    .map(|handle| {
-                        image(handle.clone())
-                            .width(Length::Fixed(self.state.config.view.thumbnail_size as f32))
-                            .height(Length::Fixed(self.state.config.view.thumbnail_size as f32))
-                            .into()
-                    })
-                    .unwrap_or_else(|| {
-                        text(ICON_FILE)
-                            .size(typography.body)
-                            .font(typography.body_font)
-                            .into()
-                    }),
-                FsEntryType::Symlink => text(ICON_SYMLINK)
-                    .size(typography.body)
-                    .font(typography.body_font)
-                    .into(),
-                FsEntryType::Other => text(ICON_UNKNOWN)
-                    .size(typography.body)
-                    .font(typography.body_font)
-                    .into(),
-            }
-        };
-        let build_list_row = |entry: &FsEntry| -> Element<'_, UiMessage> {
-            let mut entry_row = row![].spacing(spacing.md).align_y(Alignment::Center);
-            for spec in &column_specs {
-                let cell: Element<'_, UiMessage> = match spec.column {
-                    ViewColumn::Name => {
-                        let name_row = row![
-                            entry_leading(entry),
-                            text(&entry.name)
-                                .size(typography.body)
-                                .font(typography.body_font),
-                            horizontal_space()
-                        ]
-                        .spacing(spacing.sm)
-                        .align_y(Alignment::Center);
-                        container(name_row)
-                            .width(spec.width)
-                            .align_x(spec.align)
-                            .into()
-                    }
-                    ViewColumn::Type => container(
-                        text(entry_type_label(entry.entry_type))
-                            .size(typography.caption)
-                            .font(typography.caption_font),
-                    )
-                    .width(spec.width)
-                    .align_x(spec.align)
-                    .into(),
-                    ViewColumn::Size => container(
-                        text(format_entry_size(entry))
-                            .size(typography.caption)
-                            .font(typography.caption_font),
-                    )
-                    .width(spec.width)
-                    .align_x(spec.align)
-                    .into(),
-                    ViewColumn::Modified => container(
-                        text(format_modified(entry.metadata.modified))
-                            .size(typography.caption)
-                            .font(typography.caption_font),
-                    )
-                    .width(spec.width)
-                    .align_x(spec.align)
-                    .into(),
-                };
-                entry_row = entry_row.push(cell);
-            }
-            entry_row.into()
-        };
-        let build_loading_row = || -> Element<'_, UiMessage> {
-            let mut placeholder_row = row![].spacing(spacing.md).align_y(Alignment::Center);
-            for (index, spec) in column_specs.iter().enumerate() {
-                let cell: Element<'_, UiMessage> = if index == 0 {
-                    let content = row![
-                        text(ICON_LOADING)
-                            .size(typography.body)
-                            .font(typography.body_font),
-                        text("Chargement…")
-                            .size(typography.body)
-                            .font(typography.body_font)
-                    ]
-                    .spacing(spacing.sm)
-                    .align_y(Alignment::Center);
-                    container(content)
-                        .width(spec.width)
-                        .align_x(spec.align)
-                        .into()
-                } else {
-                    container(row![])
-                        .width(spec.width)
-                        .align_x(spec.align)
-                        .into()
-                };
-                placeholder_row = placeholder_row.push(cell);
-            }
-            button(placeholder_row).into()
-        };
-        let build_grid_tile = |entry: &FsEntry| -> Element<'_, UiMessage> {
-            let tile_content = column![
-                entry_leading(entry),
-                text(&entry.name)
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-            ]
-            .spacing(spacing.xs)
-            .align_x(Alignment::Center);
-            container(tile_content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .align_x(Alignment::Center)
-                .align_y(Alignment::Center)
-                .into()
-        };
-
         let list_content = if let Some(message) = &self.error {
             column![
                 text("Impossible de charger le dossier")
@@ -2678,226 +2488,365 @@ impl XionApp {
                 .on_press(UiMessage::Refresh)
             ]
             .spacing(spacing.sm)
-        } else if total_entries == 0 && !self.is_loading {
-            if is_filtered {
+        } else if let Some(indices) = &filtered_indices {
+            if indices.is_empty() && !self.is_loading {
                 column![
                     text("Aucun résultat")
                         .size(typography.body)
                         .font(typography.body_font)
                 ]
+            } else if indices.is_empty() {
+                column![]
             } else {
-                column![
-                    text("Dossier vide")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
-            }
-        } else if total_entries == 0 {
-            column![]
-        } else {
-            match view_mode {
-                ViewMode::List => {
-                    let window = self.list_virtual_window_for(total_entries);
-                    let mut list = column![];
+                let window = self.virtual_window_for(indices.len());
+                let mut list = column![];
 
-                    if window.padding_top > 0.0 {
-                        list =
-                            list.push(vertical_space().height(Length::Fixed(window.padding_top)));
-                    }
-
-                    for display_index in window.start..window.end {
-                        let Some(actual_index) = entry_index_for(display_index) else {
-                            continue;
-                        };
-                        let entry = display_entries.get(actual_index);
-                        if let Some(entry) = entry {
-                            let is_selected = self
-                                .state
-                                .navigation
-                                .selection
-                                .selected
-                                .contains(&entry.path);
-                            let is_focused = self
-                                .state
-                                .navigation
-                                .selection
-                                .focused
-                                .as_ref()
-                                .map(|path| path == &entry.path)
-                                .unwrap_or(false);
-                            let message = UiMessage::SelectEntry {
-                                path: entry.path.clone(),
-                                kind: self.selection_kind_from_modifiers(),
-                            };
-                            let context_path = entry.path.clone();
-                            list = list.push(
-                                mouse_area(
-                                    button(build_list_row(entry))
-                                        .padding([spacing.xs, spacing.sm])
-                                        .style(move |_theme: &Theme, status: ButtonStatus| {
-                                            let mut style = iced::widget::button::Style {
-                                                text_color: colors.text_primary,
-                                                ..Default::default()
-                                            };
-
-                                            if is_selected {
-                                                style.background =
-                                                    Some(Background::Color(colors.selection));
-                                                style.border = border::rounded(6.0)
-                                                    .color(colors.selection_border)
-                                                    .width(if is_focused { 2.0 } else { 1.0 });
-                                            }
-
-                                            if matches!(status, ButtonStatus::Hovered) {
-                                                style.background =
-                                                    Some(Background::Color(colors.hover));
-                                            }
-
-                                            if matches!(status, ButtonStatus::Pressed) {
-                                                style.background =
-                                                    Some(Background::Color(colors.pressed));
-                                            }
-
-                                            style
-                                        })
-                                        .on_press(message),
-                                )
-                                .on_right_press(UiMessage::OpenContextMenuForEntry(context_path)),
-                            );
-                        } else {
-                            list = list.push(build_loading_row());
-                        }
-                    }
-
-                    if window.padding_bottom > 0.0 {
-                        list = list
-                            .push(vertical_space().height(Length::Fixed(window.padding_bottom)));
-                    }
-
-                    list
+                if window.padding_top > 0.0 {
+                    list = list.push(vertical_space().height(Length::Fixed(window.padding_top)));
                 }
-                ViewMode::Grid => {
-                    let grid = self.grid_window_for(total_entries);
-                    let mut list = column![];
-                    let tile_height = self.state.config.view.grid_row_height;
 
-                    if grid.window.padding_top > 0.0 {
-                        list = list
-                            .push(vertical_space().height(Length::Fixed(grid.window.padding_top)));
-                    }
-
-                    for row_index in grid.window.start..grid.window.end {
-                        let mut tile_row = row![].spacing(spacing.md);
-                        for column_index in 0..grid.columns {
-                            let display_index = row_index * grid.columns + column_index;
-                            if display_index >= grid.total {
-                                tile_row = tile_row.push(
-                                    container(row![])
-                                        .width(Length::FillPortion(1))
-                                        .height(Length::Fixed(tile_height)),
-                                );
-                                continue;
-                            }
-                            let Some(actual_index) = entry_index_for(display_index) else {
-                                continue;
-                            };
-                            let entry = display_entries.get(actual_index);
-                            let tile_element = match entry {
-                                Some(entry) => {
-                                    let is_selected = self
-                                        .state
-                                        .navigation
-                                        .selection
-                                        .selected
-                                        .contains(&entry.path);
-                                    let is_focused = self
-                                        .state
-                                        .navigation
-                                        .selection
-                                        .focused
-                                        .as_ref()
-                                        .map(|path| path == &entry.path)
-                                        .unwrap_or(false);
-                                    let message = UiMessage::SelectEntry {
-                                        path: entry.path.clone(),
-                                        kind: self.selection_kind_from_modifiers(),
+                for display_index in window.start..window.end {
+                    let Some(actual_index) = indices.get(display_index).copied() else {
+                        continue;
+                    };
+                    let entry = display_entries.get(actual_index);
+                    if let Some(entry) = entry {
+                        let is_selected = self
+                            .state
+                            .navigation
+                            .selection
+                            .selected
+                            .contains(&entry.path);
+                        let is_focused = self
+                            .state
+                            .navigation
+                            .selection
+                            .focused
+                            .as_ref()
+                            .map(|path| path == &entry.path)
+                            .unwrap_or(false);
+                        let mut entry_row = row![].spacing(spacing.md).align_y(Alignment::Center);
+                        for spec in &column_specs {
+                            let cell: Element<'_, UiMessage> = match spec.column {
+                                ViewColumn::Name => {
+                                    let leading: Element<'_, UiMessage> = match entry.entry_type {
+                                        FsEntryType::Directory => text(ICON_FOLDER)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
+                                        FsEntryType::File => self
+                                            .thumbnail_handles
+                                            .get(&entry.path)
+                                            .map(|handle| {
+                                                image(handle.clone())
+                                                    .width(Length::Fixed(
+                                                        self.state.config.view.thumbnail_size
+                                                            as f32,
+                                                    ))
+                                                    .height(Length::Fixed(
+                                                        self.state.config.view.thumbnail_size
+                                                            as f32,
+                                                    ))
+                                                    .into()
+                                            })
+                                            .unwrap_or_else(|| {
+                                                text(ICON_FILE)
+                                                    .size(typography.body)
+                                                    .font(typography.body_font)
+                                                    .into()
+                                            }),
+                                        FsEntryType::Symlink => text(ICON_SYMLINK)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
+                                        FsEntryType::Other => text(ICON_UNKNOWN)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
                                     };
-                                    let context_path = entry.path.clone();
-                                    mouse_area(
-                                        container(
-                                            button(build_grid_tile(entry))
-                                                .width(Length::Fill)
-                                                .height(Length::Fill)
-                                                .padding(spacing.sm)
-                                                .style(
-                                                    move |_theme: &Theme, status: ButtonStatus| {
-                                                        let mut style =
-                                                            iced::widget::button::Style {
-                                                                text_color: colors.text_primary,
-                                                                ..Default::default()
-                                                            };
-
-                                                        if is_selected {
-                                                            style.background = Some(
-                                                                Background::Color(colors.selection),
-                                                            );
-                                                            style.border = border::rounded(8.0)
-                                                                .color(colors.selection_border)
-                                                                .width(if is_focused {
-                                                                    2.0
-                                                                } else {
-                                                                    1.0
-                                                                });
-                                                        }
-
-                                                        if matches!(status, ButtonStatus::Hovered) {
-                                                            style.background = Some(
-                                                                Background::Color(colors.hover),
-                                                            );
-                                                        }
-
-                                                        if matches!(status, ButtonStatus::Pressed) {
-                                                            style.background = Some(
-                                                                Background::Color(colors.pressed),
-                                                            );
-                                                        }
-
-                                                        style
-                                                    },
-                                                )
-                                                .on_press(message),
-                                        )
-                                        .width(Length::FillPortion(1))
-                                        .height(Length::Fixed(tile_height)),
-                                    )
-                                    .on_right_press(UiMessage::OpenContextMenuForEntry(
-                                        context_path,
-                                    ))
-                                    .into()
+                                    let name_row = row![
+                                        leading,
+                                        text(&entry.name)
+                                            .size(typography.body)
+                                            .font(typography.body_font),
+                                        horizontal_space()
+                                    ]
+                                    .spacing(spacing.sm)
+                                    .align_y(Alignment::Center);
+                                    container(name_row)
+                                        .width(spec.width)
+                                        .align_x(spec.align)
+                                        .into()
                                 }
-                                None => container(row![])
-                                    .width(Length::FillPortion(1))
-                                    .height(Length::Fixed(tile_height))
-                                    .into(),
+                                ViewColumn::Type => container(
+                                    text(entry_type_label(entry.entry_type))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
+                                ViewColumn::Size => container(
+                                    text(format_entry_size(entry))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
+                                ViewColumn::Modified => container(
+                                    text(format_modified(entry.metadata.modified))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
                             };
-                            tile_row = tile_row.push(tile_element);
+                            entry_row = entry_row.push(cell);
                         }
-                        list = list.push(tile_row);
-                    }
-
-                    if grid.window.padding_bottom > 0.0 {
+                        let selection_kind = self.selection_kind_from_modifiers();
+                        let message = UiMessage::SelectEntry {
+                            path: entry.path.clone(),
+                            kind: selection_kind,
+                        };
+                        let context_path = entry.path.clone();
                         list = list.push(
-                            vertical_space().height(Length::Fixed(grid.window.padding_bottom)),
+                            mouse_area(
+                                button(entry_row)
+                                    .padding([spacing.xs, spacing.sm])
+                                    .style(move |_theme: &Theme, status: ButtonStatus| {
+                                        let mut style = iced::widget::button::Style {
+                                            text_color: colors.text_primary,
+                                            ..Default::default()
+                                        };
+
+                                        if is_selected {
+                                            style.background =
+                                                Some(Background::Color(colors.selection));
+                                            style.border = border::rounded(6.0)
+                                                .color(colors.selection_border)
+                                                .width(if is_focused { 2.0 } else { 1.0 });
+                                        }
+
+                                        if matches!(status, ButtonStatus::Hovered) {
+                                            style.background =
+                                                Some(Background::Color(colors.hover));
+                                        }
+
+                                        if matches!(status, ButtonStatus::Pressed) {
+                                            style.background =
+                                                Some(Background::Color(colors.pressed));
+                                        }
+
+                                        style
+                                    })
+                                    .on_press(message),
+                            )
+                            .on_right_press(UiMessage::OpenContextMenuForEntry(context_path)),
                         );
                     }
-
-                    list
                 }
+
+                if window.padding_bottom > 0.0 {
+                    list = list.push(vertical_space().height(Length::Fixed(window.padding_bottom)));
+                }
+
+                list
             }
+        } else if display_entries.total == 0 && !self.is_loading {
+            column![
+                text("Dossier vide")
+                    .size(typography.body)
+                    .font(typography.body_font)
+            ]
+        } else if display_entries.total == 0 {
+            column![]
+        } else {
+            let window = self.virtual_window_for(display_entries.total);
+            let mut list = column![];
+
+            if window.padding_top > 0.0 {
+                list = list.push(vertical_space().height(Length::Fixed(window.padding_top)));
+            }
+
+            for index in window.start..window.end {
+                let entry = display_entries.get(index);
+                let entry_element: Element<'_, UiMessage> = match entry {
+                    Some(entry) => {
+                        let is_selected = self
+                            .state
+                            .navigation
+                            .selection
+                            .selected
+                            .contains(&entry.path);
+                        let is_focused = self
+                            .state
+                            .navigation
+                            .selection
+                            .focused
+                            .as_ref()
+                            .map(|path| path == &entry.path)
+                            .unwrap_or(false);
+                        let mut entry_row = row![].spacing(spacing.md).align_y(Alignment::Center);
+                        for spec in &column_specs {
+                            let cell: Element<'_, UiMessage> = match spec.column {
+                                ViewColumn::Name => {
+                                    let leading: Element<'_, UiMessage> = match entry.entry_type {
+                                        FsEntryType::Directory => text(ICON_FOLDER)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
+                                        FsEntryType::File => self
+                                            .thumbnail_handles
+                                            .get(&entry.path)
+                                            .map(|handle| {
+                                                image(handle.clone())
+                                                    .width(Length::Fixed(
+                                                        self.state.config.view.thumbnail_size
+                                                            as f32,
+                                                    ))
+                                                    .height(Length::Fixed(
+                                                        self.state.config.view.thumbnail_size
+                                                            as f32,
+                                                    ))
+                                                    .into()
+                                            })
+                                            .unwrap_or_else(|| {
+                                                text(ICON_FILE)
+                                                    .size(typography.body)
+                                                    .font(typography.body_font)
+                                                    .into()
+                                            }),
+                                        FsEntryType::Symlink => text(ICON_SYMLINK)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
+                                        FsEntryType::Other => text(ICON_UNKNOWN)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
+                                    };
+                                    let name_row = row![
+                                        leading,
+                                        text(&entry.name)
+                                            .size(typography.body)
+                                            .font(typography.body_font),
+                                        horizontal_space()
+                                    ]
+                                    .spacing(spacing.sm)
+                                    .align_y(Alignment::Center);
+                                    container(name_row)
+                                        .width(spec.width)
+                                        .align_x(spec.align)
+                                        .into()
+                                }
+                                ViewColumn::Type => container(
+                                    text(entry_type_label(entry.entry_type))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
+                                ViewColumn::Size => container(
+                                    text(format_entry_size(entry))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
+                                ViewColumn::Modified => container(
+                                    text(format_modified(entry.metadata.modified))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
+                            };
+                            entry_row = entry_row.push(cell);
+                        }
+                        let selection_kind = self.selection_kind_from_modifiers();
+                        let message = UiMessage::SelectEntry {
+                            path: entry.path.clone(),
+                            kind: selection_kind,
+                        };
+                        let context_path = entry.path.clone();
+                        mouse_area(
+                            button(entry_row)
+                                .padding([spacing.xs, spacing.sm])
+                                .style(move |_theme: &Theme, status: ButtonStatus| {
+                                    let mut style = iced::widget::button::Style {
+                                        text_color: colors.text_primary,
+                                        ..Default::default()
+                                    };
+
+                                    if is_selected {
+                                        style.background =
+                                            Some(Background::Color(colors.selection));
+                                        style.border = border::rounded(6.0)
+                                            .color(colors.selection_border)
+                                            .width(if is_focused { 2.0 } else { 1.0 });
+                                    }
+
+                                    if matches!(status, ButtonStatus::Hovered) {
+                                        style.background = Some(Background::Color(colors.hover));
+                                    }
+
+                                    if matches!(status, ButtonStatus::Pressed) {
+                                        style.background = Some(Background::Color(colors.pressed));
+                                    }
+
+                                    style
+                                })
+                                .on_press(message),
+                        )
+                        .on_right_press(UiMessage::OpenContextMenuForEntry(context_path))
+                        .into()
+                    }
+                    None => {
+                        let mut placeholder_row =
+                            row![].spacing(spacing.md).align_y(Alignment::Center);
+                        for (index, spec) in column_specs.iter().enumerate() {
+                            let cell: Element<'_, UiMessage> = if index == 0 {
+                                let content = row![
+                                    text(ICON_LOADING)
+                                        .size(typography.body)
+                                        .font(typography.body_font),
+                                    text("Chargement…")
+                                        .size(typography.body)
+                                        .font(typography.body_font)
+                                ]
+                                .spacing(spacing.sm)
+                                .align_y(Alignment::Center);
+                                container(content)
+                                    .width(spec.width)
+                                    .align_x(spec.align)
+                                    .into()
+                            } else {
+                                container(row![])
+                                    .width(spec.width)
+                                    .align_x(spec.align)
+                                    .into()
+                            };
+                            placeholder_row = placeholder_row.push(cell);
+                        }
+                        button(placeholder_row).into()
+                    }
+                };
+                list = list.push(entry_element);
+            }
+
+            if window.padding_bottom > 0.0 {
+                list = list.push(vertical_space().height(Length::Fixed(window.padding_bottom)));
+            }
+
+            list
         };
 
         let list_header: Element<'_, UiMessage> = if self.error.is_none()
-            && matches!(view_mode, ViewMode::List)
             && if let Some(indices) = &filtered_indices {
                 !indices.is_empty()
             } else {
@@ -3034,10 +2983,14 @@ impl XionApp {
         } else {
             let window = self.tree_virtual_window(tree_nodes.len());
             if window.padding_top > 0.0 {
-                tree_section =
-                    tree_section.push(vertical_space().height(Length::Fixed(window.padding_top)));
+                tree_section = tree_section
+                    .push(vertical_space().height(Length::Fixed(window.padding_top)));
             }
-            for node in tree_nodes.iter().skip(window.start).take(window.len()) {
+            for node in tree_nodes
+                .iter()
+                .skip(window.start)
+                .take(window.len())
+            {
                 let label = node.label.clone();
                 let path = node.path.clone();
                 let selected = node.selected;
@@ -3045,8 +2998,8 @@ impl XionApp {
                 let expanded = node.expanded;
                 let icon = if depth == 0 { ICON_PC } else { ICON_FOLDER };
                 let chevron = if expanded { "▾" } else { "▸" };
-                let indent =
-                    horizontal_space().width(Length::Fixed(depth as f32 * (spacing.sm + 2.0)));
+                let indent = horizontal_space()
+                    .width(Length::Fixed(depth as f32 * (spacing.sm + 2.0)));
                 let content: Element<'_, UiMessage> = row![
                     indent,
                     text(chevron)
@@ -3070,9 +3023,8 @@ impl XionApp {
 
                         if selected {
                             style.background = Some(Background::Color(colors.selection));
-                            style.border = border::rounded(6.0)
-                                .color(colors.selection_border)
-                                .width(1.0);
+                            style.border =
+                                border::rounded(6.0).color(colors.selection_border).width(1.0);
                         }
 
                         if matches!(status, ButtonStatus::Hovered) {
@@ -3145,7 +3097,12 @@ impl XionApp {
         }
 
         let mut drive_section = column![section_title("Lecteurs".to_string())].spacing(spacing.xs);
-        if let Some(root_path) = self.state.route.local_path().and_then(root_path_for) {
+        if let Some(root_path) = self
+            .state
+            .route
+            .local_path()
+            .and_then(root_path_for)
+        {
             if let Some(usage) = disk_usage_for(&root_path) {
                 let total_gb = format_gigabytes(usage.total);
                 let free_gb = format_gigabytes(usage.available);

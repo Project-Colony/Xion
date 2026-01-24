@@ -1157,9 +1157,23 @@ impl XionApp {
                 }
             }
             UiMessage::Scroll(viewport) => {
+                let delta_scroll = viewport.offset_y - self.scroll_offset;
                 self.scroll_offset = viewport.offset_y;
                 self.viewport_height = viewport.viewport_height.max(1.0);
                 self.list_viewport_bounds = Some(viewport.bounds);
+                if delta_scroll != 0.0
+                    && self.mouse_pressed
+                    && self.drag_candidate.is_none()
+                    && self.selection_box_start.is_some()
+                    && self.selection_box_current.is_some()
+                {
+                    if let Some(point) = self.selection_box_start.as_mut() {
+                        point.y += delta_scroll;
+                    }
+                    if let Some(point) = self.selection_box_current.as_mut() {
+                        point.y += delta_scroll;
+                    }
+                }
                 tasks.push(self.ensure_visible_pages());
             }
             UiMessage::TreeScroll(viewport) => {

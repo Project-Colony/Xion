@@ -1157,14 +1157,6 @@ impl XionApp {
                 }
             }
             UiMessage::Scroll(viewport) => {
-                let selection_drag_in_progress = self.selection_box_start.is_some()
-                    && self.mouse_pressed
-                    && self.drag_candidate.is_none();
-                if selection_drag_in_progress {
-                    self.viewport_height = viewport.viewport_height.max(1.0);
-                    self.list_viewport_bounds = Some(viewport.bounds);
-                    return Task::batch(tasks);
-                }
                 self.scroll_offset = viewport.offset_y;
                 self.viewport_height = viewport.viewport_height.max(1.0);
                 self.list_viewport_bounds = Some(viewport.bounds);

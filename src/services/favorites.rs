@@ -28,3 +28,33 @@ impl FavoritesService {
         &self.favorites
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::FavoritesService;
+    use std::path::PathBuf;
+
+    #[test]
+    fn add_and_remove_favorites() {
+        let mut favorites = FavoritesService::default();
+
+        assert!(favorites.add(PathBuf::from("/alpha")));
+        assert!(!favorites.add(PathBuf::from("/alpha")));
+        assert!(favorites.add(PathBuf::from("/beta")));
+        assert_eq!(favorites.list().len(), 2);
+
+        assert!(favorites.contains(PathBuf::from("/alpha").as_path()));
+        assert!(favorites.remove(PathBuf::from("/alpha").as_path()));
+        assert!(!favorites.contains(PathBuf::from("/alpha").as_path()));
+        assert_eq!(favorites.list().len(), 1);
+    }
+
+    #[test]
+    fn remove_missing_favorite_returns_false() {
+        let mut favorites = FavoritesService::default();
+        favorites.add(PathBuf::from("/alpha"));
+
+        assert!(!favorites.remove(PathBuf::from("/beta").as_path()));
+        assert_eq!(favorites.list().len(), 1);
+    }
+}

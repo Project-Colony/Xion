@@ -276,7 +276,7 @@ fn root_path_for(path: &PathBuf) -> Option<PathBuf> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct DiskUsage {
     total: u64,
     available: u64,

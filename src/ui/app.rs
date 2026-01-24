@@ -969,6 +969,20 @@ impl XionApp {
         self.context_menu_open = false;
     }
 
+    fn selected_entry<'a>(&'a self, entries: &'a PagedEntries) -> Option<&'a FsEntry> {
+        let selection = &self.state.navigation.selection;
+        let selected_path = selection
+            .focused
+            .as_ref()
+            .or_else(|| selection.selected.iter().next());
+        let selected_path = selected_path?;
+        entries
+            .items
+            .iter()
+            .filter_map(|entry| entry.as_ref())
+            .find(|entry| &entry.path == selected_path)
+    }
+
     fn handle_keyboard_command(&mut self, command: KeyboardCommand) -> Task<UiMessage> {
         match command {
             KeyboardCommand::MoveUp { extend } => {
@@ -2579,6 +2593,135 @@ impl XionApp {
             ..Default::default()
         });
 
+        let preview_row = |label: String, value: String| {
+            row![
+                container(
+                    text(label)
+                        .size(typography.caption)
+                        .font(typography.caption_font)
+                        .style(move |_| iced::widget::text::Style {
+                            color: Some(colors.text_muted),
+                        }),
+                )
+                .width(Length::Fixed(90.0)),
+                text(value)
+                    .size(typography.caption)
+                    .font(typography.caption_font)
+            ]
+            .spacing(spacing.xs)
+            .align_y(Alignment::Center)
+        };
+
+        let preview_entry = self.selected_entry(display_entries);
+        let preview_body: Element<'_, UiMessage> = match preview_entry {
+            Some(entry) => {
+                let icon = match entry.entry_type {
+                    FsEntryType::Directory => ICON_FOLDER,
+                    FsEntryType::File => ICON_FILE,
+                    FsEntryType::Symlink => ICON_SYMLINK,
+                    FsEntryType::Other => ICON_UNKNOWN,
+                };
+                let preview_media_size = (self.state.config.view.thumbnail_size as f32 * 3.0)
+                    .max(120.0)
+                    .min(220.0);
+                let preview_media: Element<'_, UiMessage> = match entry.entry_type {
+                    FsEntryType::File => self
+                        .thumbnail_handles
+                        .get(&entry.path)
+                        .map(|handle| {
+                            image(handle.clone())
+                                .width(Length::Fixed(preview_media_size))
+                                .height(Length::Fixed(preview_media_size))
+                                .into()
+                        })
+                        .unwrap_or_else(|| {
+                            text(icon)
+                                .size(typography.title)
+                                .font(typography.title_font)
+                                .into()
+                        }),
+                    _ => text(icon)
+                        .size(typography.title)
+                        .font(typography.title_font)
+                        .into(),
+                };
+
+                let metadata = column![
+                    preview_row("Type".to_string(), entry_type_label(entry.entry_type).to_string()),
+                    preview_row("Taille".to_string(), format_entry_size(entry)),
+                    preview_row(
+                        "Modifié".to_string(),
+                        format_modified(entry.metadata.modified),
+                    ),
+                    preview_row("Créé".to_string(), format_modified(entry.metadata.created)),
+                    preview_row("Accès".to_string(), format_modified(entry.metadata.accessed)),
+                    preview_row(
+                        "Lecture seule".to_string(),
+                        if entry.metadata.readonly {
+                            "Oui".to_string()
+                        } else {
+                            "Non".to_string()
+                        },
+                    ),
+                ]
+                .spacing(spacing.xs);
+
+                column![
+                    preview_media,
+                    text(&entry.name)
+                        .size(typography.body)
+                        .font(typography.body_font),
+                    text(entry.path.display().to_string())
+                        .size(typography.caption)
+                        .font(typography.caption_font)
+                        .style(move |_| iced::widget::text::Style {
+                            color: Some(colors.text_muted),
+                        }),
+                    metadata
+                ]
+                .spacing(spacing.sm)
+                .align_x(Alignment::Center)
+                .into()
+            }
+            None if self.state.navigation.selection.selected.is_empty() => column![
+                text("Sélectionnez un élément")
+                    .size(typography.caption)
+                    .font(typography.caption_font)
+                    .style(move |_| iced::widget::text::Style {
+                        color: Some(colors.text_muted),
+                    })
+            ]
+            .align_x(Alignment::Center)
+            .spacing(spacing.sm)
+            .into(),
+            None => column![
+                text("Aperçu en cours de chargement…")
+                    .size(typography.caption)
+                    .font(typography.caption_font)
+                    .style(move |_| iced::widget::text::Style {
+                        color: Some(colors.text_muted),
+                    })
+            ]
+            .align_x(Alignment::Center)
+            .spacing(spacing.sm)
+            .into(),
+        };
+
+        let preview_panel = container(
+            column![
+                section_title("Prévisualisation".to_string()),
+                preview_body
+            ]
+            .spacing(spacing.md),
+        )
+        .padding(spacing.md)
+        .width(Length::Fixed(280.0))
+        .style(move |_| iced::widget::container::Style {
+            background: Some(Background::Color(colors.panel_background)),
+            border: border::rounded(10.0).color(colors.border).width(1.0),
+            ..Default::default()
+        });
+
         let body = row![
             sidebar.width(Length::Fixed(220.0)),
             container(list)
@@ -2588,7 +2731,8 @@ impl XionApp {
                     background: Some(Background::Color(colors.panel_background)),
                     border: border::rounded(10.0).color(colors.border).width(1.0),
                     ..Default::default()
-                })
+                }),
+            preview_panel
         ]
         .height(Length::Fill)
         .spacing(spacing.md);

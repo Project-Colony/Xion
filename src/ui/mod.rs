@@ -116,7 +116,6 @@ pub enum UiMessage {
     RenameInputChanged(String),
     RenameSubmit,
     RenameCancel,
-    TreeHeightChanged(f32),
     FileOperationFinished(OperationReport),
 }
 

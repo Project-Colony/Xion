@@ -450,6 +450,8 @@ pub struct XionApp {
     is_loading: bool,
     is_refreshing: bool,
     is_user_selecting: bool,
+    pending_refresh: bool,
+    pending_refresh_reload_config: bool,
     show_loading_indicator: bool,
     loading_generation: u64,
     scroll_offset: f32,
@@ -839,6 +841,8 @@ impl XionApp {
             is_loading: false,
             is_refreshing: false,
             is_user_selecting: false,
+            pending_refresh: false,
+            pending_refresh_reload_config: false,
             show_loading_indicator: false,
             loading_generation: 0,
             scroll_offset: 0.0,
@@ -905,6 +909,29 @@ impl XionApp {
 
     fn update(&mut self, message: UiMessage) -> Task<UiMessage> {
         let mut tasks = Vec::new();
+        if self.is_user_selecting {
+            match message {
+                UiMessage::Refresh => {
+                    self.pending_refresh = true;
+                    self.pending_refresh_reload_config = true;
+                    return Task::none();
+                }
+                UiMessage::FileWatchTick => {
+                    if let (Some(watched_path), Some(events)) =
+                        (self.watched_path.clone(), self.poll_watcher())
+                    {
+                        let should_refresh = events
+                            .iter()
+                            .any(|event| Self::is_event_relevant(event, &watched_path));
+                        if should_refresh && !self.is_refreshing {
+                            self.pending_refresh = true;
+                        }
+                    }
+                    return Task::none();
+                }
+                _ => {}
+            }
+        }
         match message {
             UiMessage::Noop => {}
             UiMessage::CursorMoved(position) => {
@@ -1395,6 +1422,15 @@ impl XionApp {
                 }
                 if self.drag_state.is_some() {
                     tasks.push(Task::perform(async {}, |_| UiMessage::FinalizeDrag));
+                }
+                if self.pending_refresh {
+                    let reload_config = self.pending_refresh_reload_config;
+                    self.pending_refresh = false;
+                    self.pending_refresh_reload_config = false;
+                    if reload_config {
+                        tasks.push(self.reload_config());
+                    }
+                    tasks.push(self.refresh_entries());
                 }
             }
             UiMessage::FinalizeDrag => {

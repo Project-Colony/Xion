@@ -2655,40 +2655,7 @@ impl XionApp {
             container(row![])
         };
 
-        let selection = &self.state.navigation.selection;
-        let selection_status = if selection.selected.is_empty() {
-            None
-        } else if selection.selected.len() == 1 {
-            let path = selection
-                .selected
-                .iter()
-                .next()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "—".to_string());
-            Some(format!("Sélection : {}", path))
-        } else {
-            Some(format!("Sélection : {} éléments", selection.selected.len()))
-        };
-
-        let action_status = self.last_action.clone();
-
         let mut list_column = column![rename_prompt, list_header, list_content].spacing(spacing.xl);
-
-        if let Some(status) = selection_status {
-            list_column = list_column.push(
-                text(status)
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-            );
-        }
-
-        if let Some(status) = action_status {
-            list_column = list_column.push(
-                text(status)
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-            );
-        }
 
         let list = scrollable(container(list_column).padding(spacing.md)).on_scroll(|viewport| {
             UiMessage::Scroll(ScrollViewport {
@@ -2985,7 +2952,83 @@ impl XionApp {
         .height(Length::Fill)
         .spacing(spacing.md);
 
-        let content = column![header, body]
+        let selection = &self.state.navigation.selection;
+        let selection_status = if selection.selected.is_empty() {
+            "Aucune sélection".to_string()
+        } else if selection.selected.len() == 1 {
+            let path = selection
+                .selected
+                .iter()
+                .next()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "—".to_string());
+            format!("Sélection : {}", path)
+        } else {
+            format!("Sélection : {} éléments", selection.selected.len())
+        };
+
+        let entry_count = if let Some(indices) = &filtered_indices {
+            indices.len()
+        } else {
+            display_entries.total
+        };
+        let entries_status = if entry_count == 0 {
+            "Aucun élément".to_string()
+        } else if entry_count == 1 {
+            "1 élément".to_string()
+        } else {
+            format!("{} éléments", entry_count)
+        };
+
+        let mut status_left = row![
+            text(selection_status)
+                .size(typography.caption)
+                .font(typography.caption_font),
+            text(entries_status)
+                .size(typography.caption)
+                .font(typography.caption_font)
+                .style(move |_| iced::widget::text::Style {
+                    color: Some(colors.text_muted),
+                })
+        ]
+        .spacing(spacing.md)
+        .align_y(Alignment::Center);
+
+        if self.is_loading {
+            status_left = status_left.push(
+                row![
+                    text(ICON_LOADING)
+                        .size(typography.caption)
+                        .font(typography.caption_font),
+                    text("Chargement…")
+                        .size(typography.caption)
+                        .font(typography.caption_font)
+                ]
+                .spacing(spacing.xs)
+                .align_y(Alignment::Center),
+            );
+        }
+
+        let mut status_right = row![].spacing(spacing.md).align_y(Alignment::Center);
+        if let Some(status) = self.last_action.clone() {
+            status_right = status_right.push(
+                text(status)
+                    .size(typography.caption)
+                    .font(typography.caption_font),
+            );
+        }
+
+        let status_bar = container(
+            row![status_left, horizontal_space(), status_right].align_y(Alignment::Center),
+        )
+        .padding([spacing.xs, spacing.md])
+        .style(move |_| iced::widget::container::Style {
+            background: Some(Background::Color(colors.panel_background)),
+            border: border::rounded(8.0).color(colors.border).width(1.0),
+            ..Default::default()
+        });
+
+        let content = column![header, body, status_bar]
             .spacing(spacing.md)
             .padding(spacing.lg)
             .align_x(Alignment::Start)

@@ -114,7 +114,7 @@ pub enum UiMessage {
     FileOperationFinished(OperationReport),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionKind {
     Single,
     Toggle,

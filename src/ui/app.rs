@@ -26,8 +26,8 @@ use crate::filesystem::{
     LocalFileOperations, LocalFileSystem, OperationReport, Page, PageRequest, SortKey, SortOrder,
 };
 use crate::services::{
-    DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService, ThumbnailService,
-    VirtualList, VirtualWindow, generate_thumbnail,
+    DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService, PreviewImageService,
+    ThumbnailService, VirtualList, VirtualWindow, generate_thumbnail,
 };
 use crate::ui::{
     AppState, ContextAction, KeyboardCommand, ModifiersState, RouteKind, ScrollViewport,
@@ -369,6 +369,10 @@ pub struct XionApp {
     thumbnail_handles: HashMap<PathBuf, image::Handle>,
     thumbnails_in_flight: HashSet<PathBuf>,
     thumbnail_misses: HashSet<PathBuf>,
+    preview_images: PreviewImageService,
+    preview_handles: HashMap<PathBuf, image::Handle>,
+    previews_in_flight: HashSet<PathBuf>,
+    preview_misses: HashSet<PathBuf>,
     entries: PagedEntries,
     stale_entries: Option<PagedEntries>,
     pending_pages: HashSet<usize>,
@@ -606,6 +610,11 @@ impl XionApp {
             state.config.cache.thumbnail_entries,
             Duration::from_secs(state.config.cache.thumbnail_ttl_seconds),
         );
+        let preview_cache_entries = state.config.cache.thumbnail_entries.min(8).max(1);
+        let preview_images = PreviewImageService::new(
+            preview_cache_entries,
+            Duration::from_secs(state.config.cache.thumbnail_ttl_seconds),
+        );
         let entries = PagedEntries::new(0, page_size);
         let address_input = state.route.address_label();
         let favorites = build_default_favorites();
@@ -618,6 +627,10 @@ impl XionApp {
             thumbnail_handles: HashMap::new(),
             thumbnails_in_flight: HashSet::new(),
             thumbnail_misses: HashSet::new(),
+            preview_images,
+            preview_handles: HashMap::new(),
+            previews_in_flight: HashSet::new(),
+            preview_misses: HashSet::new(),
             entries,
             stale_entries: None,
             pending_pages: HashSet::new(),
@@ -914,6 +927,32 @@ impl XionApp {
                     }
                 }
             }
+            UiMessage::PreviewLoaded { path, preview } => {
+                self.previews_in_flight.remove(&path);
+                let is_selected = self
+                    .state
+                    .navigation
+                    .selection
+                    .focused
+                    .as_ref()
+                    .is_some_and(|focused| focused == &path)
+                    || self.state.navigation.selection.selected.contains(&path);
+                if is_selected {
+                    match preview {
+                        Some(preview) => {
+                            self.preview_handles.insert(
+                                path.clone(),
+                                image::Handle::from_bytes(preview.bytes.clone()),
+                            );
+                            self.preview_images.insert(path.clone(), preview);
+                            self.preview_misses.remove(&path);
+                        }
+                        None => {
+                            self.preview_misses.insert(path);
+                        }
+                    }
+                }
+            }
             UiMessage::ClipboardCut => {
                 self.capture_clipboard(ClipboardKind::Cut);
             }
@@ -951,6 +990,7 @@ impl XionApp {
         }
 
         tasks.push(self.request_visible_thumbnails());
+        tasks.push(self.request_selected_preview());
         Task::batch(tasks)
     }
 
@@ -1020,6 +1060,14 @@ impl XionApp {
             self.thumbnail_handles.clear();
             self.thumbnail_misses.clear();
             self.thumbnails_in_flight.clear();
+            let preview_cache_entries = new_config.cache.thumbnail_entries.min(8).max(1);
+            self.preview_images = PreviewImageService::new(
+                preview_cache_entries,
+                Duration::from_secs(new_config.cache.thumbnail_ttl_seconds),
+            );
+            self.preview_handles.clear();
+            self.preview_misses.clear();
+            self.previews_in_flight.clear();
         }
 
         if self
@@ -1049,7 +1097,9 @@ impl XionApp {
     }
 
     fn apply_selection(&mut self, path: PathBuf, kind: SelectionKind) {
-        let anchor_path = self.state.navigation.selection.anchor.clone();
+        let selection = &mut self.state.navigation.selection;
+        let previous_focus = selection.focused.clone();
+        let anchor_path = selection.anchor.clone();
         let selection_kind = match kind {
             SelectionKind::Range if anchor_path.is_none() => SelectionKind::Single,
             SelectionKind::Range => SelectionKind::Range,
@@ -1059,8 +1109,6 @@ impl XionApp {
         let anchor_index = anchor_path
             .as_ref()
             .and_then(|anchor_path| self.index_for_path(anchor_path));
-
-        let selection = &mut self.state.navigation.selection;
 
         match selection_kind {
             SelectionKind::Single => {
@@ -1112,6 +1160,9 @@ impl XionApp {
         }
         self.context_menu_open = false;
         self.context_menu_position = None;
+        if selection.focused != previous_focus {
+            self.reset_preview_state();
+        }
     }
 
     fn selected_entry<'a>(&'a self, entries: &'a PagedEntries) -> Option<&'a FsEntry> {
@@ -1586,6 +1637,7 @@ impl XionApp {
         }
         selection.focused = selection.selected.iter().next().cloned();
         selection.anchor = selection.focused.clone();
+        self.reset_preview_state();
     }
 
     fn clear_selection(&mut self) {
@@ -1595,6 +1647,14 @@ impl XionApp {
         selection.anchor = None;
         self.context_menu_open = false;
         self.context_menu_position = None;
+        self.reset_preview_state();
+    }
+
+    fn reset_preview_state(&mut self) {
+        self.preview_handles.clear();
+        self.preview_misses.clear();
+        self.previews_in_flight.clear();
+        self.preview_images.clear();
     }
 
     fn cycle_focus(&mut self) {
@@ -1763,6 +1823,49 @@ impl XionApp {
         }
 
         Task::batch(tasks)
+    }
+
+    fn preview_image_size(&self) -> u32 {
+        let base_size = self.state.config.view.thumbnail_size as u32;
+        base_size.saturating_mul(4).clamp(256, 512)
+    }
+
+    fn request_selected_preview(&mut self) -> Task<UiMessage> {
+        let Some(entry) = self.selected_entry(&self.entries) else {
+            return Task::none();
+        };
+
+        if entry.entry_type != FsEntryType::File {
+            return Task::none();
+        }
+
+        if let Some(preview) = self.preview_images.get(&entry.path) {
+            if !self.preview_handles.contains_key(&entry.path) {
+                self.preview_handles.insert(
+                    entry.path.clone(),
+                    image::Handle::from_bytes(preview.bytes.clone()),
+                );
+            }
+            return Task::none();
+        }
+
+        if self.preview_handles.contains_key(&entry.path)
+            || self.preview_misses.contains(&entry.path)
+            || self.previews_in_flight.contains(&entry.path)
+        {
+            return Task::none();
+        }
+
+        let path = entry.path.clone();
+        let preview_size = self.preview_image_size();
+        self.previews_in_flight.insert(path.clone());
+        Task::perform(
+            async move {
+                let preview = generate_thumbnail(path.as_path(), preview_size);
+                (path, preview)
+            },
+            |(path, preview)| UiMessage::PreviewLoaded { path, preview },
+        )
     }
 
     fn view(&self) -> Element<'_, UiMessage> {
@@ -2977,7 +3080,7 @@ impl XionApp {
                     .min(220.0);
                 let preview_media: Element<'_, UiMessage> = match entry.entry_type {
                     FsEntryType::File => self
-                        .thumbnail_handles
+                        .preview_handles
                         .get(&entry.path)
                         .map(|handle| {
                             image(handle.clone())
@@ -2986,7 +3089,7 @@ impl XionApp {
                                 .into()
                         })
                         .unwrap_or_else(|| {
-                            text(icon)
+                            text(ICON_LOADING)
                                 .size(typography.title)
                                 .font(typography.title_font)
                                 .into()

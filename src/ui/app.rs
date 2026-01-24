@@ -4275,11 +4275,15 @@ fn format_entry_size(entry: &FsEntry) -> String {
 }
 
 fn rectangles_intersect(a: Rectangle, b: Rectangle) -> bool {
+    let epsilon = 0.01;
     let a_right = a.x + a.width;
     let a_bottom = a.y + a.height;
     let b_right = b.x + b.width;
     let b_bottom = b.y + b.height;
-    a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
+    a.x <= b_right + epsilon
+        && a_right + epsilon >= b.x
+        && a.y <= b_bottom + epsilon
+        && a_bottom + epsilon >= b.y
 }
 
 fn format_bytes(bytes: u64) -> String {

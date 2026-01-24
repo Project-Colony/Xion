@@ -98,6 +98,7 @@ pub enum UiMessage {
     AddressInputSubmitted,
     SearchInputChanged(String),
     SearchInputSubmitted,
+    ToggleTreeNode(PathBuf),
     Scroll(ScrollViewport),
     ChangeSort(SortKeyConfig),
     LoadingDelayElapsed(u64),
@@ -105,6 +106,10 @@ pub enum UiMessage {
         path: PathBuf,
         page_index: usize,
         result: Result<Page<FsEntry>, String>,
+    },
+    TreeLoaded {
+        path: PathBuf,
+        result: Result<Vec<FsEntry>, String>,
     },
     ThumbnailLoaded {
         path: PathBuf,

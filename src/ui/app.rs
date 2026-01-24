@@ -1911,7 +1911,7 @@ impl XionApp {
             container(row![]).into()
         };
 
-        let context_actions = row![
+        let context_actions = column![
             toolbar_button(format!("{} Ouvrir", ICON_OPEN))
                 .on_press(UiMessage::ContextAction(ContextAction::Open,)),
             toolbar_button(format!("{} Renommer", ICON_RENAME))

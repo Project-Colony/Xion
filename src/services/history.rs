@@ -55,3 +55,45 @@ impl HistoryService {
         &self.entries
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::HistoryService;
+    use std::path::PathBuf;
+
+    #[test]
+    fn record_sets_current_and_truncates_forward_history() {
+        let mut history = HistoryService::default();
+        history.record(PathBuf::from("/one"));
+        history.record(PathBuf::from("/two"));
+        history.record(PathBuf::from("/three"));
+
+        assert!(history.can_back());
+        assert!(!history.can_forward());
+        assert_eq!(history.current(), Some(&PathBuf::from("/three")));
+
+        assert_eq!(history.back(), Some(PathBuf::from("/two")));
+        assert_eq!(history.current(), Some(&PathBuf::from("/two")));
+
+        history.record(PathBuf::from("/four"));
+        assert_eq!(history.entries().len(), 3);
+        assert_eq!(history.current(), Some(&PathBuf::from("/four")));
+        assert!(!history.can_forward());
+    }
+
+    #[test]
+    fn back_and_forward_navigate_history() {
+        let mut history = HistoryService::default();
+        history.record(PathBuf::from("/one"));
+        history.record(PathBuf::from("/two"));
+        history.record(PathBuf::from("/three"));
+
+        assert_eq!(history.back(), Some(PathBuf::from("/two")));
+        assert_eq!(history.back(), Some(PathBuf::from("/one")));
+        assert_eq!(history.back(), None);
+
+        assert_eq!(history.forward(), Some(PathBuf::from("/two")));
+        assert_eq!(history.forward(), Some(PathBuf::from("/three")));
+        assert_eq!(history.forward(), None);
+    }
+}

@@ -1,7 +1,8 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use directories::UserDirs;
 use iced::font::{Family, Style, Weight};
@@ -98,6 +99,7 @@ const ICON_OPEN: &str = "";
 const ICON_RENAME: &str = "";
 const ICON_DELETE: &str = "";
 const ICON_CLOSE: &str = "";
+const DISK_USAGE_TTL: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy)]
 struct UiColors {
@@ -280,6 +282,13 @@ struct DiskUsage {
     available: u64,
 }
 
+#[derive(Debug, Clone)]
+struct DiskUsageCache {
+    path: PathBuf,
+    usage: Option<DiskUsage>,
+    refreshed_at: Instant,
+}
+
 fn disk_usage_for(path: &Path) -> Option<DiskUsage> {
     let disks = Disks::new_with_refreshed_list();
     let mut best_match: Option<(usize, DiskUsage)> = None;
@@ -361,6 +370,7 @@ pub struct XionApp {
     active_tab: usize,
     clipboard: ClipboardState,
     rename_dialog: Option<RenameDialog>,
+    disk_usage_cache: RefCell<Option<DiskUsageCache>>,
 }
 
 impl XionApp {
@@ -475,6 +485,23 @@ impl XionApp {
         }
         Task::none()
     }
+
+    fn disk_usage_for_path(&self, path: &Path) -> Option<DiskUsage> {
+        let now = Instant::now();
+        if let Some(cache) = self.disk_usage_cache.borrow().as_ref() {
+            if cache.path == path && now.duration_since(cache.refreshed_at) < DISK_USAGE_TTL {
+                return cache.usage;
+            }
+        }
+
+        let usage = disk_usage_for(path);
+        *self.disk_usage_cache.borrow_mut() = Some(DiskUsageCache {
+            path: path.to_path_buf(),
+            usage,
+            refreshed_at: now,
+        });
+        usage
+    }
 }
 
 impl XionApp {
@@ -530,6 +557,7 @@ impl XionApp {
             active_tab: 0,
             clipboard: ClipboardState::default(),
             rename_dialog: None,
+            disk_usage_cache: RefCell::new(None),
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -1876,7 +1904,7 @@ impl XionApp {
 
         let mut drive_section = column![section_title("Lecteurs".to_string())].spacing(spacing.xs);
         if let Some(root_path) = root_path_for(&self.state.route.path) {
-            if let Some(usage) = disk_usage_for(&root_path) {
+            if let Some(usage) = self.disk_usage_for_path(&root_path) {
                 let total_gb = format_gigabytes(usage.total);
                 let free_gb = format_gigabytes(usage.available);
                 let used_ratio = if usage.total == 0 {

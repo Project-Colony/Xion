@@ -35,6 +35,10 @@ thumbnail_ttl_seconds = 300
 directory_entries = 256
 directory_ttl_seconds = 45
 
+[filesystem]
+metadata_batch_size = 256
+metadata_parallelism = 4
+
 [view]
 mode = "list"              # list | grid
 thumbnail_size = 48

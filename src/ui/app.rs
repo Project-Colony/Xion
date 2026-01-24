@@ -342,12 +342,6 @@ struct RenameDialog {
     input: String,
 }
 
-#[derive(Debug, Clone)]
-struct DragState {
-    items: Vec<PathBuf>,
-    hovered_target: Option<PathBuf>,
-}
-
 #[derive(Debug)]
 pub struct XionApp {
     state: AppState,
@@ -382,8 +376,6 @@ pub struct XionApp {
     rename_dialog: Option<RenameDialog>,
     last_click_time: Option<Instant>,
     last_clicked_path: Option<PathBuf>,
-    drag_state: Option<DragState>,
-    hovered_entry: Option<PathBuf>,
 }
 
 impl XionApp {
@@ -584,8 +576,6 @@ impl XionApp {
             rename_dialog: None,
             last_click_time: None,
             last_clicked_path: None,
-            drag_state: None,
-            hovered_entry: None,
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -640,11 +630,7 @@ impl XionApp {
             UiMessage::FocusPane(pane) => {
                 self.state.navigation.focused_pane = pane;
             }
-            UiMessage::SelectEntry {
-                path,
-                kind,
-                start_drag,
-            } => {
+            UiMessage::SelectEntry { path, kind } => {
                 let now = Instant::now();
                 if kind != SelectionKind::Single {
                     self.last_click_time = None;
@@ -669,31 +655,9 @@ impl XionApp {
                         self.last_clicked_path = Some(path);
                     }
                 }
-                if start_drag {
-                    self.begin_drag();
-                }
             }
             UiMessage::ActivateEntry(path) => {
                 tasks.push(self.activate_entry(path));
-            }
-            UiMessage::DragHoverTarget(target) => {
-                if let Some(drag_state) = &mut self.drag_state {
-                    drag_state.hovered_target = target;
-                }
-            }
-            UiMessage::DragEnded => {
-                if let Some(drag_state) = self.drag_state.take() {
-                    if let Some(target) = drag_state.hovered_target {
-                        tasks.push(self.drop_selection(target, drag_state.items));
-                    }
-                }
-            }
-            UiMessage::EntryHovered(entry) => {
-                if entry.is_some() {
-                    self.hovered_entry = entry;
-                } else if self.hovered_entry.is_some() {
-                    self.hovered_entry = None;
-                }
             }
             UiMessage::KeyboardCommand(command) => {
                 tasks.push(self.handle_keyboard_command(command));
@@ -891,9 +855,6 @@ impl XionApp {
             iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
                 UiMessage::CursorMoved(position)
             }
-            iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                UiMessage::DragEnded
-            }
             _ => UiMessage::Noop,
         })
     }
@@ -1029,40 +990,6 @@ impl XionApp {
         }
         self.context_menu_open = false;
         self.context_menu_position = None;
-    }
-
-    fn begin_drag(&mut self) {
-        let selection = &self.state.navigation.selection;
-        if selection.selected.is_empty() {
-            self.drag_state = None;
-            return;
-        }
-        let items = selection.selected.iter().cloned().collect::<Vec<_>>();
-        self.drag_state = Some(DragState {
-            items,
-            hovered_target: None,
-        });
-    }
-
-    fn drop_selection(&mut self, target: PathBuf, items: Vec<PathBuf>) -> Task<UiMessage> {
-        if !target.is_dir() {
-            self.last_action = Some("Déplacement annulé : destination invalide".to_string());
-            return Task::none();
-        }
-        let items = items
-            .into_iter()
-            .filter(|item| item.parent().map(|parent| parent != target).unwrap_or(true))
-            .collect::<Vec<_>>();
-        if items.is_empty() {
-            return Task::none();
-        }
-        Task::perform(
-            async move {
-                let operations = LocalFileOperations::new();
-                operations.move_items(&items, &target)
-            },
-            UiMessage::FileOperationFinished,
-        )
     }
 
     fn selected_entry<'a>(&'a self, entries: &'a PagedEntries) -> Option<&'a FsEntry> {
@@ -1730,10 +1657,6 @@ impl XionApp {
         let video_dir = user_dirs
             .as_ref()
             .and_then(|dirs| dirs.video_dir().map(|path| path.to_path_buf()));
-        let drag_target = self
-            .drag_state
-            .as_ref()
-            .and_then(|state| state.hovered_target.as_ref());
 
         let toolbar_button = |label: String| {
             button(text(label).size(typography.body).font(typography.body_font))
@@ -1776,46 +1699,31 @@ impl XionApp {
                 .into();
 
                 match target {
-                    Some(path) => {
-                        let is_drop_target =
-                            drag_target.map(|target| target == &path).unwrap_or(false);
-                        let hover_path = path.clone();
-                        let button = button(content)
-                            .padding([spacing.xs, spacing.sm])
-                            .width(Length::Fill)
-                            .style(move |_theme: &Theme, status: ButtonStatus| {
-                                let mut style = iced::widget::button::Style {
-                                    text_color: colors.text_primary,
-                                    ..Default::default()
-                                };
+                    Some(path) => button(content)
+                        .padding([spacing.xs, spacing.sm])
+                        .width(Length::Fill)
+                        .style(move |_theme: &Theme, status: ButtonStatus| {
+                            let mut style = iced::widget::button::Style {
+                                text_color: colors.text_primary,
+                                ..Default::default()
+                            };
 
-                                if is_drop_target {
-                                    style.background = Some(Background::Color(colors.selection));
+                            match status {
+                                ButtonStatus::Hovered => {
+                                    style.background = Some(Background::Color(colors.hover));
                                     style.border =
-                                        border::rounded(6.0).color(colors.accent).width(1.0);
+                                        border::rounded(6.0).color(colors.border).width(1.0);
                                 }
-
-                                match status {
-                                    ButtonStatus::Hovered => {
-                                        style.background = Some(Background::Color(colors.hover));
-                                        style.border =
-                                            border::rounded(6.0).color(colors.border).width(1.0);
-                                    }
-                                    ButtonStatus::Pressed => {
-                                        style.background = Some(Background::Color(colors.pressed));
-                                    }
-                                    ButtonStatus::Active | ButtonStatus::Disabled => {}
+                                ButtonStatus::Pressed => {
+                                    style.background = Some(Background::Color(colors.pressed));
                                 }
+                                ButtonStatus::Active | ButtonStatus::Disabled => {}
+                            }
 
-                                style
-                            })
-                            .on_press(UiMessage::NavigateTo(path.clone()));
-                        mouse_area(button)
-                            .on_enter(UiMessage::DragHoverTarget(Some(hover_path)))
-                            .on_exit(UiMessage::DragHoverTarget(None))
-                            .interaction(mouse::Interaction::Pointer)
-                            .into()
-                    }
+                            style
+                        })
+                        .on_press(UiMessage::NavigateTo(path))
+                        .into(),
                     None => container(content)
                         .padding([spacing.xs, spacing.sm])
                         .width(Length::Fill)
@@ -2232,46 +2140,44 @@ impl XionApp {
                             };
                             entry_row = entry_row.push(cell);
                         }
-                        let is_hovered = self
-                            .hovered_entry
-                            .as_ref()
-                            .map(|path| path == &entry.path)
-                            .unwrap_or(false);
                         let selection_kind = self.selection_kind_from_modifiers();
                         let message = UiMessage::SelectEntry {
                             path: entry.path.clone(),
                             kind: selection_kind,
-                            start_drag: true,
                         };
                         let context_path = entry.path.clone();
-                        let hover_path = entry.path.clone();
                         list = list.push(
                             mouse_area(
-                                container(entry_row)
+                                button(entry_row)
                                     .padding([spacing.xs, spacing.sm])
-                                    .style(move |_| iced::widget::container::Style {
-                                        background: if is_selected {
-                                            Some(Background::Color(colors.selection))
-                                        } else if is_hovered {
-                                            Some(Background::Color(colors.hover))
-                                        } else {
-                                            None
-                                        },
-                                        border: if is_selected {
-                                            border::rounded(6.0)
+                                    .style(move |_theme: &Theme, status: ButtonStatus| {
+                                        let mut style = iced::widget::button::Style {
+                                            text_color: colors.text_primary,
+                                            ..Default::default()
+                                        };
+
+                                        if is_selected {
+                                            style.background =
+                                                Some(Background::Color(colors.selection));
+                                            style.border = border::rounded(6.0)
                                                 .color(colors.selection_border)
-                                                .width(if is_focused { 2.0 } else { 1.0 })
-                                        } else {
-                                            border::rounded(6.0)
-                                        },
-                                        ..Default::default()
-                                    }),
+                                                .width(if is_focused { 2.0 } else { 1.0 });
+                                        }
+
+                                        if matches!(status, ButtonStatus::Hovered) {
+                                            style.background = Some(Background::Color(colors.hover));
+                                        }
+
+                                        if matches!(status, ButtonStatus::Pressed) {
+                                            style.background =
+                                                Some(Background::Color(colors.pressed));
+                                        }
+
+                                        style
+                                    })
+                                    .on_press(message),
                             )
-                            .on_press(message)
-                            .on_right_press(UiMessage::OpenContextMenuForEntry(context_path))
-                            .on_enter(UiMessage::EntryHovered(Some(hover_path)))
-                            .on_exit(UiMessage::EntryHovered(None))
-                            .interaction(mouse::Interaction::Pointer),
+                            .on_right_press(UiMessage::OpenContextMenuForEntry(context_path)),
                         );
                     }
                 }
@@ -2396,45 +2302,41 @@ impl XionApp {
                             };
                             entry_row = entry_row.push(cell);
                         }
-                        let is_hovered = self
-                            .hovered_entry
-                            .as_ref()
-                            .map(|path| path == &entry.path)
-                            .unwrap_or(false);
                         let selection_kind = self.selection_kind_from_modifiers();
                         let message = UiMessage::SelectEntry {
                             path: entry.path.clone(),
                             kind: selection_kind,
-                            start_drag: true,
                         };
                         let context_path = entry.path.clone();
-                        let hover_path = entry.path.clone();
                         mouse_area(
-                            container(entry_row)
+                            button(entry_row)
                                 .padding([spacing.xs, spacing.sm])
-                                .style(move |_| iced::widget::container::Style {
-                                    background: if is_selected {
-                                        Some(Background::Color(colors.selection))
-                                    } else if is_hovered {
-                                        Some(Background::Color(colors.hover))
-                                    } else {
-                                        None
-                                    },
-                                    border: if is_selected {
-                                        border::rounded(6.0)
+                                .style(move |_theme: &Theme, status: ButtonStatus| {
+                                    let mut style = iced::widget::button::Style {
+                                        text_color: colors.text_primary,
+                                        ..Default::default()
+                                    };
+
+                                    if is_selected {
+                                        style.background = Some(Background::Color(colors.selection));
+                                        style.border = border::rounded(6.0)
                                             .color(colors.selection_border)
-                                            .width(if is_focused { 2.0 } else { 1.0 })
-                                    } else {
-                                        border::rounded(6.0)
-                                    },
-                                    ..Default::default()
-                                }),
+                                            .width(if is_focused { 2.0 } else { 1.0 });
+                                    }
+
+                                    if matches!(status, ButtonStatus::Hovered) {
+                                        style.background = Some(Background::Color(colors.hover));
+                                    }
+
+                                    if matches!(status, ButtonStatus::Pressed) {
+                                        style.background = Some(Background::Color(colors.pressed));
+                                    }
+
+                                    style
+                                })
+                                .on_press(message),
                         )
-                        .on_press(message)
                         .on_right_press(UiMessage::OpenContextMenuForEntry(context_path))
-                        .on_enter(UiMessage::EntryHovered(Some(hover_path)))
-                        .on_exit(UiMessage::EntryHovered(None))
-                        .interaction(mouse::Interaction::Pointer)
                         .into()
                     }
                     None => {
@@ -2775,13 +2677,6 @@ impl XionApp {
         };
 
         let preview_entry = self.selected_entry(display_entries);
-        let preview_drop_target = preview_entry
-            .filter(|entry| entry.entry_type == FsEntryType::Directory)
-            .map(|entry| entry.path.clone());
-        let preview_drop_active = preview_drop_target
-            .as_ref()
-            .map(|target| drag_target.is_some_and(|hovered| hovered == target))
-            .unwrap_or(false);
         let preview_body: Element<'_, UiMessage> = match preview_entry {
             Some(entry) => {
                 let icon = match entry.entry_type {
@@ -2887,22 +2782,9 @@ impl XionApp {
         .width(Length::Fixed(280.0))
         .style(move |_| iced::widget::container::Style {
             background: Some(Background::Color(colors.panel_background)),
-            border: if preview_drop_active {
-                border::rounded(10.0).color(colors.accent).width(2.0)
-            } else {
-                border::rounded(10.0).color(colors.border).width(1.0)
-            },
+            border: border::rounded(10.0).color(colors.border).width(1.0),
             ..Default::default()
         });
-        let preview_panel: Element<'_, UiMessage> = if let Some(target) = preview_drop_target {
-            mouse_area(preview_panel)
-                .on_enter(UiMessage::DragHoverTarget(Some(target)))
-                .on_exit(UiMessage::DragHoverTarget(None))
-                .interaction(mouse::Interaction::Pointer)
-                .into()
-        } else {
-            preview_panel.into()
-        };
 
         let body = row![
             sidebar.width(Length::Fixed(220.0)),

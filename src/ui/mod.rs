@@ -85,12 +85,8 @@ pub enum UiMessage {
     SelectEntry {
         path: PathBuf,
         kind: SelectionKind,
-        start_drag: bool,
     },
     ActivateEntry(PathBuf),
-    DragHoverTarget(Option<PathBuf>),
-    DragEnded,
-    EntryHovered(Option<PathBuf>),
     KeyboardCommand(KeyboardCommand),
     ToggleContextMenu(bool),
     OpenContextMenuForEntry(PathBuf),

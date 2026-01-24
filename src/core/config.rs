@@ -20,6 +20,10 @@ const MAX_GRID_COLUMNS: usize = 12;
 const MIN_GRID_ROW_HEIGHT: f32 = 72.0;
 const MAX_GRID_ROW_HEIGHT: f32 = 240.0;
 const MAX_OVERSCAN: usize = 128;
+const MIN_METADATA_BATCH_SIZE: usize = 16;
+const MAX_METADATA_BATCH_SIZE: usize = 4096;
+const MIN_METADATA_PARALLELISM: usize = 1;
+const MAX_METADATA_PARALLELISM: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortKeyConfig {
@@ -273,6 +277,21 @@ impl Default for CacheConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilesystemConfig {
+    pub metadata_batch_size: usize,
+    pub metadata_parallelism: usize,
+}
+
+impl Default for FilesystemConfig {
+    fn default() -> Self {
+        Self {
+            metadata_batch_size: 256,
+            metadata_parallelism: 4,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewConfig {
     pub mode: ViewMode,
@@ -342,6 +361,7 @@ pub struct AppConfig {
     pub start_path: PathBuf,
     pub list: ListConfig,
     pub cache: CacheConfig,
+    pub filesystem: FilesystemConfig,
     pub view: ViewConfig,
     pub paging: PagingConfig,
     pub shortcuts: ShortcutBindings,
@@ -354,6 +374,7 @@ impl Default for AppConfig {
             start_path,
             list: ListConfig::default(),
             cache: CacheConfig::default(),
+            filesystem: FilesystemConfig::default(),
             view: ViewConfig::default(),
             paging: PagingConfig::default(),
             shortcuts: ShortcutBindings::default(),
@@ -449,6 +470,7 @@ struct AppConfigFileV1 {
     start_path: Option<PathBuf>,
     list: Option<ListConfigFile>,
     cache: Option<CacheConfigFile>,
+    filesystem: Option<FilesystemConfigFile>,
     view: Option<ViewConfigFile>,
     paging: Option<PagingConfigFile>,
     shortcuts: Option<ShortcutBindingsFile>,
@@ -508,6 +530,12 @@ struct CacheConfigFile {
     thumbnail_ttl_seconds: Option<u64>,
     directory_entries: Option<usize>,
     directory_ttl_seconds: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FilesystemConfigFile {
+    metadata_batch_size: Option<usize>,
+    metadata_parallelism: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -701,6 +729,22 @@ fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarning>) -> Ap
             );
         }
     }
+    if let Some(filesystem) = file.filesystem {
+        if let Some(batch_size) = filesystem.metadata_batch_size {
+            config.filesystem.metadata_batch_size = validated_metadata_batch_size(
+                batch_size,
+                config.filesystem.metadata_batch_size,
+                warnings,
+            );
+        }
+        if let Some(parallelism) = filesystem.metadata_parallelism {
+            config.filesystem.metadata_parallelism = validated_metadata_parallelism(
+                parallelism,
+                config.filesystem.metadata_parallelism,
+                warnings,
+            );
+        }
+    }
     if let Some(view) = file.view {
         if let Some(mode) = view.mode {
             config.view.mode = match mode {
@@ -808,6 +852,42 @@ fn validated_cache_ttl(
         warnings.push(ConfigWarning {
             message: format!(
                 "{label} trop bas (min {MIN_CACHE_TTL_SECONDS}), fallback sur {fallback}"
+            ),
+        });
+        fallback
+    }
+}
+
+fn validated_metadata_batch_size(
+    value: usize,
+    fallback: usize,
+    warnings: &mut Vec<ConfigWarning>,
+) -> usize {
+    if (MIN_METADATA_BATCH_SIZE..=MAX_METADATA_BATCH_SIZE).contains(&value) {
+        value
+    } else {
+        warnings.push(ConfigWarning {
+            message: format!(
+                "filesystem.metadata_batch_size hors limites ({}-{}), fallback sur {fallback}",
+                MIN_METADATA_BATCH_SIZE, MAX_METADATA_BATCH_SIZE
+            ),
+        });
+        fallback
+    }
+}
+
+fn validated_metadata_parallelism(
+    value: usize,
+    fallback: usize,
+    warnings: &mut Vec<ConfigWarning>,
+) -> usize {
+    if (MIN_METADATA_PARALLELISM..=MAX_METADATA_PARALLELISM).contains(&value) {
+        value
+    } else {
+        warnings.push(ConfigWarning {
+            message: format!(
+                "filesystem.metadata_parallelism hors limites ({}-{}), fallback sur {fallback}",
+                MIN_METADATA_PARALLELISM, MAX_METADATA_PARALLELISM
             ),
         });
         fallback

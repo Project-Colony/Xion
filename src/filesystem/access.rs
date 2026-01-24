@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::core::{AppResult, XionError};
+use crate::core::{AppResult, FilesystemConfig, XionError};
 use crate::filesystem::metadata::FsMetadata;
 use crate::filesystem::paging::{Page, PageRequest};
 
@@ -91,12 +91,22 @@ pub trait FileSystem {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct LocalFileSystem;
+#[derive(Debug, Clone)]
+pub struct LocalFileSystem {
+    metadata_batch_size: usize,
+    metadata_parallelism: usize,
+}
 
 impl LocalFileSystem {
     pub fn new() -> Self {
-        Self
+        Self::from_config(FilesystemConfig::default())
+    }
+
+    pub fn from_config(config: FilesystemConfig) -> Self {
+        Self {
+            metadata_batch_size: config.metadata_batch_size.max(1),
+            metadata_parallelism: config.metadata_parallelism.max(1),
+        }
     }
 
     pub fn list_dir_with_options(
@@ -367,9 +377,24 @@ impl FileSystem for LocalFileSystem {
             return Ok(Vec::new());
         }
 
-        let thread_count = thread::available_parallelism()
+        let mut metadata = Vec::with_capacity(paths.len());
+        for chunk in paths.chunks(self.metadata_batch_size.max(1)) {
+            let mut batch_metadata = self.metadata_batch_chunk(chunk)?;
+            metadata.append(&mut batch_metadata);
+        }
+        Ok(metadata)
+    }
+}
+
+impl LocalFileSystem {
+    fn metadata_batch_chunk(&self, paths: &[PathBuf]) -> AppResult<Vec<FsMetadata>> {
+        let available_threads = thread::available_parallelism()
             .map(|count| count.get())
             .unwrap_or(1);
+        let thread_count = self
+            .metadata_parallelism
+            .min(available_threads)
+            .max(1);
         let chunk_size = ((paths.len() + thread_count - 1) / thread_count).max(1);
         let mut initial_results = Vec::with_capacity(paths.len());
         initial_results.resize_with(paths.len(), || None);

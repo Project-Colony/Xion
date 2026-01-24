@@ -595,6 +595,7 @@ impl XionApp {
         let route_key = self.state.route.key();
         let route_kind = self.state.route.kind.clone();
         let list_config = self.state.config.list.clone();
+        let filesystem_config = self.state.config.filesystem.clone();
         let loader = Arc::clone(&self.directory_loader);
         let network_discovery = self.network_discovery.clone();
 
@@ -606,7 +607,7 @@ impl XionApp {
                 let options = list_options_from_config(list_config);
                 let result = match route_kind {
                     RouteKind::Local(path) => {
-                        let filesystem = LocalFileSystem::new();
+                        let filesystem = LocalFileSystem::from_config(filesystem_config);
                         match loader.lock() {
                             Ok(mut loader) => loader
                                 .load_page(&filesystem, &path, options, page_request)
@@ -3112,7 +3113,7 @@ impl XionApp {
                 name_query: None,
             };
             build_tree_nodes(
-                &LocalFileSystem::new(),
+                &LocalFileSystem::from_config(self.state.config.filesystem.clone()),
                 &tree_root,
                 current_path,
                 TREE_MAX_DEPTH,

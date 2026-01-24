@@ -1728,24 +1728,6 @@ impl XionApp {
         let typography = tokens.typography;
         let user_dirs = UserDirs::new();
         let home_dir = user_dirs.as_ref().map(|dirs| dirs.home_dir().to_path_buf());
-        let desktop_dir = user_dirs
-            .as_ref()
-            .and_then(|dirs| dirs.desktop_dir().map(|path| path.to_path_buf()));
-        let downloads_dir = user_dirs
-            .as_ref()
-            .and_then(|dirs| dirs.download_dir().map(|path| path.to_path_buf()));
-        let documents_dir = user_dirs
-            .as_ref()
-            .and_then(|dirs| dirs.document_dir().map(|path| path.to_path_buf()));
-        let pictures_dir = user_dirs
-            .as_ref()
-            .and_then(|dirs| dirs.picture_dir().map(|path| path.to_path_buf()));
-        let music_dir = user_dirs
-            .as_ref()
-            .and_then(|dirs| dirs.audio_dir().map(|path| path.to_path_buf()));
-        let video_dir = user_dirs
-            .as_ref()
-            .and_then(|dirs| dirs.video_dir().map(|path| path.to_path_buf()));
 
         let toolbar_button = |label: String| {
             button(text(label).size(typography.body).font(typography.body_font))
@@ -2795,13 +2777,6 @@ impl XionApp {
         let mut quick_access =
             column![section_title("Accès rapide".to_string())].spacing(spacing.xs);
         quick_access = quick_access.push(sidebar_button(ICON_HOME, "Accueil", home_dir.clone()));
-        quick_access =
-            quick_access.push(sidebar_button(ICON_DESKTOP, "Bureau", desktop_dir.clone()));
-        quick_access = quick_access.push(sidebar_button(
-            ICON_DOWNLOAD,
-            "Téléchargements",
-            downloads_dir,
-        ));
 
         let mut favorites_section =
             column![section_title("Favoris".to_string())].spacing(spacing.xs);
@@ -2898,11 +2873,7 @@ impl XionApp {
                 quick_access,
                 favorites_section,
                 drive_section,
-                section_title("Raccourcis".to_string()),
-                sidebar_button(ICON_DOCUMENTS, "Documents", documents_dir),
-                sidebar_button(ICON_GALLERY, "Images", pictures_dir),
-                sidebar_button(ICON_MUSIC, "Musique", music_dir),
-                sidebar_button(ICON_VIDEO, "Vidéos", video_dir)
+                section_title("Raccourcis".to_string())
             ]
             .spacing(spacing.sm),
         )

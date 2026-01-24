@@ -2206,7 +2206,7 @@ impl XionApp {
 
             for index in window.start..window.end {
                 let entry = display_entries.get(index);
-                list = list.push(match entry {
+                let entry_element: Element<'_, UiMessage> = match entry {
                     Some(entry) => {
                         let is_selected = self
                             .state
@@ -2368,7 +2368,8 @@ impl XionApp {
                         }
                         button(placeholder_row).into()
                     }
-                });
+                };
+                list = list.push(entry_element);
             }
 
             if window.padding_bottom > 0.0 {

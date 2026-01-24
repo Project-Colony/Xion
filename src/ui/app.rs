@@ -2397,7 +2397,7 @@ impl XionApp {
 
         let selection = &self.state.navigation.selection;
         let selection_status = if selection.selected.is_empty() {
-            "Sélection : —".to_string()
+            None
         } else if selection.selected.len() == 1 {
             let path = selection
                 .selected
@@ -2405,33 +2405,32 @@ impl XionApp {
                 .next()
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| "—".to_string());
-            format!("Sélection : {}", path)
+            Some(format!("Sélection : {}", path))
         } else {
-            format!("Sélection : {} éléments", selection.selected.len())
+            Some(format!("Sélection : {} éléments", selection.selected.len()))
         };
 
-        let action_status = self
-            .last_action
-            .clone()
-            .unwrap_or_else(|| "Action : —".to_string());
+        let action_status = self.last_action.clone();
 
-        let list = scrollable(
-            container(
-                column![
-                    rename_prompt,
-                    list_header,
-                    list_content,
-                    text(selection_status)
-                        .size(typography.caption)
-                        .font(typography.caption_font),
-                    text(action_status)
-                        .size(typography.caption)
-                        .font(typography.caption_font)
-                ]
-                .spacing(spacing.xl),
-            )
-            .padding(spacing.md),
-        )
+        let mut list_column = column![rename_prompt, list_header, list_content].spacing(spacing.xl);
+
+        if let Some(status) = selection_status {
+            list_column = list_column.push(
+                text(status)
+                    .size(typography.caption)
+                    .font(typography.caption_font),
+            );
+        }
+
+        if let Some(status) = action_status {
+            list_column = list_column.push(
+                text(status)
+                    .size(typography.caption)
+                    .font(typography.caption_font),
+            );
+        }
+
+        let list = scrollable(container(list_column).padding(spacing.md))
         .on_scroll(|viewport| {
             UiMessage::Scroll(ScrollViewport {
                 offset_y: viewport.absolute_offset().y,

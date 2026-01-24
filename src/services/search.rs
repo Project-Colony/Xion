@@ -58,14 +58,6 @@ pub struct SearchIndex {
 }
 
 impl SearchIndex {
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
     pub fn entries(&self) -> impl Iterator<Item = &FsEntry> {
         self.entries.iter().map(|entry| &entry.entry)
     }
@@ -126,24 +118,8 @@ impl SearchService {
         root: &Path,
         options: SearchIndexOptions,
     ) -> AppResult<SearchIndex> {
-        let list_options = ListOptions {
-            show_hidden: options.include_hidden,
-            sort_by: SortKey::Name,
-            ..ListOptions::default()
-        };
-
-        self.build_index_with_options(filesystem, root, options, list_options)
-    }
-
-    pub fn build_index_with_options(
-        &self,
-        filesystem: &dyn FileSystem,
-        root: &Path,
-        options: SearchIndexOptions,
-        list_options: ListOptions,
-    ) -> AppResult<SearchIndex> {
         let mut entries = Vec::new();
-        self.index_dir_with_options(filesystem, root, &options, &list_options, &mut entries)?;
+        self.index_dir(filesystem, root, &options, &mut entries)?;
         Ok(SearchIndex {
             root: root.to_path_buf(),
             entries,
@@ -193,38 +169,6 @@ impl SearchService {
         page.apply(results)
     }
 
-    pub fn count_index_matches(&self, index: &SearchIndex, query: &SearchQuery) -> usize {
-        let normalized_text = query.text.as_ref().map(|text| {
-            if query.case_sensitive {
-                text.clone()
-            } else {
-                text.to_lowercase()
-            }
-        });
-        let normalized_extensions = if query.case_sensitive {
-            query.extensions.clone()
-        } else {
-            query
-                .extensions
-                .iter()
-                .map(|ext| ext.to_lowercase())
-                .collect()
-        };
-
-        index
-            .entries
-            .iter()
-            .filter(|entry| {
-                Self::matches_query(
-                    entry,
-                    query,
-                    normalized_text.as_ref(),
-                    &normalized_extensions,
-                )
-            })
-            .count()
-    }
-
     fn index_dir(
         &self,
         filesystem: &dyn FileSystem,
@@ -237,22 +181,8 @@ impl SearchService {
             sort_by: SortKey::Name,
             ..ListOptions::default()
         };
-        self.index_dir_with_options(filesystem, path, options, &list_options, output)
-    }
 
-    fn index_dir_with_options(
-        &self,
-        filesystem: &dyn FileSystem,
-        path: &Path,
-        options: &SearchIndexOptions,
-        list_options: &ListOptions,
-        output: &mut Vec<SearchEntry>,
-    ) -> AppResult<()> {
-        let mut resolved_options = list_options.clone();
-        resolved_options.show_hidden = options.include_hidden;
-        resolved_options.name_query = None;
-
-        let entries = filesystem.list_dir(path, resolved_options.clone())?;
+        let entries = filesystem.list_dir(path, list_options)?;
         for entry in entries {
             let name_lower = entry.name.to_lowercase();
             let extension_lower = entry
@@ -268,13 +198,7 @@ impl SearchService {
             });
 
             if options.recursive && entry.entry_type == FsEntryType::Directory {
-                self.index_dir_with_options(
-                    filesystem,
-                    &entry.path,
-                    options,
-                    &resolved_options,
-                    output,
-                )?;
+                self.index_dir(filesystem, &entry.path, options, output)?;
             }
         }
 

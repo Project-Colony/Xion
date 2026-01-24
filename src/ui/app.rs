@@ -364,6 +364,7 @@ pub struct XionApp {
     context_menu_open: bool,
     last_action: Option<String>,
     address_input: String,
+    search_input: String,
     config_manager: ConfigManager,
     favorites: FavoritesService,
     tabs: Vec<TabState>,
@@ -559,6 +560,7 @@ impl XionApp {
             context_menu_open: false,
             last_action: None,
             address_input,
+            search_input: String::new(),
             config_manager,
             favorites,
             tabs,
@@ -657,6 +659,21 @@ impl XionApp {
                     }
                 }
             }
+            UiMessage::SearchInputChanged(value) => {
+                self.search_input = value;
+                self.scroll_offset = 0.0;
+                self.clear_selection();
+                if self.normalized_search_query().is_some() {
+                    tasks.push(self.request_all_pages());
+                } else {
+                    tasks.push(self.ensure_visible_pages());
+                }
+            }
+            UiMessage::SearchInputSubmitted => {
+                if self.normalized_search_query().is_some() {
+                    tasks.push(self.request_all_pages());
+                }
+            }
             UiMessage::Scroll(viewport) => {
                 self.scroll_offset = viewport.offset_y;
                 self.viewport_height = viewport.viewport_height.max(1.0);
@@ -715,6 +732,10 @@ impl XionApp {
                     self.is_loading = false;
                     self.is_refreshing = false;
                     self.show_loading_indicator = false;
+                }
+
+                if self.normalized_search_query().is_some() {
+                    tasks.push(self.request_all_pages());
                 }
             }
             UiMessage::ThumbnailLoaded { path, thumbnail } => {
@@ -1212,6 +1233,48 @@ impl XionApp {
         })
     }
 
+    fn normalized_search_query(&self) -> Option<String> {
+        let trimmed = self.search_input.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_lowercase())
+        }
+    }
+
+    fn matches_search(entry: &FsEntry, query: &str) -> bool {
+        entry.name.to_lowercase().contains(query)
+    }
+
+    fn filtered_indices(&self, query: &str) -> Vec<usize> {
+        self.entries
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                let entry = entry.as_ref()?;
+                if Self::matches_search(entry, query) {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn filtered_position_for_path(
+        &self,
+        indices: &[usize],
+        path: &PathBuf,
+    ) -> Option<usize> {
+        indices.iter().position(|index| {
+            self.entries
+                .get(*index)
+                .map(|entry| &entry.path == path)
+                .unwrap_or(false)
+        })
+    }
+
     fn first_entry_index(&self) -> Option<usize> {
         self.entries.items.iter().position(|entry| entry.is_some())
     }
@@ -1222,38 +1285,71 @@ impl XionApp {
 
     fn move_focus_by(&mut self, offset: isize, extend: bool) {
         let selection = &self.state.navigation.selection;
-        let start_index = selection
-            .focused
-            .as_ref()
-            .and_then(|path| self.index_for_path(path))
-            .or_else(|| self.first_entry_index());
+        if let Some(query) = self.normalized_search_query() {
+            let indices = self.filtered_indices(&query);
+            let start_index = selection
+                .focused
+                .as_ref()
+                .and_then(|path| self.filtered_position_for_path(&indices, path))
+                .or_else(|| if indices.is_empty() { None } else { Some(0) });
 
-        let Some(start_index) = start_index else {
-            return;
-        };
+            let Some(start_index) = start_index else {
+                return;
+            };
 
-        let target_index = if offset.is_negative() {
-            start_index.saturating_sub(offset.unsigned_abs() as usize)
+            let target_index = if offset.is_negative() {
+                start_index.saturating_sub(offset.unsigned_abs() as usize)
+            } else {
+                (start_index + offset as usize).min(indices.len().saturating_sub(1))
+            };
+
+            if let Some(actual_index) = indices.get(target_index).copied() {
+                self.move_focus_to_actual_index(actual_index, extend);
+            }
         } else {
-            (start_index + offset as usize).min(self.entries.total.saturating_sub(1))
-        };
+            let start_index = selection
+                .focused
+                .as_ref()
+                .and_then(|path| self.index_for_path(path))
+                .or_else(|| self.first_entry_index());
 
-        self.move_focus_to_index(target_index, extend);
+            let Some(start_index) = start_index else {
+                return;
+            };
+
+            let target_index = if offset.is_negative() {
+                start_index.saturating_sub(offset.unsigned_abs() as usize)
+            } else {
+                (start_index + offset as usize).min(self.entries.total.saturating_sub(1))
+            };
+
+            self.move_focus_to_actual_index(target_index, extend);
+        }
     }
 
     fn move_focus_to_start(&mut self, extend: bool) {
-        if let Some(index) = self.first_entry_index() {
-            self.move_focus_to_index(index, extend);
+        if let Some(query) = self.normalized_search_query() {
+            let indices = self.filtered_indices(&query);
+            if let Some(index) = indices.first().copied() {
+                self.move_focus_to_actual_index(index, extend);
+            }
+        } else if let Some(index) = self.first_entry_index() {
+            self.move_focus_to_actual_index(index, extend);
         }
     }
 
     fn move_focus_to_end(&mut self, extend: bool) {
-        if let Some(index) = self.last_entry_index() {
-            self.move_focus_to_index(index, extend);
+        if let Some(query) = self.normalized_search_query() {
+            let indices = self.filtered_indices(&query);
+            if let Some(index) = indices.last().copied() {
+                self.move_focus_to_actual_index(index, extend);
+            }
+        } else if let Some(index) = self.last_entry_index() {
+            self.move_focus_to_actual_index(index, extend);
         }
     }
 
-    fn move_focus_to_index(&mut self, index: usize, extend: bool) {
+    fn move_focus_to_actual_index(&mut self, index: usize, extend: bool) {
         let Some(entry) = self.entries.get(index) else {
             return;
         };
@@ -1266,10 +1362,24 @@ impl XionApp {
     }
 
     fn select_all_entries(&mut self) {
+        let selected_paths: Vec<PathBuf> = if let Some(query) = self.normalized_search_query() {
+            self.filtered_indices(&query)
+                .into_iter()
+                .filter_map(|index| self.entries.get(index).map(|entry| entry.path.clone()))
+                .collect()
+        } else {
+            self.entries
+                .items
+                .iter()
+                .flatten()
+                .map(|entry| entry.path.clone())
+                .collect()
+        };
+
         let selection = &mut self.state.navigation.selection;
         selection.selected.clear();
-        for entry in self.entries.items.iter().flatten() {
-            selection.selected.insert(entry.path.clone());
+        for path in selected_paths {
+            selection.selected.insert(path);
         }
         selection.focused = selection.selected.iter().next().cloned();
         selection.anchor = selection.focused.clone();
@@ -1291,9 +1401,28 @@ impl XionApp {
         };
     }
 
+    fn request_all_pages(&mut self) -> Task<UiMessage> {
+        if self.entries.total == 0 {
+            return Task::none();
+        }
+
+        let total_pages = (self.entries.total + self.entries.page_size - 1) / self.entries.page_size;
+        let mut tasks = Vec::new();
+        for page_index in 0..total_pages {
+            if !self.entries.is_page_loaded(page_index) {
+                tasks.push(self.request_page(page_index));
+            }
+        }
+        Task::batch(tasks)
+    }
+
     fn ensure_visible_pages(&mut self) -> Task<UiMessage> {
         if self.entries.total == 0 {
             return Task::none();
+        }
+
+        if self.normalized_search_query().is_some() {
+            return self.request_all_pages();
         }
 
         let window = self.virtual_window();
@@ -1332,50 +1461,100 @@ impl XionApp {
             return Task::none();
         }
 
-        let window = self.virtual_window();
-        if window.len() == 0 {
-            return Task::none();
-        }
-
         let mut tasks = Vec::new();
         let thumbnail_size = self.state.config.view.thumbnail_size;
-
-        for index in window.start..window.end {
-            let Some(entry) = self.entries.get(index) else {
-                continue;
-            };
-
-            if entry.entry_type != FsEntryType::File {
-                continue;
+        if let Some(query) = self.normalized_search_query() {
+            let indices = self.filtered_indices(&query);
+            if indices.is_empty() {
+                return Task::none();
             }
+            let window = self.virtual_window_for(indices.len());
+            if window.len() == 0 {
+                return Task::none();
+            }
+            for display_index in window.start..window.end {
+                let Some(actual_index) = indices.get(display_index).copied() else {
+                    continue;
+                };
+                let Some(entry) = self.entries.get(actual_index) else {
+                    continue;
+                };
 
-            if let Some(thumbnail) = self.thumbnails.get(&entry.path) {
-                if !self.thumbnail_handles.contains_key(&entry.path) {
-                    self.thumbnail_handles.insert(
-                        entry.path.clone(),
-                        image::Handle::from_bytes(thumbnail.bytes.clone()),
-                    );
+                if entry.entry_type != FsEntryType::File {
+                    continue;
                 }
-                continue;
+
+                if let Some(thumbnail) = self.thumbnails.get(&entry.path) {
+                    if !self.thumbnail_handles.contains_key(&entry.path) {
+                        self.thumbnail_handles.insert(
+                            entry.path.clone(),
+                            image::Handle::from_bytes(thumbnail.bytes.clone()),
+                        );
+                    }
+                    continue;
+                }
+
+                self.thumbnail_handles.remove(&entry.path);
+
+                if self.thumbnail_misses.contains(&entry.path)
+                    || self.thumbnails_in_flight.contains(&entry.path)
+                {
+                    continue;
+                }
+
+                let path = entry.path.clone();
+                self.thumbnails_in_flight.insert(path.clone());
+                tasks.push(Task::perform(
+                    async move {
+                        let thumbnail = generate_thumbnail(path.as_path(), thumbnail_size);
+                        (path, thumbnail)
+                    },
+                    |(path, thumbnail)| UiMessage::ThumbnailLoaded { path, thumbnail },
+                ));
+            }
+        } else {
+            let window = self.virtual_window();
+            if window.len() == 0 {
+                return Task::none();
             }
 
-            self.thumbnail_handles.remove(&entry.path);
+            for index in window.start..window.end {
+                let Some(entry) = self.entries.get(index) else {
+                    continue;
+                };
 
-            if self.thumbnail_misses.contains(&entry.path)
-                || self.thumbnails_in_flight.contains(&entry.path)
-            {
-                continue;
+                if entry.entry_type != FsEntryType::File {
+                    continue;
+                }
+
+                if let Some(thumbnail) = self.thumbnails.get(&entry.path) {
+                    if !self.thumbnail_handles.contains_key(&entry.path) {
+                        self.thumbnail_handles.insert(
+                            entry.path.clone(),
+                            image::Handle::from_bytes(thumbnail.bytes.clone()),
+                        );
+                    }
+                    continue;
+                }
+
+                self.thumbnail_handles.remove(&entry.path);
+
+                if self.thumbnail_misses.contains(&entry.path)
+                    || self.thumbnails_in_flight.contains(&entry.path)
+                {
+                    continue;
+                }
+
+                let path = entry.path.clone();
+                self.thumbnails_in_flight.insert(path.clone());
+                tasks.push(Task::perform(
+                    async move {
+                        let thumbnail = generate_thumbnail(path.as_path(), thumbnail_size);
+                        (path, thumbnail)
+                    },
+                    |(path, thumbnail)| UiMessage::ThumbnailLoaded { path, thumbnail },
+                ));
             }
-
-            let path = entry.path.clone();
-            self.thumbnails_in_flight.insert(path.clone());
-            tasks.push(Task::perform(
-                async move {
-                    let thumbnail = generate_thumbnail(path.as_path(), thumbnail_size);
-                    (path, thumbnail)
-                },
-                |(path, thumbnail)| UiMessage::ThumbnailLoaded { path, thumbnail },
-            ));
         }
 
         Task::batch(tasks)
@@ -1573,13 +1752,25 @@ impl XionApp {
             .get(self.active_tab)
             .map(|tab| tab.title.as_str())
             .unwrap_or("Ce PC");
+        let search_input = text_input(
+            &format!("Rechercher dans : {}", active_tab_title),
+            &self.search_input,
+        )
+        .on_input(UiMessage::SearchInputChanged)
+        .on_submit(UiMessage::SearchInputSubmitted)
+        .size(typography.caption)
+        .font(typography.caption_font)
+        .padding([spacing.xs, spacing.sm])
+        .width(Length::Fill);
         let search_bar = container(
-            text(format!(
-                "{} Rechercher dans : {}",
-                ICON_SEARCH, active_tab_title
-            ))
-            .size(typography.caption)
-            .font(typography.caption_font),
+            row![
+                text(ICON_SEARCH)
+                    .size(typography.caption)
+                    .font(typography.caption_font),
+                search_input
+            ]
+            .spacing(spacing.xs)
+            .align_y(Alignment::Center),
         )
         .padding([spacing.xs, spacing.md])
         .width(Length::Fixed(240.0))
@@ -1705,6 +1896,22 @@ impl XionApp {
         };
 
         let column_specs = column_specs(&self.state.config.view.columns);
+        let search_query = self.normalized_search_query();
+        let filtered_indices = search_query.as_ref().map(|query| {
+            display_entries
+                .items
+                .iter()
+                .enumerate()
+                .filter_map(|(index, entry)| {
+                    let entry = entry.as_ref()?;
+                    if Self::matches_search(entry, query) {
+                        Some(index)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+        });
 
         let list_content = if let Some(message) = &self.error {
             column![
@@ -1722,6 +1929,179 @@ impl XionApp {
                 .on_press(UiMessage::Refresh)
             ]
             .spacing(spacing.sm)
+        } else if let Some(indices) = &filtered_indices {
+            if indices.is_empty() && !self.is_loading {
+                column![
+                    text("Aucun résultat")
+                        .size(typography.body)
+                        .font(typography.body_font)
+                ]
+            } else if indices.is_empty() {
+                column![]
+            } else {
+                let window = self.virtual_window_for(indices.len());
+                let mut list = column![];
+
+                if window.padding_top > 0.0 {
+                    list = list.push(vertical_space().height(Length::Fixed(window.padding_top)));
+                }
+
+                for display_index in window.start..window.end {
+                    let Some(actual_index) = indices.get(display_index).copied() else {
+                        continue;
+                    };
+                    let entry = display_entries.get(actual_index);
+                    if let Some(entry) = entry {
+                        let is_selected = self
+                            .state
+                            .navigation
+                            .selection
+                            .selected
+                            .contains(&entry.path);
+                        let is_focused = self
+                            .state
+                            .navigation
+                            .selection
+                            .focused
+                            .as_ref()
+                            .map(|path| path == &entry.path)
+                            .unwrap_or(false);
+                        let mut entry_row = row![].spacing(spacing.md).align_y(Alignment::Center);
+                        for spec in &column_specs {
+                            let cell: Element<'_, UiMessage> = match spec.column {
+                                ViewColumn::Name => {
+                                    let leading: Element<'_, UiMessage> = match entry.entry_type {
+                                        FsEntryType::Directory => text(ICON_FOLDER)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
+                                        FsEntryType::File => self
+                                            .thumbnail_handles
+                                            .get(&entry.path)
+                                            .map(|handle| {
+                                                image(handle.clone())
+                                                    .width(Length::Fixed(
+                                                        self.state.config.view.thumbnail_size
+                                                            as f32,
+                                                    ))
+                                                    .height(Length::Fixed(
+                                                        self.state.config.view.thumbnail_size
+                                                            as f32,
+                                                    ))
+                                                    .into()
+                                            })
+                                            .unwrap_or_else(|| {
+                                                text(ICON_FILE)
+                                                    .size(typography.body)
+                                                    .font(typography.body_font)
+                                                    .into()
+                                            }),
+                                        FsEntryType::Symlink => text(ICON_SYMLINK)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
+                                        FsEntryType::Other => text(ICON_UNKNOWN)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
+                                    };
+                                    let open_button: Element<'_, UiMessage> =
+                                        if entry.entry_type == FsEntryType::Directory {
+                                            button(
+                                                text("Ouvrir")
+                                                    .size(typography.caption)
+                                                    .font(typography.caption_font),
+                                            )
+                                            .padding([spacing.xs, spacing.sm])
+                                            .on_press(UiMessage::ActivateEntry(entry.path.clone()))
+                                            .into()
+                                        } else {
+                                            container(row![]).into()
+                                        };
+                                    let name_row = row![
+                                        leading,
+                                        text(&entry.name)
+                                            .size(typography.body)
+                                            .font(typography.body_font),
+                                        horizontal_space(),
+                                        open_button
+                                    ]
+                                    .spacing(spacing.sm)
+                                    .align_y(Alignment::Center);
+                                    container(name_row)
+                                        .width(spec.width)
+                                        .align_x(spec.align)
+                                        .into()
+                                }
+                                ViewColumn::Type => container(
+                                    text(entry_type_label(entry.entry_type))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
+                                ViewColumn::Size => container(
+                                    text(format_entry_size(entry))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
+                                ViewColumn::Modified => container(
+                                    text(format_modified(entry.metadata.modified))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
+                            };
+                            entry_row = entry_row.push(cell);
+                        }
+                        let selection_kind = self.selection_kind_from_modifiers();
+                        let message = UiMessage::SelectEntry {
+                            path: entry.path.clone(),
+                            kind: selection_kind,
+                        };
+                        list = list.push(
+                            button(entry_row)
+                                .padding([spacing.xs, spacing.sm])
+                                .style(move |_theme: &Theme, status: ButtonStatus| {
+                                    let mut style = iced::widget::button::Style {
+                                        text_color: colors.text_primary,
+                                        ..Default::default()
+                                    };
+
+                                    if is_selected {
+                                        style.background = Some(Background::Color(colors.selection));
+                                        style.border = border::rounded(6.0)
+                                            .color(colors.selection_border)
+                                            .width(if is_focused { 2.0 } else { 1.0 });
+                                    }
+
+                                    if matches!(status, ButtonStatus::Hovered) {
+                                        style.background = Some(Background::Color(colors.hover));
+                                    }
+
+                                    if matches!(status, ButtonStatus::Pressed) {
+                                        style.background = Some(Background::Color(colors.pressed));
+                                    }
+
+                                    style
+                                })
+                                .on_press(message),
+                        );
+                    }
+                }
+
+                if window.padding_bottom > 0.0 {
+                    list = list.push(vertical_space().height(Length::Fixed(window.padding_bottom)));
+                }
+
+                list
+            }
         } else if display_entries.total == 0 && !self.is_loading {
             column![
                 text("Dossier vide")
@@ -1922,7 +2302,11 @@ impl XionApp {
         };
 
         let list_header: Element<'_, UiMessage> = if self.error.is_none()
-            && (display_entries.total > 0 || self.is_loading)
+            && if let Some(indices) = &filtered_indices {
+                !indices.is_empty()
+            } else {
+                display_entries.total > 0 || self.is_loading
+            }
         {
             let mut header_row = row![].spacing(spacing.md).align_y(Alignment::Center);
             for spec in &column_specs {
@@ -2109,8 +2493,8 @@ impl XionApp {
                     .align_y(Alignment::Center),
                     progress_bar(0.0..=1.0, used_ratio).height(Length::Fixed(6.0)),
                     text(format!("{} Go libres sur {} Go", free_gb, total_gb))
-                        .size(typography.caption)
-                        .font(typography.caption_font)
+                        .size(typography.body)
+                        .font(typography.body_font)
                 ]
                 .spacing(spacing.xs)
                 .into();

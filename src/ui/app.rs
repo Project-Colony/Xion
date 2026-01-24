@@ -364,6 +364,8 @@ pub struct XionApp {
     modifiers: ModifiersState,
     context_menu_open: bool,
     context_menu_position: Option<Point>,
+    history_menu_open: bool,
+    history_menu_position: Option<Point>,
     cursor_position: Option<Point>,
     last_action: Option<String>,
     address_input: String,
@@ -598,6 +600,8 @@ impl XionApp {
             modifiers: ModifiersState::default(),
             context_menu_open: false,
             context_menu_position: None,
+            history_menu_open: false,
+            history_menu_position: None,
             cursor_position: None,
             last_action: None,
             address_input,
@@ -634,30 +638,44 @@ impl XionApp {
                 self.cursor_position = Some(position);
             }
             UiMessage::NavigateTo(path) => {
+                self.history_menu_open = false;
+                self.history_menu_position = None;
                 tasks.push(self.navigate_to(path));
             }
             UiMessage::AddTab => {
+                self.history_menu_open = false;
+                self.history_menu_position = None;
                 tasks.push(self.add_tab());
             }
             UiMessage::SwitchTab(index) => {
+                self.history_menu_open = false;
+                self.history_menu_position = None;
                 tasks.push(self.switch_tab(index));
             }
             UiMessage::CloseTab(index) => {
+                self.history_menu_open = false;
+                self.history_menu_position = None;
                 tasks.push(self.close_tab(index));
             }
             UiMessage::Back => {
+                self.history_menu_open = false;
+                self.history_menu_position = None;
                 if let Some(path) = self.history.back() {
                     self.update_active_tab_path(path);
                     tasks.push(self.refresh_entries());
                 }
             }
             UiMessage::Forward => {
+                self.history_menu_open = false;
+                self.history_menu_position = None;
                 if let Some(path) = self.history.forward() {
                     self.update_active_tab_path(path);
                     tasks.push(self.refresh_entries());
                 }
             }
             UiMessage::Refresh => {
+                self.history_menu_open = false;
+                self.history_menu_position = None;
                 tasks.push(self.reload_config());
                 tasks.push(self.refresh_entries());
             }
@@ -665,6 +683,8 @@ impl XionApp {
                 self.state.navigation.focused_pane = pane;
             }
             UiMessage::SelectEntry { path, kind } => {
+                self.history_menu_open = false;
+                self.history_menu_position = None;
                 let now = Instant::now();
                 if kind != SelectionKind::Single {
                     self.last_click_time = None;
@@ -690,6 +710,8 @@ impl XionApp {
                 }
             }
             UiMessage::ActivateEntry(path) => {
+                self.history_menu_open = false;
+                self.history_menu_position = None;
                 tasks.push(self.activate_entry(path));
             }
             UiMessage::KeyboardCommand(command) => {
@@ -702,6 +724,16 @@ impl XionApp {
                 } else {
                     self.context_menu_position = None;
                 }
+                self.history_menu_open = false;
+                self.history_menu_position = None;
+            }
+            UiMessage::ToggleHistoryMenu(force_open) => {
+                self.history_menu_open = force_open;
+                if force_open {
+                    self.history_menu_position = self.cursor_position;
+                } else {
+                    self.history_menu_position = None;
+                }
             }
             UiMessage::OpenContextMenuForEntry(path) => {
                 let is_selected = self.state.navigation.selection.selected.contains(&path);
@@ -710,6 +742,8 @@ impl XionApp {
                 }
                 self.context_menu_open = true;
                 self.context_menu_position = self.cursor_position;
+                self.history_menu_open = false;
+                self.history_menu_position = None;
             }
             UiMessage::ContextAction(action) => {
                 tasks.push(self.apply_context_action(action));
@@ -721,10 +755,14 @@ impl XionApp {
                 self.address_input = value;
             }
             UiMessage::AddressSuggestionSelected(path) => {
+                self.history_menu_open = false;
+                self.history_menu_position = None;
                 self.address_input = path.display().to_string();
                 tasks.push(self.navigate_to(path));
             }
             UiMessage::AddressInputSubmitted => {
+                self.history_menu_open = false;
+                self.history_menu_position = None;
                 if let Some(target) = self.address_target_from_input() {
                     if target.is_dir() {
                         tasks.push(self.navigate_to(target));
@@ -1906,48 +1944,65 @@ impl XionApp {
         };
 
         let address_suggestions = self.address_suggestions();
-        let address_suggestions = if address_suggestions.is_empty() {
-            None
-        } else {
-            let mut suggestions_list = column![
-                text("Historique")
-                    .size(typography.caption)
-                    .font(typography.caption_font)
-                    .style(move |_| iced::widget::text::Style {
-                        color: Some(colors.text_muted),
-                    })
-            ]
-            .spacing(spacing.xs);
-            for suggestion in address_suggestions {
-                suggestions_list = suggestions_list.push(suggestion_button(
-                    suggestion.display().to_string(),
-                    suggestion,
-                ));
-            }
-            Some(
-                container(suggestions_list)
+        let history_button = toolbar_button("▼".to_string())
+            .on_press(UiMessage::ToggleHistoryMenu(!self.history_menu_open));
+
+        let history_menu: Option<Element<'_, UiMessage>> =
+            if self.history_menu_open && !address_suggestions.is_empty() {
+                let mut suggestions_list = column![
+                    text("Historique")
+                        .size(typography.caption)
+                        .font(typography.caption_font)
+                        .style(move |_| iced::widget::text::Style {
+                            color: Some(colors.text_muted),
+                        })
+                ]
+                .spacing(spacing.xs);
+                for suggestion in address_suggestions {
+                    suggestions_list = suggestions_list.push(suggestion_button(
+                        suggestion.display().to_string(),
+                        suggestion,
+                    ));
+                }
+                let position = self.history_menu_position.unwrap_or(Point::ORIGIN);
+                let position_x = position.x.max(0.0);
+                let position_y = position.y.max(0.0);
+                let menu = container(suggestions_list)
                     .padding([spacing.xs, spacing.sm])
-                    .width(Length::Fill)
+                    .width(Length::Fixed(420.0))
                     .style(move |_| iced::widget::container::Style {
                         background: Some(Background::Color(colors.panel_background)),
                         border: border::rounded(8.0).color(colors.border).width(1.0),
                         ..Default::default()
-                    }),
-            )
-        };
+                    });
+                let menu_layer: Element<'_, UiMessage> = container(
+                    column![
+                        vertical_space().height(Length::Fixed(position_y)),
+                        row![
+                            horizontal_space().width(Length::Fixed(position_x)),
+                            opaque(menu)
+                        ]
+                    ]
+                    .spacing(0),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+                let dismiss_layer: Element<'_, UiMessage> =
+                    mouse_area(container(row![]).width(Length::Fill).height(Length::Fill))
+                        .on_press(UiMessage::ToggleHistoryMenu(false))
+                        .into();
+                Some(stack![dismiss_layer, menu_layer].into())
+            } else {
+                None
+            };
 
-        let address_row = row![address_bar, address_status]
+        let address_row = row![address_bar, history_button, address_status]
             .spacing(spacing.xs)
             .align_y(Alignment::Center);
 
-        let address_section: Element<'_, UiMessage> = if let Some(panel) = address_suggestions {
-            column![address_row, panel]
-                .spacing(spacing.xs)
-                .width(Length::Fill)
-                .into()
-        } else {
-            container(address_row).width(Length::Fill).into()
-        };
+        let address_section: Element<'_, UiMessage> =
+            container(address_row).width(Length::Fill).into();
 
         let active_tab_title = self
             .tabs
@@ -2943,11 +2998,14 @@ impl XionApp {
             })
             .into();
 
-        if let Some(menu) = context_menu {
-            stack![base, menu].into()
-        } else {
-            base
+        let mut layered: Element<'_, UiMessage> = base;
+        if let Some(menu) = history_menu {
+            layered = stack![layered, menu].into();
         }
+        if let Some(menu) = context_menu {
+            layered = stack![layered, menu].into();
+        }
+        layered
     }
 }
 

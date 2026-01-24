@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::core::{AppConfig, SortKeyConfig};
 use crate::filesystem::{FsEntry, OperationReport, Page};
 use crate::services::Thumbnail;
-use iced::Point;
+use iced::{Point, mouse};
 
 pub mod app;
 
@@ -86,12 +86,21 @@ pub enum UiMessage {
         path: PathBuf,
         kind: SelectionKind,
     },
+    BeginDrag {
+        path: PathBuf,
+        kind: SelectionKind,
+    },
+    DragOverEntry(PathBuf),
+    DragEnterSidebar(PathBuf),
+    DragExitSidebar(PathBuf),
     ActivateEntry(PathBuf),
     KeyboardCommand(KeyboardCommand),
     ToggleContextMenu(bool),
     OpenContextMenuForEntry(PathBuf),
     ContextAction(ContextAction),
     ModifiersChanged(ModifiersState),
+    MouseButtonPressed(mouse::Button),
+    MouseButtonReleased(mouse::Button),
     AddressInputChanged(String),
     AddressInputSubmitted,
     SearchInputChanged(String),

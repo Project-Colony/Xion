@@ -2864,7 +2864,11 @@ impl XionApp {
                     .font(typography.caption_font),
             );
         }
-        drive_section = drive_section.push(sidebar_button(ICON_NETWORK, "Réseau", None));
+        drive_section = drive_section.push(sidebar_button(
+            ICON_NETWORK,
+            "Réseau",
+            Some(PathBuf::from("network://")),
+        ));
 
         let sidebar = container(
             column![

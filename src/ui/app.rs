@@ -211,7 +211,7 @@ impl Default for UiTokens {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PagedEntries {
     total: usize,
     items: Vec<Option<FsEntry>>,
@@ -445,9 +445,11 @@ pub struct XionApp {
     animated_preview: Option<AnimatedPreview>,
     entries: PagedEntries,
     stale_entries: Option<PagedEntries>,
+    selection_snapshot: Option<PagedEntries>,
     pending_pages: HashSet<usize>,
     is_loading: bool,
     is_refreshing: bool,
+    is_user_selecting: bool,
     show_loading_indicator: bool,
     loading_generation: u64,
     scroll_offset: f32,
@@ -832,9 +834,11 @@ impl XionApp {
             animated_preview: None,
             entries,
             stale_entries: None,
+            selection_snapshot: None,
             pending_pages: HashSet::new(),
             is_loading: false,
             is_refreshing: false,
+            is_user_selecting: false,
             show_loading_indicator: false,
             loading_generation: 0,
             scroll_offset: 0.0,
@@ -921,6 +925,7 @@ impl XionApp {
                     }
                 }
                 if self.selection_box_start.is_some() && self.drag_candidate.is_none() {
+                    self.begin_user_selection();
                     if let Some(content_point) = self.list_content_point(position, true) {
                         self.selection_box_current = Some(content_point);
                     }
@@ -935,6 +940,7 @@ impl XionApp {
                         let dx = position.x - start_pos.x;
                         let dy = position.y - start_pos.y;
                         if (dx * dx + dy * dy).sqrt() >= DRAG_START_THRESHOLD {
+                            self.begin_user_selection();
                             if !self
                                 .state
                                 .navigation
@@ -1022,6 +1028,7 @@ impl XionApp {
                 self.state.navigation.focused_pane = pane;
             }
             UiMessage::EntryPressed(path) => {
+                self.begin_user_selection();
                 self.mouse_pressed = true;
                 self.drag_candidate = Some(path);
                 self.drag_start_position = self.cursor_position;
@@ -1032,6 +1039,7 @@ impl XionApp {
                 if self.drag_state.is_some() || self.drag_candidate.is_some() {
                     return Task::none();
                 }
+                self.begin_user_selection();
                 self.mouse_pressed = true;
                 self.drag_candidate = None;
                 self.drag_start_position = None;
@@ -1376,6 +1384,8 @@ impl XionApp {
                 self.mouse_pressed = false;
                 self.drag_candidate = None;
                 self.drag_start_position = None;
+                self.is_user_selecting = false;
+                self.selection_snapshot = None;
                 if self.selection_box_start.is_some() {
                     let kind = self.selection_kind_from_modifiers();
                     let selected = self.entries_in_selection_box();
@@ -1477,6 +1487,33 @@ impl XionApp {
         }
     }
 
+    fn base_display_entries(&self) -> &PagedEntries {
+        if self.is_refreshing && self.entries.total == 0 {
+            self.stale_entries.as_ref().unwrap_or(&self.entries)
+        } else {
+            &self.entries
+        }
+    }
+
+    fn display_entries(&self) -> &PagedEntries {
+        if self.is_user_selecting {
+            if let Some(snapshot) = &self.selection_snapshot {
+                snapshot
+            } else {
+                self.base_display_entries()
+            }
+        } else {
+            self.base_display_entries()
+        }
+    }
+
+    fn begin_user_selection(&mut self) {
+        self.is_user_selecting = true;
+        if self.selection_snapshot.is_none() {
+            self.selection_snapshot = Some(self.base_display_entries().clone());
+        }
+    }
+
     fn list_content_point(&self, position: Point, clamp: bool) -> Option<Point> {
         let bounds = self.list_viewport_bounds?;
         let mut local_x = position.x - bounds.x;
@@ -1564,11 +1601,7 @@ impl XionApp {
             Some(bounds) => bounds,
             None => return Vec::new(),
         };
-        let display_entries = if self.is_refreshing && self.entries.total == 0 {
-            self.stale_entries.as_ref().unwrap_or(&self.entries)
-        } else {
-            &self.entries
-        };
+        let display_entries = self.display_entries();
         let filtered_indices = self.filtered_indices_for(display_entries);
         let view_mode = self.state.config.view.mode;
         let total_entries = filtered_indices
@@ -1772,10 +1805,27 @@ impl XionApp {
             SelectionKind::Range => SelectionKind::Range,
             other => other,
         };
-        let target_index = self.index_for_path(&path);
-        let anchor_index = anchor_path
-            .as_ref()
-            .and_then(|anchor_path| self.index_for_path(anchor_path));
+        let (target_index, anchor_index, range_paths) = {
+            let selection_entries = self.display_entries();
+            let target_index = Self::index_for_path_in(selection_entries, &path);
+            let anchor_index = anchor_path
+                .as_ref()
+                .and_then(|anchor_path| Self::index_for_path_in(selection_entries, anchor_path));
+            let range_paths = if let (Some(anchor), Some(target)) = (anchor_index, target_index) {
+                let (start, end) = if anchor <= target {
+                    (anchor, target)
+                } else {
+                    (target, anchor)
+                };
+                (start..=end)
+                    .filter_map(|index| selection_entries.get(index))
+                    .map(|entry| entry.path.clone())
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            (target_index, anchor_index, range_paths)
+        };
 
         let selection = &mut self.state.navigation.selection;
         match selection_kind {
@@ -1796,20 +1846,10 @@ impl XionApp {
             }
             SelectionKind::Range => {
                 let anchor_path = anchor_path.unwrap_or_else(|| path.clone());
-                let target = target_index;
-                let anchor = anchor_index;
-
-                if let (Some(anchor), Some(target)) = (anchor, target) {
+                if !range_paths.is_empty() {
                     selection.selected.clear();
-                    let (start, end) = if anchor <= target {
-                        (anchor, target)
-                    } else {
-                        (target, anchor)
-                    };
-                    for index in start..=end {
-                        if let Some(entry) = self.entries.get(index) {
-                            selection.selected.insert(entry.path.clone());
-                        }
+                    for range_path in range_paths {
+                        selection.selected.insert(range_path);
                     }
                     selection.focused = Some(path.clone());
                     selection.anchor = Some(anchor_path);
@@ -2148,13 +2188,17 @@ impl XionApp {
         Task::none()
     }
 
-    fn index_for_path(&self, path: &PathBuf) -> Option<usize> {
-        self.entries.items.iter().position(|entry| {
+    fn index_for_path_in(entries: &PagedEntries, path: &PathBuf) -> Option<usize> {
+        entries.items.iter().position(|entry| {
             entry
                 .as_ref()
                 .map(|entry| &entry.path == path)
                 .unwrap_or(false)
         })
+    }
+
+    fn index_for_path(&self, path: &PathBuf) -> Option<usize> {
+        Self::index_for_path_in(&self.entries, path)
     }
 
     fn normalized_search_query(&self) -> Option<String> {
@@ -3066,11 +3110,7 @@ impl XionApp {
             ..Default::default()
         });
 
-        let display_entries = if self.is_refreshing && self.entries.total == 0 {
-            self.stale_entries.as_ref().unwrap_or(&self.entries)
-        } else {
-            &self.entries
-        };
+        let display_entries = self.display_entries();
 
         let column_specs = column_specs(&self.state.config.view.columns);
         let filtered_indices = self.filtered_indices_for(display_entries);

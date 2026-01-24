@@ -5,7 +5,7 @@ use std::time::Instant;
 use crate::core::{AppConfig, SortKeyConfig};
 use crate::filesystem::{FsEntry, OperationReport, Page};
 use crate::services::{SearchIndex, Thumbnail};
-use iced::Point;
+use iced::{Point, Rectangle};
 
 pub mod app;
 
@@ -126,6 +126,7 @@ pub enum UiMessage {
     Refresh,
     FocusPane(PaneKind),
     EntryPressed(PathBuf),
+    ListBackgroundPressed,
     SelectEntry {
         path: PathBuf,
         kind: SelectionKind,
@@ -225,4 +226,5 @@ pub struct ScrollViewport {
     pub offset_y: f32,
     pub viewport_height: f32,
     pub content_height: f32,
+    pub bounds: Rectangle,
 }

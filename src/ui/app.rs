@@ -120,6 +120,7 @@ const TREE_ROW_HEIGHT: f32 = 28.0;
 const PREVIEW_MIN_WIDTH: f32 = 220.0;
 const PREVIEW_MAX_WIDTH: f32 = 420.0;
 const PREVIEW_RESIZE_BAR_WIDTH: f32 = 6.0;
+const DRAG_START_THRESHOLD: f32 = 6.0;
 
 #[derive(Debug, Clone, Copy)]
 struct UiColors {
@@ -394,6 +395,11 @@ struct AnimatedPreview {
     handle: image::Handle,
 }
 
+#[derive(Debug, Clone)]
+struct DragState {
+    items: Vec<PathBuf>,
+}
+
 struct FileWatcherHandle {
     inner: Box<dyn FileWatcher>,
 }
@@ -470,6 +476,11 @@ pub struct XionApp {
     rename_dialog: Option<RenameDialog>,
     last_click_time: Option<Instant>,
     last_clicked_path: Option<PathBuf>,
+    drag_state: Option<DragState>,
+    drag_candidate: Option<PathBuf>,
+    drag_start_position: Option<Point>,
+    mouse_pressed: bool,
+    ignore_next_navigation: Option<PathBuf>,
     tree_height: f32,
     tree_resizing: bool,
     tree_resize_anchor: Option<(f32, f32)>,
@@ -504,6 +515,10 @@ impl XionApp {
         self.search_index_matches = None;
         self.search_index_path = None;
         self.search_indexing = false;
+        self.drag_state = None;
+        self.drag_candidate = None;
+        self.drag_start_position = None;
+        self.mouse_pressed = false;
 
         let mut tasks = Vec::new();
         tasks.push(self.request_page(0));
@@ -843,6 +858,11 @@ impl XionApp {
             rename_dialog: None,
             last_click_time: None,
             last_clicked_path: None,
+            drag_state: None,
+            drag_candidate: None,
+            drag_start_position: None,
+            mouse_pressed: false,
+            ignore_next_navigation: None,
             tree_height: 240.0,
             tree_resizing: false,
             tree_resize_anchor: None,
@@ -892,8 +912,58 @@ impl XionApp {
                         self.preview_width = next_width;
                     }
                 }
+                if self.mouse_pressed && self.drag_state.is_none() {
+                    if self.drag_start_position.is_none() && self.drag_candidate.is_some() {
+                        self.drag_start_position = Some(position);
+                    }
+                    if let (Some(candidate), Some(start_pos)) =
+                        (self.drag_candidate.clone(), self.drag_start_position)
+                    {
+                        let dx = position.x - start_pos.x;
+                        let dy = position.y - start_pos.y;
+                        if (dx * dx + dy * dy).sqrt() >= DRAG_START_THRESHOLD {
+                            if !self
+                                .state
+                                .navigation
+                                .selection
+                                .selected
+                                .contains(&candidate)
+                            {
+                                self.last_click_time = None;
+                                self.last_clicked_path = None;
+                                self.apply_selection(candidate.clone(), SelectionKind::Single);
+                            }
+                            let items = if self
+                                .state
+                                .navigation
+                                .selection
+                                .selected
+                                .contains(&candidate)
+                            {
+                                self.state
+                                    .navigation
+                                    .selection
+                                    .selected
+                                    .iter()
+                                    .cloned()
+                                    .collect::<Vec<_>>()
+                            } else {
+                                vec![candidate.clone()]
+                            };
+                            self.drag_state = Some(DragState { items });
+                        }
+                    }
+                }
             }
             UiMessage::NavigateTo(path) => {
+                if self
+                    .ignore_next_navigation
+                    .as_ref()
+                    .is_some_and(|ignore| ignore == &path)
+                {
+                    self.ignore_next_navigation = None;
+                    return Task::none();
+                }
                 self.history_menu_open = false;
                 self.history_menu_position = None;
                 tasks.push(self.navigate_to(path));
@@ -937,6 +1007,11 @@ impl XionApp {
             }
             UiMessage::FocusPane(pane) => {
                 self.state.navigation.focused_pane = pane;
+            }
+            UiMessage::EntryPressed(path) => {
+                self.mouse_pressed = true;
+                self.drag_candidate = Some(path);
+                self.drag_start_position = self.cursor_position;
             }
             UiMessage::SelectEntry { path, kind } => {
                 self.history_menu_open = false;
@@ -1268,10 +1343,49 @@ impl XionApp {
                     self.preview_resizing = false;
                     self.preview_resize_anchor = None;
                 }
+                self.mouse_pressed = false;
+                self.drag_candidate = None;
+                self.drag_start_position = None;
+                if self.drag_state.is_some() {
+                    tasks.push(Task::perform(async {}, |_| UiMessage::FinalizeDrag));
+                }
+            }
+            UiMessage::FinalizeDrag => {
+                self.drag_state = None;
             }
             UiMessage::FileOperationFinished(report) => {
                 self.handle_operation_report(&report);
                 tasks.push(self.refresh_entries());
+            }
+            UiMessage::DropOnPath(path) => {
+                if let Some(drag_state) = self.drag_state.take() {
+                    let destination = path.clone();
+                    let items = drag_state.items;
+                    let is_copy = self.modifiers.control;
+                    let action_label = if is_copy { "Copie" } else { "Déplacement" };
+                    self.last_action = Some(format!(
+                        "{} (glisser-déposer) vers {}",
+                        action_label,
+                        destination.display()
+                    ));
+                    self.ignore_next_navigation = Some(destination.clone());
+                    let operation = if is_copy {
+                        FileOperationKind::Copy
+                    } else {
+                        FileOperationKind::Move
+                    };
+                    tasks.push(Task::perform(
+                        async move {
+                            let operations = LocalFileOperations::new();
+                            if matches!(operation, FileOperationKind::Copy) {
+                                operations.copy_items(&items, &destination)
+                            } else {
+                                operations.move_items(&items, &destination)
+                            }
+                        },
+                        UiMessage::FileOperationFinished,
+                    ));
+                }
             }
         }
 
@@ -2926,6 +3040,7 @@ impl XionApp {
                                 kind: self.selection_kind_from_modifiers(),
                             };
                             let context_path = entry.path.clone();
+                            let pressed_path = entry.path.clone();
                             list = list.push(
                                 mouse_area(
                                     button(build_list_row(entry))
@@ -2958,6 +3073,7 @@ impl XionApp {
                                         })
                                         .on_press(message),
                                 )
+                                .on_press(UiMessage::EntryPressed(pressed_path))
                                 .on_right_press(UiMessage::OpenContextMenuForEntry(context_path)),
                             );
                         } else {
@@ -3019,6 +3135,7 @@ impl XionApp {
                                         kind: self.selection_kind_from_modifiers(),
                                     };
                                     let context_path = entry.path.clone();
+                                    let pressed_path = entry.path.clone();
                                     mouse_area(
                                         container(
                                             button(build_grid_tile(entry))
@@ -3066,6 +3183,7 @@ impl XionApp {
                                         .width(Length::FillPortion(1))
                                         .height(Length::Fixed(tile_height)),
                                     )
+                                    .on_press(UiMessage::EntryPressed(pressed_path))
                                     .on_right_press(UiMessage::OpenContextMenuForEntry(
                                         context_path,
                                     ))
@@ -3255,33 +3373,37 @@ impl XionApp {
                 .align_y(Alignment::Center)
                 .into();
 
-                let button = button(content)
-                    .padding([spacing.xs, spacing.sm])
-                    .width(Length::Fill)
-                    .style(move |_theme: &Theme, status: ButtonStatus| {
-                        let mut style = iced::widget::button::Style {
-                            text_color: colors.text_primary,
-                            ..Default::default()
-                        };
+                let drop_path = path.clone();
+                let button = mouse_area(
+                    button(content)
+                        .padding([spacing.xs, spacing.sm])
+                        .width(Length::Fill)
+                        .style(move |_theme: &Theme, status: ButtonStatus| {
+                            let mut style = iced::widget::button::Style {
+                                text_color: colors.text_primary,
+                                ..Default::default()
+                            };
 
-                        if selected {
-                            style.background = Some(Background::Color(colors.selection));
-                            style.border = border::rounded(6.0)
-                                .color(colors.selection_border)
-                                .width(1.0);
-                        }
+                            if selected {
+                                style.background = Some(Background::Color(colors.selection));
+                                style.border = border::rounded(6.0)
+                                    .color(colors.selection_border)
+                                    .width(1.0);
+                            }
 
-                        if matches!(status, ButtonStatus::Hovered) {
-                            style.background = Some(Background::Color(colors.hover));
-                        }
+                            if matches!(status, ButtonStatus::Hovered) {
+                                style.background = Some(Background::Color(colors.hover));
+                            }
 
-                        if matches!(status, ButtonStatus::Pressed) {
-                            style.background = Some(Background::Color(colors.pressed));
-                        }
+                            if matches!(status, ButtonStatus::Pressed) {
+                                style.background = Some(Background::Color(colors.pressed));
+                            }
 
-                        style
-                    })
-                    .on_press(UiMessage::NavigateTo(path));
+                            style
+                        })
+                        .on_press(UiMessage::NavigateTo(path)),
+                )
+                .on_release(UiMessage::DropOnPath(drop_path));
 
                 tree_section = tree_section.push(button);
             }
@@ -3734,7 +3856,55 @@ impl XionApp {
             })
             .into();
 
+        let drag_overlay: Option<Element<'_, UiMessage>> = self
+            .drag_state
+            .as_ref()
+            .and_then(|drag_state| self.cursor_position.map(|position| (drag_state, position)))
+            .map(|(drag_state, position)| {
+                let count = drag_state.items.len();
+                let action = if self.modifiers.control {
+                    "Copier"
+                } else {
+                    "Déplacer"
+                };
+                let label = if count == 1 {
+                    format!("{action} 1 élément")
+                } else {
+                    format!("{action} {count} éléments")
+                };
+                let overlay = container(
+                    text(label)
+                        .size(typography.caption)
+                        .font(typography.caption_font),
+                )
+                .padding([spacing.xs, spacing.sm])
+                .style(move |_| iced::widget::container::Style {
+                    background: Some(Background::Color(colors.panel_background)),
+                    border: border::rounded(999.0).color(colors.border).width(1.0),
+                    ..Default::default()
+                });
+                let position_x = (position.x + spacing.md).max(0.0);
+                let position_y = (position.y + spacing.md).max(0.0);
+                let layer: Element<'_, UiMessage> = container(
+                    column![
+                        vertical_space().height(Length::Fixed(position_y)),
+                        row![
+                            horizontal_space().width(Length::Fixed(position_x)),
+                            opaque(overlay)
+                        ]
+                    ]
+                    .spacing(0),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+                layer
+            });
+
         let mut layered: Element<'_, UiMessage> = base;
+        if let Some(overlay) = drag_overlay {
+            layered = stack![layered, overlay].into();
+        }
         if let Some(menu) = history_menu {
             layered = stack![layered, menu].into();
         }

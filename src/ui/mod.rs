@@ -93,6 +93,7 @@ pub enum UiMessage {
     ContextAction(ContextAction),
     ModifiersChanged(ModifiersState),
     AddressInputChanged(String),
+    AddressSuggestionSelected(PathBuf),
     AddressInputSubmitted,
     SearchInputChanged(String),
     SearchInputSubmitted,

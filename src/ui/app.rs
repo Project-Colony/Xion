@@ -419,6 +419,40 @@ impl XionApp {
         self.refresh_entries()
     }
 
+    fn address_target_from_input(&self) -> Option<PathBuf> {
+        let trimmed = self.address_input.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let mut target = PathBuf::from(trimmed);
+        if !target.is_absolute() {
+            target = self.state.route.path.join(target);
+        }
+        Some(target)
+    }
+
+    fn address_suggestions(&self) -> Vec<PathBuf> {
+        let query = self.address_input.trim().to_lowercase();
+        let mut suggestions = Vec::new();
+        let mut seen = HashSet::new();
+        for entry in self.history.entries().iter().rev() {
+            if entry == &self.state.route.path {
+                continue;
+            }
+            let display = entry.display().to_string();
+            if !query.is_empty() && !display.to_lowercase().contains(&query) {
+                continue;
+            }
+            if seen.insert(entry.clone()) {
+                suggestions.push(entry.clone());
+            }
+            if suggestions.len() >= 6 {
+                break;
+            }
+        }
+        suggestions
+    }
+
     fn request_page(&mut self, page_index: usize) -> Task<UiMessage> {
         if self.pending_pages.contains(&page_index) {
             return Task::none();
@@ -641,10 +675,9 @@ impl XionApp {
                         .last_clicked_path
                         .as_ref()
                         .is_some_and(|last_path| last_path == &path)
-                        && self
-                            .last_click_time
-                            .is_some_and(|last_click| now.duration_since(last_click)
-                                <= DOUBLE_CLICK_THRESHOLD);
+                        && self.last_click_time.is_some_and(|last_click| {
+                            now.duration_since(last_click) <= DOUBLE_CLICK_THRESHOLD
+                        });
                     self.apply_selection(path.clone(), kind);
                     if is_double_click {
                         self.last_click_time = None;
@@ -671,12 +704,7 @@ impl XionApp {
                 }
             }
             UiMessage::OpenContextMenuForEntry(path) => {
-                let is_selected = self
-                    .state
-                    .navigation
-                    .selection
-                    .selected
-                    .contains(&path);
+                let is_selected = self.state.navigation.selection.selected.contains(&path);
                 if !is_selected {
                     self.apply_selection(path, SelectionKind::Single);
                 }
@@ -692,13 +720,12 @@ impl XionApp {
             UiMessage::AddressInputChanged(value) => {
                 self.address_input = value;
             }
+            UiMessage::AddressSuggestionSelected(path) => {
+                self.address_input = path.display().to_string();
+                tasks.push(self.navigate_to(path));
+            }
             UiMessage::AddressInputSubmitted => {
-                let trimmed = self.address_input.trim();
-                if !trimmed.is_empty() {
-                    let mut target = PathBuf::from(trimmed);
-                    if !target.is_absolute() {
-                        target = self.state.route.path.join(target);
-                    }
+                if let Some(target) = self.address_target_from_input() {
                     if target.is_dir() {
                         tasks.push(self.navigate_to(target));
                     } else if target.exists() {
@@ -1333,11 +1360,7 @@ impl XionApp {
             .collect()
     }
 
-    fn filtered_position_for_path(
-        &self,
-        indices: &[usize],
-        path: &PathBuf,
-    ) -> Option<usize> {
+    fn filtered_position_for_path(&self, indices: &[usize], path: &PathBuf) -> Option<usize> {
         indices.iter().position(|index| {
             self.entries
                 .get(*index)
@@ -1478,7 +1501,8 @@ impl XionApp {
             return Task::none();
         }
 
-        let total_pages = (self.entries.total + self.entries.page_size - 1) / self.entries.page_size;
+        let total_pages =
+            (self.entries.total + self.entries.page_size - 1) / self.entries.page_size;
         let mut tasks = Vec::new();
         for page_index in 0..total_pages {
             if !self.entries.is_page_loaded(page_index) {
@@ -1819,6 +1843,112 @@ impl XionApp {
                 ..Default::default()
             });
 
+        let address_validation = self.address_target_from_input().map(|target| {
+            if target.is_dir() {
+                ("Dossier".to_string(), Color::from_rgb8(55, 125, 60))
+            } else if target.exists() {
+                ("Fichier".to_string(), Color::from_rgb8(186, 120, 40))
+            } else {
+                ("Introuvable".to_string(), Color::from_rgb8(176, 72, 72))
+            }
+        });
+
+        let address_status: Element<'_, UiMessage> =
+            if let Some((label, status_color)) = address_validation {
+                container(
+                    text(label)
+                        .size(typography.caption)
+                        .font(typography.caption_font)
+                        .style(move |_| iced::widget::text::Style {
+                            color: Some(status_color),
+                        }),
+                )
+                .padding([spacing.xs, spacing.sm])
+                .style(move |_| iced::widget::container::Style {
+                    background: Some(Background::Color(colors.panel_background)),
+                    border: border::rounded(999.0).color(colors.border).width(1.0),
+                    ..Default::default()
+                })
+                .into()
+            } else {
+                container(row![]).into()
+            };
+
+        let suggestion_button = |label: String, target: PathBuf| {
+            button(
+                text(label)
+                    .size(typography.caption)
+                    .font(typography.body_font),
+            )
+            .padding([spacing.xs, spacing.sm])
+            .width(Length::Fill)
+            .style(move |_theme: &Theme, status: ButtonStatus| {
+                let mut style = iced::widget::button::Style {
+                    text_color: colors.text_primary,
+                    ..Default::default()
+                };
+
+                match status {
+                    ButtonStatus::Hovered => {
+                        style.background = Some(Background::Color(colors.hover));
+                        style.border = border::rounded(6.0).color(colors.border).width(1.0);
+                    }
+                    ButtonStatus::Pressed => {
+                        style.background = Some(Background::Color(colors.pressed));
+                        style.border = border::rounded(6.0).color(colors.border).width(1.0);
+                    }
+                    ButtonStatus::Active | ButtonStatus::Disabled => {}
+                }
+
+                style
+            })
+            .on_press(UiMessage::AddressSuggestionSelected(target))
+        };
+
+        let address_suggestions = self.address_suggestions();
+        let address_suggestions = if address_suggestions.is_empty() {
+            None
+        } else {
+            let mut suggestions_list = column![
+                text("Historique")
+                    .size(typography.caption)
+                    .font(typography.caption_font)
+                    .style(move |_| iced::widget::text::Style {
+                        color: Some(colors.text_muted),
+                    })
+            ]
+            .spacing(spacing.xs);
+            for suggestion in address_suggestions {
+                suggestions_list = suggestions_list.push(suggestion_button(
+                    suggestion.display().to_string(),
+                    suggestion,
+                ));
+            }
+            Some(
+                container(suggestions_list)
+                    .padding([spacing.xs, spacing.sm])
+                    .width(Length::Fill)
+                    .style(move |_| iced::widget::container::Style {
+                        background: Some(Background::Color(colors.panel_background)),
+                        border: border::rounded(8.0).color(colors.border).width(1.0),
+                        ..Default::default()
+                    }),
+            )
+        };
+
+        let address_row = row![address_bar, address_status]
+            .spacing(spacing.xs)
+            .align_y(Alignment::Center);
+
+        let address_section: Element<'_, UiMessage> = if let Some(panel) = address_suggestions {
+            column![address_row, panel]
+                .spacing(spacing.xs)
+                .width(Length::Fill)
+                .into()
+        } else {
+            container(address_row).width(Length::Fill).into()
+        };
+
         let active_tab_title = self
             .tabs
             .get(self.active_tab)
@@ -1923,48 +2053,44 @@ impl XionApp {
         ]
         .spacing(spacing.sm);
 
-        let context_menu: Option<Element<'_, UiMessage>> = if self.context_menu_open
-            && !self.state.navigation.selection.selected.is_empty()
-        {
-            let position = self.context_menu_position.unwrap_or(Point::ORIGIN);
-            let position_x = position.x.max(0.0);
-            let position_y = position.y.max(0.0);
-            let menu = container(context_actions)
-                .padding([spacing.sm, spacing.md])
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.panel_background)),
-                    border: border::rounded(8.0).color(colors.border).width(1.0),
-                    ..Default::default()
-                });
-            let menu_layer: Element<'_, UiMessage> = container(
-                column![
-                    vertical_space().height(Length::Fixed(position_y)),
-                    row![
-                        horizontal_space().width(Length::Fixed(position_x)),
-                        opaque(menu)
+        let context_menu: Option<Element<'_, UiMessage>> =
+            if self.context_menu_open && !self.state.navigation.selection.selected.is_empty() {
+                let position = self.context_menu_position.unwrap_or(Point::ORIGIN);
+                let position_x = position.x.max(0.0);
+                let position_y = position.y.max(0.0);
+                let menu = container(context_actions)
+                    .padding([spacing.sm, spacing.md])
+                    .style(move |_| iced::widget::container::Style {
+                        background: Some(Background::Color(colors.panel_background)),
+                        border: border::rounded(8.0).color(colors.border).width(1.0),
+                        ..Default::default()
+                    });
+                let menu_layer: Element<'_, UiMessage> = container(
+                    column![
+                        vertical_space().height(Length::Fixed(position_y)),
+                        row![
+                            horizontal_space().width(Length::Fixed(position_x)),
+                            opaque(menu)
+                        ]
                     ]
-                ]
-                .spacing(0),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into();
-            let dismiss_layer: Element<'_, UiMessage> = mouse_area(
-                container(row![])
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(UiMessage::ToggleContextMenu(false))
-            .into();
-            Some(stack![dismiss_layer, menu_layer].into())
-        } else {
-            None
-        };
+                    .spacing(0),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+                let dismiss_layer: Element<'_, UiMessage> =
+                    mouse_area(container(row![]).width(Length::Fill).height(Length::Fill))
+                        .on_press(UiMessage::ToggleContextMenu(false))
+                        .into();
+                Some(stack![dismiss_layer, menu_layer].into())
+            } else {
+                None
+            };
 
         let header = container(
             column![
                 row![tabs].spacing(8).align_y(Alignment::Center),
-                row![navigation, address_bar, search_bar, loading_badge]
+                row![navigation, address_section, search_bar, loading_badge]
                     .spacing(spacing.md)
                     .align_y(Alignment::Center),
                 command_bar
@@ -2165,7 +2291,8 @@ impl XionApp {
                                         }
 
                                         if matches!(status, ButtonStatus::Hovered) {
-                                            style.background = Some(Background::Color(colors.hover));
+                                            style.background =
+                                                Some(Background::Color(colors.hover));
                                         }
 
                                         if matches!(status, ButtonStatus::Pressed) {
@@ -2318,7 +2445,8 @@ impl XionApp {
                                     };
 
                                     if is_selected {
-                                        style.background = Some(Background::Color(colors.selection));
+                                        style.background =
+                                            Some(Background::Color(colors.selection));
                                         style.border = border::rounded(6.0)
                                             .color(colors.selection_border)
                                             .width(if is_focused { 2.0 } else { 1.0 });
@@ -2384,8 +2512,7 @@ impl XionApp {
                 !indices.is_empty()
             } else {
                 display_entries.total > 0 || self.is_loading
-            }
-        {
+            } {
             let mut header_row = row![].spacing(spacing.md).align_y(Alignment::Center);
             for spec in &column_specs {
                 let is_active_sort = spec
@@ -2508,8 +2635,7 @@ impl XionApp {
             );
         }
 
-        let list = scrollable(container(list_column).padding(spacing.md))
-        .on_scroll(|viewport| {
+        let list = scrollable(container(list_column).padding(spacing.md)).on_scroll(|viewport| {
             UiMessage::Scroll(ScrollViewport {
                 offset_y: viewport.absolute_offset().y,
                 viewport_height: viewport.bounds().height,
@@ -2711,14 +2837,20 @@ impl XionApp {
                 };
 
                 let metadata = column![
-                    preview_row("Type".to_string(), entry_type_label(entry.entry_type).to_string()),
+                    preview_row(
+                        "Type".to_string(),
+                        entry_type_label(entry.entry_type).to_string()
+                    ),
                     preview_row("Taille".to_string(), format_entry_size(entry)),
                     preview_row(
                         "Modifié".to_string(),
                         format_modified(entry.metadata.modified),
                     ),
                     preview_row("Créé".to_string(), format_modified(entry.metadata.created)),
-                    preview_row("Accès".to_string(), format_modified(entry.metadata.accessed)),
+                    preview_row(
+                        "Accès".to_string(),
+                        format_modified(entry.metadata.accessed)
+                    ),
                     preview_row(
                         "Lecture seule".to_string(),
                         if entry.metadata.readonly {
@@ -2772,11 +2904,8 @@ impl XionApp {
         };
 
         let preview_panel = container(
-            column![
-                section_title("Prévisualisation".to_string()),
-                preview_body
-            ]
-            .spacing(spacing.md),
+            column![section_title("Prévisualisation".to_string()), preview_body]
+                .spacing(spacing.md),
         )
         .padding(spacing.md)
         .width(Length::Fixed(280.0))
@@ -2807,13 +2936,12 @@ impl XionApp {
             .align_x(Alignment::Start)
             .height(Length::Fill);
 
-        let base: Element<'_, UiMessage> =
-            container(content)
-                .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.chrome_background)),
-            ..Default::default()
-        })
-                .into();
+        let base: Element<'_, UiMessage> = container(content)
+            .style(move |_| iced::widget::container::Style {
+                background: Some(Background::Color(colors.chrome_background)),
+                ..Default::default()
+            })
+            .into();
 
         if let Some(menu) = context_menu {
             stack![base, menu].into()

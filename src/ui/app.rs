@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use chrono::{DateTime, Local};
 use directories::UserDirs;
+use iced::alignment::Horizontal;
 use iced::font::{Family, Style, Weight};
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{
@@ -17,6 +19,7 @@ use iced::{
 
 use crate::core::{
     ConfigManager, EntryFilterConfig, KeyInput, KeyKind, NamedKey, SortKeyConfig, SortOrderConfig,
+    ViewColumn,
 };
 use crate::filesystem::{
     FileOperationKind, FsEntry, FsEntryType, ListOptions, LocalFileOperations, LocalFileSystem,
@@ -658,6 +661,22 @@ impl XionApp {
                 self.scroll_offset = viewport.offset_y;
                 self.viewport_height = viewport.viewport_height.max(1.0);
                 tasks.push(self.ensure_visible_pages());
+            }
+            UiMessage::ChangeSort(sort_key) => {
+                if self.state.config.list.sort_key == sort_key {
+                    self.state.config.list.sort_order = match self.state.config.list.sort_order {
+                        SortOrderConfig::Asc => SortOrderConfig::Desc,
+                        SortOrderConfig::Desc => SortOrderConfig::Asc,
+                    };
+                } else {
+                    self.state.config.list.sort_key = sort_key;
+                    self.state.config.list.sort_order = SortOrderConfig::Asc;
+                }
+                self.last_action = Some(format!(
+                    "Tri : {:?} ({:?})",
+                    self.state.config.list.sort_key, self.state.config.list.sort_order
+                ));
+                tasks.push(self.refresh_entries());
             }
             UiMessage::LoadingDelayElapsed(generation) => {
                 if self.is_refreshing
@@ -1685,6 +1704,8 @@ impl XionApp {
             &self.entries
         };
 
+        let column_specs = column_specs(&self.state.config.view.columns);
+
         let list_content = if let Some(message) = &self.error {
             column![
                 text("Impossible de charger le dossier")
@@ -1735,62 +1756,100 @@ impl XionApp {
                             .as_ref()
                             .map(|path| path == &entry.path)
                             .unwrap_or(false);
-                        let leading: Element<'_, UiMessage> = match entry.entry_type {
-                            FsEntryType::Directory => text(ICON_FOLDER)
-                                .size(typography.body)
-                                .font(typography.body_font)
-                                .into(),
-                            FsEntryType::File => self
-                                .thumbnail_handles
-                                .get(&entry.path)
-                                .map(|handle| {
-                                    image(handle.clone())
-                                        .width(Length::Fixed(
-                                            self.state.config.view.thumbnail_size as f32,
-                                        ))
-                                        .height(Length::Fixed(
-                                            self.state.config.view.thumbnail_size as f32,
-                                        ))
+                        let mut entry_row = row![].spacing(spacing.md).align_y(Alignment::Center);
+                        for spec in &column_specs {
+                            let cell: Element<'_, UiMessage> = match spec.column {
+                                ViewColumn::Name => {
+                                    let leading: Element<'_, UiMessage> = match entry.entry_type {
+                                        FsEntryType::Directory => text(ICON_FOLDER)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
+                                        FsEntryType::File => self
+                                            .thumbnail_handles
+                                            .get(&entry.path)
+                                            .map(|handle| {
+                                                image(handle.clone())
+                                                    .width(Length::Fixed(
+                                                        self.state.config.view.thumbnail_size
+                                                            as f32,
+                                                    ))
+                                                    .height(Length::Fixed(
+                                                        self.state.config.view.thumbnail_size
+                                                            as f32,
+                                                    ))
+                                                    .into()
+                                            })
+                                            .unwrap_or_else(|| {
+                                                text(ICON_FILE)
+                                                    .size(typography.body)
+                                                    .font(typography.body_font)
+                                                    .into()
+                                            }),
+                                        FsEntryType::Symlink => text(ICON_SYMLINK)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
+                                        FsEntryType::Other => text(ICON_UNKNOWN)
+                                            .size(typography.body)
+                                            .font(typography.body_font)
+                                            .into(),
+                                    };
+                                    let open_button: Element<'_, UiMessage> =
+                                        if entry.entry_type == FsEntryType::Directory {
+                                            button(
+                                                text("Ouvrir")
+                                                    .size(typography.caption)
+                                                    .font(typography.caption_font),
+                                            )
+                                            .padding([spacing.xs, spacing.sm])
+                                            .on_press(UiMessage::ActivateEntry(entry.path.clone()))
+                                            .into()
+                                        } else {
+                                            container(row![]).into()
+                                        };
+                                    let name_row = row![
+                                        leading,
+                                        text(&entry.name)
+                                            .size(typography.body)
+                                            .font(typography.body_font),
+                                        horizontal_space(),
+                                        open_button
+                                    ]
+                                    .spacing(spacing.sm)
+                                    .align_y(Alignment::Center);
+                                    container(name_row)
+                                        .width(spec.width)
+                                        .align_x(spec.align)
                                         .into()
-                                })
-                                .unwrap_or_else(|| {
-                                    text(ICON_FILE)
-                                        .size(typography.body)
-                                        .font(typography.body_font)
-                                        .into()
-                                }),
-                            FsEntryType::Symlink => text(ICON_SYMLINK)
-                                .size(typography.body)
-                                .font(typography.body_font)
-                                .into(),
-                            FsEntryType::Other => text(ICON_UNKNOWN)
-                                .size(typography.body)
-                                .font(typography.body_font)
-                                .into(),
-                        };
-                        let open_button: Element<'_, UiMessage> =
-                            if entry.entry_type == FsEntryType::Directory {
-                                button(
-                                    text("Ouvrir")
+                                }
+                                ViewColumn::Type => container(
+                                    text(entry_type_label(entry.entry_type))
                                         .size(typography.caption)
                                         .font(typography.caption_font),
                                 )
-                                .padding([spacing.xs, spacing.sm])
-                                .on_press(UiMessage::ActivateEntry(entry.path.clone()))
-                                .into()
-                            } else {
-                                container(row![]).into()
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
+                                ViewColumn::Size => container(
+                                    text(format_entry_size(entry))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
+                                ViewColumn::Modified => container(
+                                    text(format_modified(entry.metadata.modified))
+                                        .size(typography.caption)
+                                        .font(typography.caption_font),
+                                )
+                                .width(spec.width)
+                                .align_x(spec.align)
+                                .into(),
                             };
-                        let entry_row = row![
-                            leading,
-                            text(&entry.name)
-                                .size(typography.body)
-                                .font(typography.body_font),
-                            horizontal_space(),
-                            open_button
-                        ]
-                        .spacing(spacing.md)
-                        .align_y(Alignment::Center);
+                            entry_row = entry_row.push(cell);
+                        }
                         let selection_kind = self.selection_kind_from_modifiers();
                         let message = UiMessage::SelectEntry {
                             path: entry.path.clone(),
@@ -1824,17 +1883,33 @@ impl XionApp {
                             .on_press(message)
                     }
                     None => {
-                        let placeholder = row![
-                            text(ICON_LOADING)
-                                .size(typography.body)
-                                .font(typography.body_font),
-                            text("Chargement…")
-                                .size(typography.body)
-                                .font(typography.body_font)
-                        ]
-                        .spacing(spacing.md)
-                        .align_y(Alignment::Center);
-                        button(placeholder)
+                        let mut placeholder_row =
+                            row![].spacing(spacing.md).align_y(Alignment::Center);
+                        for (index, spec) in column_specs.iter().enumerate() {
+                            let cell: Element<'_, UiMessage> = if index == 0 {
+                                let content = row![
+                                    text(ICON_LOADING)
+                                        .size(typography.body)
+                                        .font(typography.body_font),
+                                    text("Chargement…")
+                                        .size(typography.body)
+                                        .font(typography.body_font)
+                                ]
+                                .spacing(spacing.sm)
+                                .align_y(Alignment::Center);
+                                container(content)
+                                    .width(spec.width)
+                                    .align_x(spec.align)
+                                    .into()
+                            } else {
+                                container(row![])
+                                    .width(spec.width)
+                                    .align_x(spec.align)
+                                    .into()
+                            };
+                            placeholder_row = placeholder_row.push(cell);
+                        }
+                        button(placeholder_row)
                     }
                 });
             }
@@ -1844,6 +1919,67 @@ impl XionApp {
             }
 
             list
+        };
+
+        let list_header: Element<'_, UiMessage> = if self.error.is_none()
+            && (display_entries.total > 0 || self.is_loading)
+        {
+            let mut header_row = row![].spacing(spacing.md).align_y(Alignment::Center);
+            for spec in &column_specs {
+                let is_active_sort = spec
+                    .sort_key
+                    .is_some_and(|key| key == self.state.config.list.sort_key);
+                let sort_indicator = if is_active_sort {
+                    match self.state.config.list.sort_order {
+                        SortOrderConfig::Asc => "↑",
+                        SortOrderConfig::Desc => "↓",
+                    }
+                } else {
+                    ""
+                };
+                let label = if sort_indicator.is_empty() {
+                    spec.label.to_string()
+                } else {
+                    format!("{} {}", spec.label, sort_indicator)
+                };
+                let header_text = text(label)
+                    .size(typography.caption)
+                    .font(typography.caption_font);
+                let cell: Element<'_, UiMessage> = if let Some(sort_key) = spec.sort_key {
+                    button(header_text)
+                        .padding([spacing.xs, spacing.sm])
+                        .style(move |_theme: &Theme, status: ButtonStatus| {
+                            let mut style = iced::widget::button::Style {
+                                text_color: colors.text_primary,
+                                ..Default::default()
+                            };
+
+                            if matches!(status, ButtonStatus::Hovered) {
+                                style.background = Some(Background::Color(colors.hover));
+                            }
+
+                            style
+                        })
+                        .on_press(UiMessage::ChangeSort(sort_key))
+                        .into()
+                } else {
+                    container(header_text)
+                        .padding([spacing.xs, spacing.sm])
+                        .into()
+                };
+                header_row = header_row.push(container(cell).width(spec.width).align_x(spec.align));
+            }
+
+            container(header_row)
+                .padding([spacing.xs, spacing.sm])
+                .style(move |_| iced::widget::container::Style {
+                    background: Some(Background::Color(colors.chrome_background)),
+                    border: border::rounded(6.0).color(colors.border).width(1.0),
+                    ..Default::default()
+                })
+                .into()
+        } else {
+            container(row![]).into()
         };
 
         let rename_prompt = if let Some(dialog) = &self.rename_dialog {
@@ -1899,6 +2035,7 @@ impl XionApp {
             container(
                 column![
                     rename_prompt,
+                    list_header,
                     list_content,
                     text(selection_status)
                         .size(typography.caption)
@@ -2086,6 +2223,112 @@ impl XionApp {
             })
             .into()
     }
+}
+
+struct ColumnSpec {
+    column: ViewColumn,
+    label: &'static str,
+    width: Length,
+    align: Horizontal,
+    sort_key: Option<SortKeyConfig>,
+}
+
+fn column_specs(columns: &[ViewColumn]) -> Vec<ColumnSpec> {
+    let mut specs = columns
+        .iter()
+        .map(|column| ColumnSpec {
+            column: column.clone(),
+            label: column_label(column),
+            width: column_width(column),
+            align: column_alignment(column),
+            sort_key: column_sort_key(column),
+        })
+        .collect::<Vec<_>>();
+
+    let has_fill = specs
+        .iter()
+        .any(|spec| matches!(spec.width, Length::Fill | Length::FillPortion(_)));
+    if !has_fill {
+        if let Some(first) = specs.first_mut() {
+            first.width = Length::Fill;
+        }
+    }
+
+    specs
+}
+
+fn column_label(column: &ViewColumn) -> &'static str {
+    match column {
+        ViewColumn::Name => "Nom",
+        ViewColumn::Type => "Type",
+        ViewColumn::Size => "Taille",
+        ViewColumn::Modified => "Modifié",
+    }
+}
+
+fn column_width(column: &ViewColumn) -> Length {
+    match column {
+        ViewColumn::Name => Length::FillPortion(4),
+        ViewColumn::Type => Length::Fixed(120.0),
+        ViewColumn::Size => Length::Fixed(100.0),
+        ViewColumn::Modified => Length::Fixed(160.0),
+    }
+}
+
+fn column_alignment(column: &ViewColumn) -> Horizontal {
+    match column {
+        ViewColumn::Size | ViewColumn::Modified => Horizontal::Right,
+        _ => Horizontal::Left,
+    }
+}
+
+fn column_sort_key(column: &ViewColumn) -> Option<SortKeyConfig> {
+    match column {
+        ViewColumn::Name => Some(SortKeyConfig::Name),
+        ViewColumn::Size => Some(SortKeyConfig::Size),
+        ViewColumn::Modified => Some(SortKeyConfig::Modified),
+        ViewColumn::Type => None,
+    }
+}
+
+fn entry_type_label(entry_type: FsEntryType) -> &'static str {
+    match entry_type {
+        FsEntryType::Directory => "Dossier",
+        FsEntryType::File => "Fichier",
+        FsEntryType::Symlink => "Lien",
+        FsEntryType::Other => "Autre",
+    }
+}
+
+fn format_entry_size(entry: &FsEntry) -> String {
+    match entry.entry_type {
+        FsEntryType::Directory => "—".to_string(),
+        _ => format_bytes(entry.metadata.size),
+    }
+}
+
+fn format_bytes(bytes: u64) -> String {
+    let units = ["o", "Ko", "Mo", "Go", "To"];
+    let mut size = bytes as f64;
+    let mut index = 0;
+    while size >= 1024.0 && index < units.len() - 1 {
+        size /= 1024.0;
+        index += 1;
+    }
+    if index == 0 {
+        format!("{bytes} {}", units[index])
+    } else {
+        format!("{:.1} {}", size, units[index])
+    }
+}
+
+fn format_modified(modified: Option<std::time::SystemTime>) -> String {
+    modified
+        .map(|time| {
+            let datetime: DateTime<Local> = time.into();
+            datetime.format("%Y-%m-%d %H:%M").to_string()
+        })
+        .unwrap_or_else(|| "—".to_string())
 }
 
 fn list_options_from_config(list_config: crate::core::ListConfig) -> ListOptions {

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::core::AppConfig;
+use crate::core::{AppConfig, SortKeyConfig};
 use crate::filesystem::{FsEntry, OperationReport, Page};
 use crate::services::Thumbnail;
 
@@ -92,6 +92,7 @@ pub enum UiMessage {
     AddressInputChanged(String),
     AddressInputSubmitted,
     Scroll(ScrollViewport),
+    ChangeSort(SortKeyConfig),
     LoadingDelayElapsed(u64),
     PageLoaded {
         path: PathBuf,

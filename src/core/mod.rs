@@ -5,7 +5,7 @@ pub mod config;
 pub use config::{
     AppConfig, AppConfigLoad, CacheConfig, ConfigManager, ConfigSource, ConfigWarning,
     EntryFilterConfig, KeyChord, KeyInput, KeyKind, ListConfig, NamedKey, PagingConfig,
-    ShortcutBindings, SortKeyConfig, SortOrderConfig, ViewColumn, ViewConfig,
+    ShortcutBindings, SortKeyConfig, SortOrderConfig, ViewColumn, ViewConfig, ViewMode,
 };
 
 pub type AppResult<T> = Result<T, XionError>;

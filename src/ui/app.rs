@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -21,12 +22,13 @@ use iced::{
 };
 
 use crate::core::{
-    ConfigManager, EntryFilterConfig, KeyInput, KeyKind, NamedKey, SortKeyConfig, SortOrderConfig,
-    ViewColumn, ViewMode,
+    AppResult, ConfigManager, EntryFilterConfig, KeyInput, KeyKind, NamedKey, SortKeyConfig,
+    SortOrderConfig, ViewColumn, ViewMode,
 };
 use crate::filesystem::{
-    EntryFilter, FileOperationKind, FileSystem, FsEntry, FsEntryType, ListOptions,
-    LocalFileOperations, LocalFileSystem, OperationReport, Page, PageRequest, SortKey, SortOrder,
+    EntryFilter, FileOperationKind, FileSystem, FileWatcher, FsEntry, FsEntryType, ListOptions,
+    LocalFileOperations, LocalFileSystem, NativeFileWatcher, NoopFileWatcher, OperationReport,
+    Page, PageRequest, SortKey, SortOrder, WatchEvent,
 };
 use crate::services::{
     DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService,
@@ -108,6 +110,7 @@ const ICON_CLOSE: &str = "";
 
 const LOADING_INDICATOR_DELAY: Duration = Duration::from_millis(75);
 const DOUBLE_CLICK_THRESHOLD: Duration = Duration::from_millis(500);
+const WATCHER_POLL_INTERVAL: Duration = Duration::from_millis(750);
 const TREE_MAX_DEPTH: usize = 4;
 const TREE_MAX_CHILDREN: usize = 120;
 const TREE_MIN_HEIGHT: f32 = 140.0;
@@ -391,6 +394,34 @@ struct AnimatedPreview {
     handle: image::Handle,
 }
 
+struct FileWatcherHandle {
+    inner: Box<dyn FileWatcher>,
+}
+
+impl fmt::Debug for FileWatcherHandle {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("FileWatcherHandle").finish()
+    }
+}
+
+impl FileWatcherHandle {
+    fn new(inner: Box<dyn FileWatcher>) -> Self {
+        Self { inner }
+    }
+
+    fn watch(&mut self, path: &Path) -> AppResult<()> {
+        self.inner.watch(path)
+    }
+
+    fn unwatch(&mut self, path: &Path) -> AppResult<()> {
+        self.inner.unwatch(path)
+    }
+
+    fn poll(&mut self) -> AppResult<Vec<WatchEvent>> {
+        self.inner.poll()
+    }
+}
+
 #[derive(Debug)]
 pub struct XionApp {
     state: AppState,
@@ -441,6 +472,8 @@ pub struct XionApp {
     preview_width: f32,
     preview_resizing: bool,
     preview_resize_anchor: Option<(f32, f32)>,
+    file_watcher: FileWatcherHandle,
+    watched_path: Option<PathBuf>,
 }
 
 impl XionApp {
@@ -470,12 +503,44 @@ impl XionApp {
         Task::batch(tasks)
     }
 
+    fn sync_watcher(&mut self) {
+        let target = self.state.route.local_path().map(|path| path.to_path_buf());
+        if target == self.watched_path {
+            return;
+        }
+        if let Some(path) = self.watched_path.take() {
+            let _ = self.file_watcher.unwatch(&path);
+        }
+        self.watched_path = target.clone();
+        if let Some(path) = target {
+            if let Err(error) = self.file_watcher.watch(&path) {
+                self.last_action = Some(format!(
+                    "Observateur FS: impossible de surveiller {} ({})",
+                    path.display(),
+                    error
+                ));
+            }
+        }
+    }
+
+    fn poll_watcher(&mut self) -> Option<Vec<WatchEvent>> {
+        match self.file_watcher.poll() {
+            Ok(events) if !events.is_empty() => Some(events),
+            Ok(_) => None,
+            Err(error) => {
+                self.last_action = Some(format!("Observateur FS: {error}"));
+                None
+            }
+        }
+    }
+
     fn update_active_tab_path(&mut self, path: PathBuf) {
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             tab.path = path.clone();
         }
         self.state.route.kind = route_kind_from_path(&path);
         self.address_input = self.state.route.address_label();
+        self.sync_watcher();
     }
 
     fn navigate_to(&mut self, path: PathBuf) -> Task<UiMessage> {
@@ -656,6 +721,14 @@ impl XionApp {
         let entries = PagedEntries::new(0, page_size);
         let address_input = state.route.address_label();
         let favorites = build_default_favorites();
+        let mut watcher_error = None;
+        let file_watcher: FileWatcherHandle = match NativeFileWatcher::new() {
+            Ok(watcher) => FileWatcherHandle::new(Box::new(watcher)),
+            Err(error) => {
+                watcher_error = Some(error.to_string());
+                FileWatcherHandle::new(Box::new(NoopFileWatcher::new()))
+            }
+        };
         let mut app = Self {
             state,
             history,
@@ -705,6 +778,8 @@ impl XionApp {
             preview_width: 280.0,
             preview_resizing: false,
             preview_resize_anchor: None,
+            file_watcher,
+            watched_path: None,
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -717,6 +792,10 @@ impl XionApp {
                     .join(" | ")
             ));
         }
+        if let Some(error) = watcher_error {
+            app.last_action = Some(format!("Observateur FS indisponible: {error}"));
+        }
+        app.sync_watcher();
         let task = app.refresh_entries();
         (app, task)
     }
@@ -1033,6 +1112,18 @@ impl XionApp {
             UiMessage::AnimatedPreviewTick(now) => {
                 self.advance_animated_preview(now);
             }
+            UiMessage::FileWatchTick => {
+                if let (Some(watched_path), Some(events)) =
+                    (self.watched_path.clone(), self.poll_watcher())
+                {
+                    let should_refresh = events
+                        .iter()
+                        .any(|event| Self::is_event_relevant(event, &watched_path));
+                    if should_refresh && !self.is_refreshing {
+                        tasks.push(self.refresh_entries());
+                    }
+                }
+            }
             UiMessage::ClipboardCut => {
                 self.capture_clipboard(ClipboardKind::Cut);
             }
@@ -1124,6 +1215,8 @@ impl XionApp {
             subscriptions
                 .push(time::every(Duration::from_millis(30)).map(UiMessage::AnimatedPreviewTick));
         }
+
+        subscriptions.push(time::every(WATCHER_POLL_INTERVAL).map(|_| UiMessage::FileWatchTick));
 
         Subscription::batch(subscriptions)
     }
@@ -1781,6 +1874,14 @@ impl XionApp {
         let frame = &animated.frames[animated.current];
         animated.handle = image::Handle::from_rgba(frame.width, frame.height, frame.pixels.clone());
         animated.next_frame_at = now + frame.delay;
+    }
+
+    fn is_event_relevant(event: &WatchEvent, watched_path: &PathBuf) -> bool {
+        event.path == *watched_path
+            || event
+                .path
+                .parent()
+                .is_some_and(|parent| parent == watched_path)
     }
 
     fn cycle_focus(&mut self) {

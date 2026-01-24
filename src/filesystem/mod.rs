@@ -12,4 +12,4 @@ pub use cache::{DirectoryCache, MetadataCache, TimedCache};
 pub use metadata::FsMetadata;
 pub use operations::{FileOperationKind, LocalFileOperations, OperationFailure, OperationReport};
 pub use paging::{Page, PageRequest};
-pub use watcher::{FileWatcher, NoopFileWatcher, WatchEvent, WatchEventKind};
+pub use watcher::{FileWatcher, NativeFileWatcher, NoopFileWatcher, WatchEvent, WatchEventKind};

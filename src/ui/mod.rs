@@ -160,6 +160,7 @@ pub enum UiMessage {
         preview: Option<Thumbnail>,
     },
     AnimatedPreviewTick(Instant),
+    FileWatchTick,
     ClipboardCut,
     ClipboardCopy,
     ClipboardPaste,

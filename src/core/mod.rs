@@ -15,6 +15,7 @@ pub enum XionError {
     Io(std::io::Error),
     InvalidPath(PathBuf),
     NotFound(PathBuf),
+    Watcher(String),
 }
 
 impl fmt::Display for XionError {
@@ -23,6 +24,7 @@ impl fmt::Display for XionError {
             Self::Io(error) => write!(formatter, "I/O error: {error}"),
             Self::InvalidPath(path) => write!(formatter, "Invalid path: {}", path.display()),
             Self::NotFound(path) => write!(formatter, "Not found: {}", path.display()),
+            Self::Watcher(error) => write!(formatter, "File watcher error: {error}"),
         }
     }
 }

@@ -670,19 +670,6 @@ impl XionApp {
                     self.context_menu_position = None;
                 }
             }
-            UiMessage::OpenContextMenuForEntry(path) => {
-                let is_selected = self
-                    .state
-                    .navigation
-                    .selection
-                    .selected
-                    .contains(&path);
-                if !is_selected {
-                    self.apply_selection(path, SelectionKind::Single);
-                }
-                self.context_menu_open = true;
-                self.context_menu_position = self.cursor_position;
-            }
             UiMessage::ContextAction(action) => {
                 tasks.push(self.apply_context_action(action));
             }
@@ -854,6 +841,9 @@ impl XionApp {
             }
             iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
                 UiMessage::CursorMoved(position)
+            }
+            iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
+                UiMessage::ToggleContextMenu(true)
             }
             _ => UiMessage::Noop,
         })
@@ -2145,39 +2135,33 @@ impl XionApp {
                             path: entry.path.clone(),
                             kind: selection_kind,
                         };
-                        let context_path = entry.path.clone();
                         list = list.push(
-                            mouse_area(
-                                button(entry_row)
-                                    .padding([spacing.xs, spacing.sm])
-                                    .style(move |_theme: &Theme, status: ButtonStatus| {
-                                        let mut style = iced::widget::button::Style {
-                                            text_color: colors.text_primary,
-                                            ..Default::default()
-                                        };
+                            button(entry_row)
+                                .padding([spacing.xs, spacing.sm])
+                                .style(move |_theme: &Theme, status: ButtonStatus| {
+                                    let mut style = iced::widget::button::Style {
+                                        text_color: colors.text_primary,
+                                        ..Default::default()
+                                    };
 
-                                        if is_selected {
-                                            style.background =
-                                                Some(Background::Color(colors.selection));
-                                            style.border = border::rounded(6.0)
-                                                .color(colors.selection_border)
-                                                .width(if is_focused { 2.0 } else { 1.0 });
-                                        }
+                                    if is_selected {
+                                        style.background = Some(Background::Color(colors.selection));
+                                        style.border = border::rounded(6.0)
+                                            .color(colors.selection_border)
+                                            .width(if is_focused { 2.0 } else { 1.0 });
+                                    }
 
-                                        if matches!(status, ButtonStatus::Hovered) {
-                                            style.background = Some(Background::Color(colors.hover));
-                                        }
+                                    if matches!(status, ButtonStatus::Hovered) {
+                                        style.background = Some(Background::Color(colors.hover));
+                                    }
 
-                                        if matches!(status, ButtonStatus::Pressed) {
-                                            style.background =
-                                                Some(Background::Color(colors.pressed));
-                                        }
+                                    if matches!(status, ButtonStatus::Pressed) {
+                                        style.background = Some(Background::Color(colors.pressed));
+                                    }
 
-                                        style
-                                    })
-                                    .on_press(message),
-                            )
-                            .on_right_press(UiMessage::OpenContextMenuForEntry(context_path)),
+                                    style
+                                })
+                                .on_press(message),
                         );
                     }
                 }
@@ -2307,36 +2291,32 @@ impl XionApp {
                             path: entry.path.clone(),
                             kind: selection_kind,
                         };
-                        let context_path = entry.path.clone();
-                        mouse_area(
-                            button(entry_row)
-                                .padding([spacing.xs, spacing.sm])
-                                .style(move |_theme: &Theme, status: ButtonStatus| {
-                                    let mut style = iced::widget::button::Style {
-                                        text_color: colors.text_primary,
-                                        ..Default::default()
-                                    };
+                        button(entry_row)
+                            .padding([spacing.xs, spacing.sm])
+                            .style(move |_theme: &Theme, status: ButtonStatus| {
+                                let mut style = iced::widget::button::Style {
+                                    text_color: colors.text_primary,
+                                    ..Default::default()
+                                };
 
-                                    if is_selected {
-                                        style.background = Some(Background::Color(colors.selection));
-                                        style.border = border::rounded(6.0)
-                                            .color(colors.selection_border)
-                                            .width(if is_focused { 2.0 } else { 1.0 });
-                                    }
+                                if is_selected {
+                                    style.background = Some(Background::Color(colors.selection));
+                                    style.border = border::rounded(6.0)
+                                        .color(colors.selection_border)
+                                        .width(if is_focused { 2.0 } else { 1.0 });
+                                }
 
-                                    if matches!(status, ButtonStatus::Hovered) {
-                                        style.background = Some(Background::Color(colors.hover));
-                                    }
+                                if matches!(status, ButtonStatus::Hovered) {
+                                    style.background = Some(Background::Color(colors.hover));
+                                }
 
-                                    if matches!(status, ButtonStatus::Pressed) {
-                                        style.background = Some(Background::Color(colors.pressed));
-                                    }
+                                if matches!(status, ButtonStatus::Pressed) {
+                                    style.background = Some(Background::Color(colors.pressed));
+                                }
 
-                                    style
-                                })
-                                .on_press(message),
-                        )
-                        .on_right_press(UiMessage::OpenContextMenuForEntry(context_path))
+                                style
+                            })
+                            .on_press(message)
                     }
                     None => {
                         let mut placeholder_row =

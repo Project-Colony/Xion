@@ -125,6 +125,7 @@ pub enum UiMessage {
     Forward,
     Refresh,
     FocusPane(PaneKind),
+    EntryPressed(PathBuf),
     SelectEntry {
         path: PathBuf,
         kind: SelectionKind,
@@ -172,10 +173,12 @@ pub enum UiMessage {
     RenameSubmit,
     RenameCancel,
     MouseReleased,
+    FinalizeDrag,
     TreeResizeStart,
     TreeResizeEnd,
     PreviewResizeStart,
     PreviewResizeEnd,
+    DropOnPath(PathBuf),
     FileOperationFinished(OperationReport),
 }
 

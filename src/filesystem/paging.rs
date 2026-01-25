@@ -70,3 +70,36 @@ impl<T> Page<T> {
         (self.offset + self.items.len()).min(self.total)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{PageRequest};
+
+    #[test]
+    fn page_request_applies_offset_and_limit() {
+        let entries = vec![1, 2, 3, 4, 5];
+        let page = PageRequest::new(1, 2).apply(entries);
+
+        assert_eq!(page.items, vec![2, 3]);
+        assert_eq!(page.total, 5);
+        assert_eq!(page.offset, 1);
+        assert_eq!(page.limit, 2);
+    }
+
+    #[test]
+    fn page_request_slice_bounds() {
+        let entries = vec!["a", "b", "c", "d"];
+        let slice = PageRequest::new(2, 10).slice(&entries);
+
+        assert_eq!(slice, &["c", "d"]);
+    }
+
+    #[test]
+    fn page_has_more_and_next_offset() {
+        let entries = vec![1, 2, 3, 4];
+        let page = PageRequest::new(0, 3).apply(entries);
+
+        assert!(page.has_more());
+        assert_eq!(page.next_offset(), 3);
+    }
+}

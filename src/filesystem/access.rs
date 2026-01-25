@@ -441,3 +441,86 @@ struct EntryStub {
     entry_type: FsEntryType,
     metadata: Option<FsMetadata>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{EntryFilter, FileSystem, ListOptions, LocalFileSystem, PageRequest};
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn create_temp_dir() -> PathBuf {
+        let mut path = std::env::temp_dir();
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        path.push(format!("xion_fs_test_{stamp}"));
+        fs::create_dir_all(&path).expect("create temp dir");
+        path
+    }
+
+    fn write_file(path: &Path, contents: &str) {
+        fs::write(path, contents).expect("write file");
+    }
+
+    #[test]
+    fn list_dir_filters_and_sorts() {
+        let root = create_temp_dir();
+        let folder = root.join("folder");
+        fs::create_dir_all(&folder).expect("create folder");
+        write_file(&root.join("alpha.txt"), "alpha");
+        write_file(&root.join("beta.log"), "beta");
+        write_file(&root.join(".hidden"), "hidden");
+
+        let fs = LocalFileSystem::new();
+        let entries = fs
+            .list_dir(&root, ListOptions::default())
+            .expect("list dir");
+        let names: Vec<String> = entries.iter().map(|entry| entry.name.clone()).collect();
+
+        assert_eq!(names, vec!["folder", "alpha.txt", "beta.log"]);
+
+        let files_only = fs
+            .list_dir(
+                &root,
+                ListOptions {
+                    filter: EntryFilter::OnlyFiles,
+                    ..ListOptions::default()
+                },
+            )
+            .expect("list dir files");
+        assert_eq!(files_only.len(), 2);
+
+        let query_only = fs
+            .list_dir(
+                &root,
+                ListOptions::default().with_name_query("alp"),
+            )
+            .expect("list dir query");
+        assert_eq!(query_only.len(), 1);
+        assert_eq!(query_only[0].name, "alpha.txt");
+
+        fs::remove_dir_all(&root).expect("cleanup");
+    }
+
+    #[test]
+    fn list_dir_paged_returns_expected_slice() {
+        let root = create_temp_dir();
+        let folder = root.join("folder");
+        fs::create_dir_all(&folder).expect("create folder");
+        write_file(&root.join("alpha.txt"), "alpha");
+        write_file(&root.join("beta.log"), "beta");
+
+        let fs = LocalFileSystem::new();
+        let page = fs
+            .list_dir_paged(&root, ListOptions::default(), PageRequest::new(1, 1))
+            .expect("list dir paged");
+
+        assert_eq!(page.total, 3);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].name, "alpha.txt");
+
+        fs::remove_dir_all(&root).expect("cleanup");
+    }
+}

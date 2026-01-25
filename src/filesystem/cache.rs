@@ -131,3 +131,33 @@ impl DirectoryCache {
         self.inner.clear();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::TimedCache;
+    use std::time::Duration;
+    use std::thread::sleep;
+
+    #[test]
+    fn timed_cache_evicts_oldest_entries() {
+        let mut cache = TimedCache::new(2, Duration::from_secs(60));
+
+        cache.insert("alpha", 1);
+        cache.insert("beta", 2);
+        cache.insert("gamma", 3);
+
+        assert!(cache.get(&"alpha").is_none());
+        assert_eq!(cache.get(&"beta"), Some(&2));
+        assert_eq!(cache.get(&"gamma"), Some(&3));
+    }
+
+    #[test]
+    fn timed_cache_expires_entries() {
+        let mut cache = TimedCache::new(4, Duration::from_millis(10));
+
+        cache.insert("alpha", 1);
+        sleep(Duration::from_millis(25));
+
+        assert!(cache.get(&"alpha").is_none());
+    }
+}

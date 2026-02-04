@@ -412,7 +412,14 @@ pub struct ConfigManager {
     path: PathBuf,
 }
 
+impl Default for ConfigManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConfigManager {
+    /// Creates a new configuration manager with the default config path.
     pub fn new() -> Self {
         let path = default_config_path();
         Self { path }

@@ -2,15 +2,37 @@
 name = "xion"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+authors = ["Xion Contributors"]
+description = "A modern, performant file explorer written in Rust"
+repository = "https://github.com/MotherSphere/Xion-Private"
+license = "MIT"
+keywords = ["file-explorer", "gui", "iced", "filesystem"]
+categories = ["gui", "filesystem"]
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 directories = "5.0"
 iced = { version = "0.13", features = ["image", "wgpu", "tokio"] }
+tokio = { version = "1", features = ["time"] }
 image = { version = "0.25", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
 notify = "6.1"
 serde = { version = "1.0", features = ["derive"] }
 sysinfo = "0.30"
 toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 wgpu = "0.20"
 winit = "0.29"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

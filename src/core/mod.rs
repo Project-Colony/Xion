@@ -1,3 +1,12 @@
+//! Core types, configuration, and error handling for Xion.
+//!
+//! This module provides the foundational types used throughout the application:
+//!
+//! - [`XionError`] - Unified error type for all Xion operations
+//! - [`AppResult`] - Result type alias using `XionError`
+//! - [`AppConfig`] - Application configuration with validation
+//! - [`ConfigManager`] - Configuration loading and management
+
 use std::fmt;
 use std::path::PathBuf;
 

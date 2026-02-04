@@ -1,3 +1,8 @@
+//! Main application module for Xion file explorer.
+//!
+//! This module contains the [`XionApp`] struct which implements the Iced
+//! application trait and handles all UI state, messages, and rendering.
+
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::Cursor;
@@ -5,13 +10,16 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ::image::AnimationDecoder;
 use ::image::codecs::gif::GifDecoder;
+use ::image::AnimationDecoder;
 use chrono::{DateTime, Local};
 use directories::UserDirs;
 use iced::alignment::Horizontal;
 use iced::font::{Family, Style, Weight};
 use iced::widget::button::Status as ButtonStatus;
+// Tracing is available for future use
+#[allow(unused_imports)]
+use tracing::{debug, info, warn};
 use iced::widget::{
     button, column, container, horizontal_space, image, mouse_area, opaque, progress_bar, row,
     scrollable, stack, text, text_input, vertical_space,
@@ -718,9 +726,10 @@ impl XionApp {
     }
 
     fn schedule_loading_indicator(&self, generation: u64) -> Task<UiMessage> {
+        let delay = LOADING_INDICATOR_DELAY;
         Task::perform(
             async move {
-                std::thread::sleep(LOADING_INDICATOR_DELAY);
+                tokio::time::sleep(delay).await;
                 generation
             },
             UiMessage::LoadingDelayElapsed,

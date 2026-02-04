@@ -1,8 +1,16 @@
+//! Filesystem access abstraction and local filesystem implementation.
+//!
+//! This module provides the [`FileSystem`] trait for abstracting filesystem
+//! operations and [`LocalFileSystem`] as the concrete implementation for
+//! local disk access.
+
 use std::cmp::Ordering;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
+
+use tracing::warn;
 
 use crate::core::{AppResult, FilesystemConfig, XionError};
 use crate::filesystem::metadata::FsMetadata;
@@ -408,8 +416,20 @@ impl LocalFileSystem {
                         let result = fs::metadata(path)
                             .map(FsMetadata::from_metadata)
                             .map_err(XionError::from);
-                        if let Ok(mut guard) = results.lock() {
-                            guard[chunk_index * chunk_size + index] = Some(result);
+                        match results.lock() {
+                            Ok(mut guard) => {
+                                guard[chunk_index * chunk_size + index] = Some(result);
+                            }
+                            Err(poisoned) => {
+                                // Mutex was poisoned by a panic in another thread.
+                                // Log warning and recover by accessing the data anyway.
+                                warn!(
+                                    path = %path.display(),
+                                    "Mutex poisoned during metadata batch, recovering"
+                                );
+                                let mut guard = poisoned.into_inner();
+                                guard[chunk_index * chunk_size + index] = Some(result);
+                            }
                         }
                     }
                 });

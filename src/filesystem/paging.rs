@@ -36,7 +36,7 @@ impl PageRequest {
         }
     }
 
-    pub fn slice<'a, T>(self, entries: &'a [T]) -> &'a [T] {
+    pub fn slice<T>(self, entries: &[T]) -> &[T] {
         let total = entries.len();
         let offset = self.offset.min(total);
         let end = offset.saturating_add(self.limit).min(total);

@@ -8,8 +8,10 @@ use crate::services::{SearchIndex, Thumbnail};
 use iced::{Point, Rectangle};
 
 pub mod app;
+pub mod theme;
 
-pub use app::{XionApp, run};
+pub use app::{run, XionApp};
+pub use theme::{fonts, icons, layout, timing, UiColors, UiSpacing, UiTokens, UiTypography};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneKind {
@@ -77,6 +79,12 @@ pub struct SelectionState {
     pub selected: HashSet<PathBuf>,
     pub focused: Option<PathBuf>,
     pub anchor: Option<PathBuf>,
+}
+
+impl Default for SelectionState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SelectionState {

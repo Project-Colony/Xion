@@ -1,3 +1,11 @@
+//! Main application module for Xion file explorer.
+//!
+//! This module contains the [`XionApp`] struct which implements the Iced
+//! application trait and handles all UI state, messages, and rendering.
+
+// Allow unused icons reserved for Quick Access feature
+#![allow(dead_code)]
+
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::Cursor;
@@ -5,13 +13,16 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ::image::AnimationDecoder;
 use ::image::codecs::gif::GifDecoder;
+use ::image::AnimationDecoder;
 use chrono::{DateTime, Local};
 use directories::UserDirs;
 use iced::alignment::Horizontal;
 use iced::font::{Family, Style, Weight};
 use iced::widget::button::Status as ButtonStatus;
+// Tracing is available for future use
+#[allow(unused_imports)]
+use tracing::{debug, info, warn};
 use iced::widget::{
     button, column, container, horizontal_space, image, mouse_area, opaque, progress_bar, row,
     scrollable, stack, text, text_input, vertical_space,
@@ -294,6 +305,7 @@ fn build_default_favorites() -> FavoritesService {
     favorites
 }
 
+#[allow(clippy::ptr_arg)] // Required for and_then compatibility
 fn root_path_for(path: &PathBuf) -> Option<PathBuf> {
     if path.is_absolute() {
         path.ancestors()
@@ -336,7 +348,7 @@ fn disk_usage_for(path: &Path) -> Option<DiskUsage> {
             };
             if best_match
                 .as_ref()
-                .map_or(true, |(best_depth, _)| depth > *best_depth)
+                .is_none_or(|(best_depth, _)| depth > *best_depth)
             {
                 best_match = Some((depth, usage));
             }
@@ -529,11 +541,11 @@ impl XionApp {
         self.selection_box_start = None;
         self.selection_box_current = None;
 
-        let mut tasks = Vec::new();
-        tasks.push(self.request_page(0));
-        tasks.push(self.schedule_loading_indicator(self.loading_generation));
-        tasks.push(self.start_search_indexing());
-        Task::batch(tasks)
+        Task::batch(vec![
+            self.request_page(0),
+            self.schedule_loading_indicator(self.loading_generation),
+            self.start_search_indexing(),
+        ])
     }
 
     fn sync_watcher(&mut self) {
@@ -583,7 +595,7 @@ impl XionApp {
         Task::perform(
             async move {
                 let filesystem = LocalFileSystem::from_config(filesystem_config);
-                SearchService::default()
+                SearchService
                     .build_index_with_options(&filesystem, &index_path, options, list_options)
                     .map_err(|error| error.to_string())
             },
@@ -609,7 +621,7 @@ impl XionApp {
             text: Some(query),
             ..SearchQuery::default()
         };
-        let count = SearchService::default().count_index_matches(index, &search_query);
+        let count = SearchService.count_index_matches(index, &search_query);
         self.search_index_matches = Some(count);
     }
 
@@ -718,9 +730,10 @@ impl XionApp {
     }
 
     fn schedule_loading_indicator(&self, generation: u64) -> Task<UiMessage> {
+        let delay = LOADING_INDICATOR_DELAY;
         Task::perform(
             async move {
-                std::thread::sleep(LOADING_INDICATOR_DELAY);
+                tokio::time::sleep(delay).await;
                 generation
             },
             UiMessage::LoadingDelayElapsed,
@@ -804,7 +817,7 @@ impl XionApp {
             state.config.cache.thumbnail_entries,
             Duration::from_secs(state.config.cache.thumbnail_ttl_seconds),
         );
-        let preview_cache_entries = state.config.cache.thumbnail_entries.min(8).max(1);
+        let preview_cache_entries = state.config.cache.thumbnail_entries.clamp(1, 8);
         let preview_images = PreviewImageService::new(
             preview_cache_entries,
             Duration::from_secs(state.config.cache.thumbnail_ttl_seconds),
@@ -1159,9 +1172,7 @@ impl XionApp {
                 self.history_menu_open = false;
                 self.history_menu_position = None;
                 if let Some(target) = self.address_target_from_input() {
-                    if is_network_path(&target) {
-                        tasks.push(self.navigate_to(target));
-                    } else if target.is_dir() {
+                    if is_network_path(&target) || target.is_dir() {
                         tasks.push(self.navigate_to(target));
                     } else if target.exists() {
                         self.last_action = Some(format!(
@@ -1797,7 +1808,7 @@ impl XionApp {
             self.thumbnail_handles.clear();
             self.thumbnail_misses.clear();
             self.thumbnails_in_flight.clear();
-            let preview_cache_entries = new_config.cache.thumbnail_entries.min(8).max(1);
+            let preview_cache_entries = new_config.cache.thumbnail_entries.clamp(1, 8);
             self.preview_images = PreviewImageService::new(
                 preview_cache_entries,
                 Duration::from_secs(new_config.cache.thumbnail_ttl_seconds),
@@ -1841,7 +1852,7 @@ impl XionApp {
             SelectionKind::Range => SelectionKind::Range,
             other => other,
         };
-        let (target_index, anchor_index, range_paths) = {
+        let (_target_index, _anchor_index, range_paths) = {
             let selection_entries = self.display_entries();
             let target_index = Self::index_for_path_in(selection_entries, &path);
             let anchor_index = anchor_path
@@ -2291,14 +2302,14 @@ impl XionApp {
                 .focused
                 .as_ref()
                 .and_then(|path| self.filtered_position_for_path(&indices, path))
-                .or_else(|| if indices.is_empty() { None } else { Some(0) });
+                .or(if indices.is_empty() { None } else { Some(0) });
 
             let Some(start_index) = start_index else {
                 return;
             };
 
             let target_index = if offset.is_negative() {
-                start_index.saturating_sub(offset.unsigned_abs() as usize)
+                start_index.saturating_sub(offset.unsigned_abs())
             } else {
                 (start_index + offset as usize).min(indices.len().saturating_sub(1))
             };
@@ -2318,7 +2329,7 @@ impl XionApp {
             };
 
             let target_index = if offset.is_negative() {
-                start_index.saturating_sub(offset.unsigned_abs() as usize)
+                start_index.saturating_sub(offset.unsigned_abs())
             } else {
                 (start_index + offset as usize).min(self.entries.total.saturating_sub(1))
             };
@@ -2441,7 +2452,7 @@ impl XionApp {
         }
 
         let total_pages =
-            (self.entries.total + self.entries.page_size - 1) / self.entries.page_size;
+            self.entries.total.div_ceil(self.entries.page_size);
         let mut tasks = Vec::new();
         for page_index in 0..total_pages {
             if !self.entries.is_page_loaded(page_index) {
@@ -2461,7 +2472,7 @@ impl XionApp {
         }
 
         let window = self.entry_virtual_window();
-        if window.len() == 0 {
+        if window.is_empty() {
             return Task::none();
         }
 
@@ -2510,7 +2521,7 @@ impl XionApp {
 
     fn grid_window_for(&self, total: usize) -> GridWindow {
         let columns = self.state.config.view.grid_columns.max(1);
-        let rows = (total + columns - 1) / columns;
+        let rows = total.div_ceil(columns);
         let virtual_list = VirtualList {
             item_height: self.state.config.view.grid_row_height,
             viewport_height: self.viewport_height,
@@ -2546,7 +2557,7 @@ impl XionApp {
                 return Task::none();
             }
             let window = self.entry_virtual_window_for(indices.len());
-            if window.len() == 0 {
+            if window.is_empty() {
                 return Task::none();
             }
             for display_index in window.start..window.end {
@@ -2591,7 +2602,7 @@ impl XionApp {
             }
         } else {
             let window = self.entry_virtual_window();
-            if window.len() == 0 {
+            if window.is_empty() {
                 return Task::none();
             }
 
@@ -2638,7 +2649,7 @@ impl XionApp {
     }
 
     fn preview_image_size(&self) -> u32 {
-        let base_size = self.state.config.view.thumbnail_size as u32;
+        let base_size = self.state.config.view.thumbnail_size;
         base_size.saturating_mul(4).clamp(256, 512)
     }
 
@@ -3901,9 +3912,8 @@ impl XionApp {
                     FsEntryType::Symlink => ICON_SYMLINK,
                     FsEntryType::Other => ICON_UNKNOWN,
                 };
-                let preview_media_size = (self.state.config.view.thumbnail_size as f32 * 3.0)
-                    .max(120.0)
-                    .min(220.0);
+                let preview_media_size =
+                    (self.state.config.view.thumbnail_size as f32 * 3.0).clamp(120.0, 220.0);
                 let preview_media: Element<'_, UiMessage> = match entry.entry_type {
                     FsEntryType::File => {
                         if let Some(animated) = self

@@ -30,7 +30,7 @@ impl DirectoryLoader {
         page: PageRequest,
     ) -> AppResult<Page<FsEntry>> {
         if let Some(entries) = self.directory_cache.get(path) {
-            let page_entries = page.slice(entries).iter().cloned().collect::<Vec<_>>();
+            let page_entries = page.slice(entries).to_vec();
             return Ok(Page {
                 items: page_entries,
                 total: entries.len(),

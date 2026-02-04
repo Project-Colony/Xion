@@ -225,6 +225,7 @@ impl SearchService {
             .count()
     }
 
+    #[allow(dead_code)] // Reserved for future recursive search feature
     fn index_dir(
         &self,
         filesystem: &dyn FileSystem,

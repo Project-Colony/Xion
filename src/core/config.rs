@@ -161,55 +161,55 @@ pub struct ShortcutBindings {
 impl Default for ShortcutBindings {
     fn default() -> Self {
         Self {
-            move_up: KeyChord::parse("ArrowUp").unwrap_or_else(|_| KeyChord {
+            move_up: KeyChord::parse("ArrowUp").unwrap_or(KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowUp),
                 ctrl: false,
                 alt: false,
                 shift: false,
             }),
-            move_down: KeyChord::parse("ArrowDown").unwrap_or_else(|_| KeyChord {
+            move_down: KeyChord::parse("ArrowDown").unwrap_or(KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowDown),
                 ctrl: false,
                 alt: false,
                 shift: false,
             }),
-            move_home: KeyChord::parse("Home").unwrap_or_else(|_| KeyChord {
+            move_home: KeyChord::parse("Home").unwrap_or(KeyChord {
                 key: KeyKind::Named(NamedKey::Home),
                 ctrl: false,
                 alt: false,
                 shift: false,
             }),
-            move_end: KeyChord::parse("End").unwrap_or_else(|_| KeyChord {
+            move_end: KeyChord::parse("End").unwrap_or(KeyChord {
                 key: KeyKind::Named(NamedKey::End),
                 ctrl: false,
                 alt: false,
                 shift: false,
             }),
-            activate: KeyChord::parse("Enter").unwrap_or_else(|_| KeyChord {
+            activate: KeyChord::parse("Enter").unwrap_or(KeyChord {
                 key: KeyKind::Named(NamedKey::Enter),
                 ctrl: false,
                 alt: false,
                 shift: false,
             }),
-            clear_selection: KeyChord::parse("Escape").unwrap_or_else(|_| KeyChord {
+            clear_selection: KeyChord::parse("Escape").unwrap_or(KeyChord {
                 key: KeyKind::Named(NamedKey::Escape),
                 ctrl: false,
                 alt: false,
                 shift: false,
             }),
-            cycle_pane_focus: KeyChord::parse("Tab").unwrap_or_else(|_| KeyChord {
+            cycle_pane_focus: KeyChord::parse("Tab").unwrap_or(KeyChord {
                 key: KeyKind::Named(NamedKey::Tab),
                 ctrl: false,
                 alt: false,
                 shift: false,
             }),
-            back: KeyChord::parse("Alt+ArrowLeft").unwrap_or_else(|_| KeyChord {
+            back: KeyChord::parse("Alt+ArrowLeft").unwrap_or(KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowLeft),
                 ctrl: false,
                 alt: true,
                 shift: false,
             }),
-            forward: KeyChord::parse("Alt+ArrowRight").unwrap_or_else(|_| KeyChord {
+            forward: KeyChord::parse("Alt+ArrowRight").unwrap_or(KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowRight),
                 ctrl: false,
                 alt: true,
@@ -412,7 +412,14 @@ pub struct ConfigManager {
     path: PathBuf,
 }
 
+impl Default for ConfigManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConfigManager {
+    /// Creates a new configuration manager with the default config path.
     pub fn new() -> Self {
         let path = default_config_path();
         Self { path }
@@ -797,14 +804,14 @@ fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarning>) -> Ap
     config
 }
 
-fn validated_path(path: PathBuf, fallback: &PathBuf, warnings: &mut Vec<ConfigWarning>) -> PathBuf {
+fn validated_path(path: PathBuf, fallback: &Path, warnings: &mut Vec<ConfigWarning>) -> PathBuf {
     if path.is_dir() {
         return path;
     }
     warnings.push(ConfigWarning {
         message: format!("start_path invalide, fallback sur {}", fallback.display()),
     });
-    fallback.clone()
+    fallback.to_path_buf()
 }
 
 fn validated_thumbnail_size(value: u32, fallback: u32, warnings: &mut Vec<ConfigWarning>) -> u32 {

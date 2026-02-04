@@ -105,6 +105,12 @@ pub struct LocalFileSystem {
     metadata_parallelism: usize,
 }
 
+impl Default for LocalFileSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LocalFileSystem {
     pub fn new() -> Self {
         Self::from_config(FilesystemConfig::default())
@@ -403,7 +409,7 @@ impl LocalFileSystem {
             .metadata_parallelism
             .min(available_threads)
             .max(1);
-        let chunk_size = ((paths.len() + thread_count - 1) / thread_count).max(1);
+        let chunk_size = paths.len().div_ceil(thread_count).max(1);
         let mut initial_results = Vec::with_capacity(paths.len());
         initial_results.resize_with(paths.len(), || None);
         let results = Arc::new(Mutex::new(initial_results));

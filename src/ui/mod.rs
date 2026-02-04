@@ -81,6 +81,12 @@ pub struct SelectionState {
     pub anchor: Option<PathBuf>,
 }
 
+impl Default for SelectionState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SelectionState {
     pub fn new() -> Self {
         Self {

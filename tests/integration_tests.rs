@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use xion::core::{AppConfig, ConfigManager};
 use xion::filesystem::{
-    EntryFilter, FileSystem, ListOptions, LocalFileSystem, Page, PageRequest, SortKey, SortOrder,
+    EntryFilter, FileSystem, ListOptions, LocalFileSystem, PageRequest, SortKey, SortOrder,
 };
 use xion::services::{DirectoryLoader, HistoryService, SearchService};
 

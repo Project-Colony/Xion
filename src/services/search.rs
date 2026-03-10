@@ -13,6 +13,9 @@ pub struct SearchService;
 pub struct SearchIndexOptions {
     pub include_hidden: bool,
     pub recursive: bool,
+    /// Maximum number of entries to index. Prevents unbounded memory growth
+    /// when indexing very large directory trees. 0 means unlimited.
+    pub max_entries: usize,
 }
 
 impl Default for SearchIndexOptions {
@@ -20,6 +23,7 @@ impl Default for SearchIndexOptions {
         Self {
             include_hidden: false,
             recursive: true,
+            max_entries: 50_000,
         }
     }
 }
@@ -151,23 +155,7 @@ impl SearchService {
     }
 
     pub fn search_index(&self, index: &SearchIndex, query: &SearchQuery) -> Vec<FsEntry> {
-        let normalized_text = query.text.as_ref().map(|text| {
-            if query.case_sensitive {
-                text.clone()
-            } else {
-                text.to_lowercase()
-            }
-        });
-        let normalized_extensions = if query.case_sensitive {
-            query.extensions.clone()
-        } else {
-            query
-                .extensions
-                .iter()
-                .map(|ext| ext.to_lowercase())
-                .collect()
-        };
-
+        let (normalized_text, normalized_extensions) = Self::normalize_query(query);
         index
             .entries
             .iter()
@@ -194,23 +182,7 @@ impl SearchService {
     }
 
     pub fn count_index_matches(&self, index: &SearchIndex, query: &SearchQuery) -> usize {
-        let normalized_text = query.text.as_ref().map(|text| {
-            if query.case_sensitive {
-                text.clone()
-            } else {
-                text.to_lowercase()
-            }
-        });
-        let normalized_extensions = if query.case_sensitive {
-            query.extensions.clone()
-        } else {
-            query
-                .extensions
-                .iter()
-                .map(|ext| ext.to_lowercase())
-                .collect()
-        };
-
+        let (normalized_text, normalized_extensions) = Self::normalize_query(query);
         index
             .entries
             .iter()
@@ -225,20 +197,20 @@ impl SearchService {
             .count()
     }
 
-    #[allow(dead_code)] // Reserved for future recursive search feature
-    fn index_dir(
-        &self,
-        filesystem: &dyn FileSystem,
-        path: &Path,
-        options: &SearchIndexOptions,
-        output: &mut Vec<SearchEntry>,
-    ) -> AppResult<()> {
-        let list_options = ListOptions {
-            show_hidden: options.include_hidden,
-            sort_by: SortKey::Name,
-            ..ListOptions::default()
+    fn normalize_query(query: &SearchQuery) -> (Option<String>, Vec<String>) {
+        let text = query.text.as_ref().map(|t| {
+            if query.case_sensitive {
+                t.clone()
+            } else {
+                t.to_lowercase()
+            }
+        });
+        let extensions = if query.case_sensitive {
+            query.extensions.clone()
+        } else {
+            query.extensions.iter().map(|ext| ext.to_lowercase()).collect()
         };
-        self.index_dir_with_options(filesystem, path, options, &list_options, output)
+        (text, extensions)
     }
 
     fn index_dir_with_options(
@@ -249,12 +221,20 @@ impl SearchService {
         list_options: &ListOptions,
         output: &mut Vec<SearchEntry>,
     ) -> AppResult<()> {
+        if options.max_entries > 0 && output.len() >= options.max_entries {
+            return Ok(());
+        }
+
         let mut resolved_options = list_options.clone();
         resolved_options.show_hidden = options.include_hidden;
         resolved_options.name_query = None;
 
         let entries = filesystem.list_dir(path, resolved_options.clone())?;
         for entry in entries {
+            if options.max_entries > 0 && output.len() >= options.max_entries {
+                break;
+            }
+
             let name_lower = entry.name.to_lowercase();
             let extension_lower = entry
                 .path
@@ -262,16 +242,23 @@ impl SearchService {
                 .and_then(|ext| ext.to_str())
                 .map(|ext| ext.to_lowercase());
 
+            let is_dir = entry.entry_type == FsEntryType::Directory;
+            let dir_path = if options.recursive && is_dir {
+                Some(entry.path.clone())
+            } else {
+                None
+            };
+
             output.push(SearchEntry {
-                entry: entry.clone(),
+                entry,
                 name_lower,
                 extension_lower,
             });
 
-            if options.recursive && entry.entry_type == FsEntryType::Directory {
+            if let Some(dir_path) = dir_path {
                 self.index_dir_with_options(
                     filesystem,
-                    &entry.path,
+                    &dir_path,
                     options,
                     &resolved_options,
                     output,

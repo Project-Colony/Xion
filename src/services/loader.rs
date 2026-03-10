@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tracing::warn;
+
 use crate::core::AppResult;
 use crate::filesystem::{
     DirectoryCache, FileSystem, FsEntry, ListOptions, MetadataCache, Page, PageRequest,
@@ -71,16 +73,17 @@ impl DirectoryLoader {
         self.metadata_cache.clear();
     }
 
-    pub fn prefetch_metadata(
-        &mut self,
-        filesystem: &dyn FileSystem,
-        paths: &[PathBuf],
-    ) -> AppResult<()> {
-        let metadata = filesystem.metadata_batch(paths)?;
-        for (path, metadata) in paths.iter().cloned().zip(metadata) {
-            self.metadata_cache.insert(path, metadata);
+    pub fn prefetch_metadata(&mut self, filesystem: &dyn FileSystem, paths: &[PathBuf]) {
+        match filesystem.metadata_batch(paths) {
+            Ok(metadata) => {
+                for (path, metadata) in paths.iter().cloned().zip(metadata) {
+                    self.metadata_cache.insert(path, metadata);
+                }
+            }
+            Err(error) => {
+                warn!("prefetch_metadata failed: {error}");
+            }
         }
-        Ok(())
     }
 
     fn cache_metadata(&mut self, entries: &[FsEntry]) {

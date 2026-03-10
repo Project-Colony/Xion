@@ -1,9 +1,21 @@
+use std::collections::VecDeque;
 use std::path::PathBuf;
 
-#[derive(Debug, Default)]
+const MAX_HISTORY: usize = 200;
+
+#[derive(Debug)]
 pub struct HistoryService {
-    entries: Vec<PathBuf>,
+    entries: VecDeque<PathBuf>,
     cursor: Option<usize>,
+}
+
+impl Default for HistoryService {
+    fn default() -> Self {
+        Self {
+            entries: VecDeque::new(),
+            cursor: None,
+        }
+    }
 }
 
 impl HistoryService {
@@ -15,7 +27,12 @@ impl HistoryService {
             _ => {}
         }
 
-        self.entries.push(path);
+        self.entries.push_back(path);
+
+        if self.entries.len() > MAX_HISTORY {
+            self.entries.pop_front();
+        }
+
         self.cursor = Some(self.entries.len() - 1);
     }
 
@@ -51,8 +68,8 @@ impl HistoryService {
         matches!(self.cursor, Some(index) if index + 1 < self.entries.len())
     }
 
-    pub fn entries(&self) -> &[PathBuf] {
-        &self.entries
+    pub fn entries(&self) -> impl ExactSizeIterator<Item = &PathBuf> + DoubleEndedIterator {
+        self.entries.iter()
     }
 }
 

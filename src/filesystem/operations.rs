@@ -123,6 +123,7 @@ fn copy_entry(source: &Path, destination: &Path) -> Result<(), XionError> {
         copy_dir_recursive(source, destination)?;
     } else {
         fs::copy(source, destination)?;
+        copy_file_times(source, destination);
     }
     Ok(())
 }
@@ -139,9 +140,29 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), XionError
             copy_dir_recursive(&path, &target)?;
         } else {
             fs::copy(&path, &target)?;
+            copy_file_times(&path, &target);
         }
     }
+    // Set directory times after all children are processed.
+    copy_file_times(source, destination);
     Ok(())
+}
+
+fn copy_file_times(source: &Path, destination: &Path) {
+    let Ok(source_meta) = fs::metadata(source) else {
+        return;
+    };
+    let Ok(dst_file) = fs::OpenOptions::new().write(true).open(destination) else {
+        return;
+    };
+    let mut times = fs::FileTimes::new();
+    if let Ok(modified) = source_meta.modified() {
+        times = times.set_modified(modified);
+    }
+    if let Ok(accessed) = source_meta.accessed() {
+        times = times.set_accessed(accessed);
+    }
+    let _ = dst_file.set_times(times);
 }
 
 fn move_entry(source: &Path, destination: &Path) -> Result<(), XionError> {

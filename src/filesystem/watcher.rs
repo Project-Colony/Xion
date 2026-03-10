@@ -6,6 +6,8 @@ use crate::core::{AppResult, XionError};
 use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
+const MAX_QUEUED_EVENTS: usize = 1_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WatchEventKind {
     Created,
@@ -56,7 +58,9 @@ impl NativeFileWatcher {
         };
 
         for path in event.paths {
-            self.queued.push_back(WatchEvent { path, kind });
+            if self.queued.len() < MAX_QUEUED_EVENTS {
+                self.queued.push_back(WatchEvent { path, kind });
+            }
         }
     }
 

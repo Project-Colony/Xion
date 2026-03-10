@@ -22,8 +22,6 @@ sysinfo = "0.30"
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-wgpu = "0.20"
-winit = "0.29"
 
 [profile.release]
 lto = true

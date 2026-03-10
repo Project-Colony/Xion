@@ -47,38 +47,38 @@ pub mod fonts {
 
 /// Nerd Font icons used in the UI.
 pub mod icons {
-    pub const DEVICE: &str = "";
-    pub const LOADING: &str = "";
-    pub const FOLDER: &str = "";
-    pub const FILE: &str = "";
-    pub const SYMLINK: &str = "";
-    pub const UNKNOWN: &str = "";
-    pub const HOME: &str = "";
-    pub const GALLERY: &str = "";
-    pub const DESKTOP: &str = "";
-    pub const DOWNLOAD: &str = "";
-    pub const DOCUMENTS: &str = "";
-    pub const MUSIC: &str = "";
-    pub const VIDEO: &str = "";
-    pub const PC: &str = "";
-    pub const DRIVE: &str = "";
-    pub const NETWORK: &str = "";
-    pub const BACK: &str = "";
-    pub const FORWARD: &str = "";
-    pub const REFRESH: &str = "";
-    pub const SEARCH: &str = "";
-    pub const NEW: &str = "";
-    pub const CUT: &str = "";
-    pub const COPY: &str = "";
-    pub const PASTE: &str = "";
-    pub const SORT: &str = "";
-    pub const VIEW: &str = "";
-    pub const MORE: &str = "";
-    pub const ACTIONS: &str = "";
-    pub const OPEN: &str = "";
-    pub const RENAME: &str = "";
-    pub const DELETE: &str = "";
-    pub const CLOSE: &str = "";
+    pub const DEVICE: &str = "\u{f0379}";   // 󰍹 nf-md-monitor
+    pub const LOADING: &str = "\u{f1356}";  // 󱍖 nf-md-loading
+    pub const FOLDER: &str = "\u{f024b}";   // 󰉋 nf-md-folder
+    pub const FILE: &str = "\u{f0214}";     // 󰈔 nf-md-file
+    pub const SYMLINK: &str = "\u{f0337}";  // 󰌷 nf-md-link_variant
+    pub const UNKNOWN: &str = "\u{f02d7}";  // 󰋗 nf-md-help_circle
+    pub const HOME: &str = "\u{f02dc}";     // 󰋜 nf-md-home
+    pub const GALLERY: &str = "\u{f024f}";  // 󰉏 nf-md-folder_image
+    pub const DESKTOP: &str = "\u{f0391}";  // 󰎑 nf-md-monitor_dashboard (approximation)
+    pub const DOWNLOAD: &str = "\u{f01da}"; // 󰇚 nf-md-download
+    pub const DOCUMENTS: &str = "\u{f0219}";// 󰈙 nf-md-file_document
+    pub const MUSIC: &str = "\u{f0388}";    // 󰎈 nf-md-music_box
+    pub const VIDEO: &str = "\u{f057e}";    // 󰕾 nf-md-video
+    pub const PC: &str = "\u{f0379}";       // 󰍹 nf-md-monitor
+    pub const DRIVE: &str = "\u{f02ca}";    // 󰋊 nf-md-harddisk
+    pub const NETWORK: &str = "\u{f0317}";  // 󰌗 nf-md-lan
+    pub const BACK: &str = "\u{f004d}";     // 󰁍 nf-md-arrow_left
+    pub const FORWARD: &str = "\u{f0054}";  // 󰁔 nf-md-arrow_right
+    pub const REFRESH: &str = "\u{f0450}";  // 󰑐 nf-md-refresh
+    pub const SEARCH: &str = "\u{f0349}";   // 󰍉 nf-md-magnify
+    pub const NEW: &str = "\u{f0415}";      // 󰐕 nf-md-plus
+    pub const CUT: &str = "\u{f0190}";      // 󰆐 nf-md-content_cut
+    pub const COPY: &str = "\u{f018f}";     // 󰆏 nf-md-content_copy
+    pub const PASTE: &str = "\u{f0192}";    // 󰆒 nf-md-content_paste
+    pub const SORT: &str = "\u{f04ba}";     // 󰒺 nf-md-sort
+    pub const VIEW: &str = "\u{f0574}";     // 󰕴 nf-md-view_grid
+    pub const MORE: &str = "\u{f01d8}";     // 󰇘 nf-md-dots_horizontal
+    pub const ACTIONS: &str = "\u{f035b}";  // 󰍛 nf-md-menu
+    pub const OPEN: &str = "\u{f0256}";     // 󰉖 nf-md-folder_open
+    pub const RENAME: &str = "\u{f0ea8}";   // 󰺨 nf-md-rename_box
+    pub const DELETE: &str = "\u{f01b4}";   // 󰆴 nf-md-delete
+    pub const CLOSE: &str = "\u{f0156}";    // 󰅖 nf-md-close
 }
 
 /// Color palette for the UI.

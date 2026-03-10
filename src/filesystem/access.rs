@@ -15,6 +15,7 @@ use tracing::warn;
 use crate::core::{AppResult, FilesystemConfig, XionError};
 use crate::filesystem::metadata::FsMetadata;
 use crate::filesystem::paging::{Page, PageRequest};
+use crate::filesystem::sorting;
 
 #[derive(Debug, Clone)]
 pub struct FsEntry {
@@ -123,14 +124,6 @@ impl LocalFileSystem {
         }
     }
 
-    pub fn list_dir_with_options(
-        &self,
-        path: &Path,
-        options: &ListOptions,
-    ) -> AppResult<Vec<FsEntry>> {
-        self.list_dir(path, options.clone())
-    }
-
     fn is_hidden(name: &str) -> bool {
         name.starts_with('.')
     }
@@ -147,27 +140,6 @@ impl LocalFileSystem {
         match query {
             Some(query) if !query.is_empty() => name.to_lowercase().contains(&query.to_lowercase()),
             _ => true,
-        }
-    }
-
-    fn compare_entries(options: &ListOptions, left: &FsEntry, right: &FsEntry) -> Ordering {
-        if options.directories_first && left.entry_type != right.entry_type {
-            return match (left.entry_type, right.entry_type) {
-                (FsEntryType::Directory, _) => Ordering::Less,
-                (_, FsEntryType::Directory) => Ordering::Greater,
-                _ => Ordering::Equal,
-            };
-        }
-
-        let ordering = match options.sort_by {
-            SortKey::Name => left.name.to_lowercase().cmp(&right.name.to_lowercase()),
-            SortKey::Modified => left.metadata.modified.cmp(&right.metadata.modified),
-            SortKey::Size => left.metadata.size.cmp(&right.metadata.size),
-        };
-
-        match options.sort_order {
-            SortOrder::Asc => ordering,
-            SortOrder::Desc => ordering.reverse(),
         }
     }
 
@@ -265,7 +237,7 @@ impl FileSystem for LocalFileSystem {
             })
             .collect::<Vec<_>>();
 
-        entries.sort_by(|left, right| Self::compare_entries(&options, left, right));
+        entries.sort_by(|left, right| sorting::compare_entries(left, right, &options));
         Ok(entries)
     }
 

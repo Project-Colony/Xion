@@ -1,20 +1,21 @@
+use std::borrow::Borrow;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::filesystem::{FsEntry, FsMetadata};
 
 #[derive(Debug)]
-struct CacheEntry<V> {
-    value: V,
+pub(crate) struct CacheEntry<V> {
+    pub(crate) value: V,
     inserted_at: Instant,
 }
 
 #[derive(Debug)]
 pub struct TimedCache<K, V> {
-    entries: HashMap<K, CacheEntry<V>>,
-    order: VecDeque<K>,
+    pub(crate) entries: HashMap<K, CacheEntry<V>>,
+    pub(crate) order: VecDeque<K>,
     max_entries: usize,
     ttl: Duration,
 }
@@ -32,7 +33,11 @@ where
         }
     }
 
-    pub fn get(&mut self, key: &K) -> Option<&V> {
+    pub fn get<Q>(&mut self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Eq + Hash + ?Sized,
+    {
         let expired = self
             .entries
             .get(key)
@@ -63,9 +68,13 @@ where
         self.evict_if_needed();
     }
 
-    pub fn remove(&mut self, key: &K) {
+    pub fn remove<Q>(&mut self, key: &Q)
+    where
+        K: Borrow<Q>,
+        Q: Eq + Hash + ?Sized,
+    {
         self.entries.remove(key);
-        self.order.retain(|existing| existing != key);
+        self.order.retain(|existing| existing.borrow() != key);
     }
 
     pub fn clear(&mut self) {
@@ -94,7 +103,7 @@ impl MetadataCache {
         }
     }
 
-    pub fn get(&mut self, path: &PathBuf) -> Option<&FsMetadata> {
+    pub fn get(&mut self, path: &Path) -> Option<&FsMetadata> {
         self.inner.get(path)
     }
 
@@ -107,36 +116,64 @@ impl MetadataCache {
     }
 }
 
+/// Estimated memory cost per FsEntry (PathBuf ~60 bytes + name ~30 bytes + metadata ~80 bytes).
+const ESTIMATED_BYTES_PER_ENTRY: usize = 170;
+/// Default maximum memory budget for directory cache: 64 MB.
+const DEFAULT_MAX_CACHE_BYTES: usize = 64 * 1024 * 1024;
+
 #[derive(Debug)]
 pub struct DirectoryCache {
     inner: TimedCache<PathBuf, Vec<FsEntry>>,
+    estimated_bytes: usize,
+    max_bytes: usize,
 }
 
 impl DirectoryCache {
     pub fn new(max_entries: usize, ttl: Duration) -> Self {
         Self {
             inner: TimedCache::new(max_entries, ttl),
+            estimated_bytes: 0,
+            max_bytes: DEFAULT_MAX_CACHE_BYTES,
         }
     }
 
-    pub fn get(&mut self, path: &PathBuf) -> Option<&Vec<FsEntry>> {
+    pub fn get(&mut self, path: &Path) -> Option<&Vec<FsEntry>> {
         self.inner.get(path)
     }
 
     pub fn insert(&mut self, path: PathBuf, entries: Vec<FsEntry>) {
+        let entry_bytes = entries.len() * ESTIMATED_BYTES_PER_ENTRY;
+
+        // Evict oldest entries until we're under the byte budget
+        while self.estimated_bytes + entry_bytes > self.max_bytes
+            && !self.inner.order.is_empty()
+        {
+            if let Some(key) = self.inner.order.pop_front() {
+                if let Some(removed) = self.inner.entries.remove(&key) {
+                    self.estimated_bytes = self
+                        .estimated_bytes
+                        .saturating_sub(removed.value.len() * ESTIMATED_BYTES_PER_ENTRY);
+                }
+            }
+        }
+
+        // If the single entry itself exceeds the budget, still insert it
+        // (it will be the only entry) but don't track negative
+        self.estimated_bytes += entry_bytes;
         self.inner.insert(path, entries);
     }
 
     pub fn clear(&mut self) {
         self.inner.clear();
+        self.estimated_bytes = 0;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::TimedCache;
-    use std::time::Duration;
     use std::thread::sleep;
+    use std::time::Duration;
 
     #[test]
     fn timed_cache_evicts_oldest_entries() {
@@ -146,9 +183,9 @@ mod tests {
         cache.insert("beta", 2);
         cache.insert("gamma", 3);
 
-        assert!(cache.get(&"alpha").is_none());
-        assert_eq!(cache.get(&"beta"), Some(&2));
-        assert_eq!(cache.get(&"gamma"), Some(&3));
+        assert!(cache.get("alpha").is_none());
+        assert_eq!(cache.get("beta"), Some(&2));
+        assert_eq!(cache.get("gamma"), Some(&3));
     }
 
     #[test]
@@ -158,6 +195,6 @@ mod tests {
         cache.insert("alpha", 1);
         sleep(Duration::from_millis(25));
 
-        assert!(cache.get(&"alpha").is_none());
+        assert!(cache.get("alpha").is_none());
     }
 }

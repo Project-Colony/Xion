@@ -1,9 +1,8 @@
-use std::cmp::Ordering;
 use std::time::SystemTime;
 
 use crate::filesystem::{
-    EntryFilter, FsEntry, FsEntryType, FsMetadata, ListOptions, Page, PageRequest, SortKey,
-    SortOrder,
+    sorting::{compare_entries, matches_filter},
+    FsEntry, FsEntryType, FsMetadata, ListOptions, Page, PageRequest,
 };
 
 #[derive(Debug, Clone)]
@@ -34,9 +33,6 @@ impl NetworkDiscoveryService {
             .collect::<Vec<_>>();
 
         entries.sort_by(|left, right| compare_entries(left, right, &options));
-        if matches!(options.sort_order, SortOrder::Desc) {
-            entries.reverse();
-        }
 
         page.apply(entries)
     }
@@ -77,36 +73,3 @@ fn synthetic_metadata() -> FsMetadata {
     }
 }
 
-fn matches_filter(entry: &FsEntry, options: &ListOptions) -> bool {
-    let passes_filter = match options.filter {
-        EntryFilter::All => true,
-        EntryFilter::OnlyDirectories => entry.entry_type == FsEntryType::Directory,
-        EntryFilter::OnlyFiles => entry.entry_type == FsEntryType::File,
-    };
-    if !passes_filter {
-        return false;
-    }
-
-    match &options.name_query {
-        Some(query) if !query.is_empty() => {
-            entry.name.to_lowercase().contains(&query.to_lowercase())
-        }
-        _ => true,
-    }
-}
-
-fn compare_entries(left: &FsEntry, right: &FsEntry, options: &ListOptions) -> Ordering {
-    if options.directories_first && left.entry_type != right.entry_type {
-        return match (left.entry_type, right.entry_type) {
-            (FsEntryType::Directory, _) => Ordering::Less,
-            (_, FsEntryType::Directory) => Ordering::Greater,
-            _ => Ordering::Equal,
-        };
-    }
-
-    match options.sort_by {
-        SortKey::Name => left.name.to_lowercase().cmp(&right.name.to_lowercase()),
-        SortKey::Modified => left.metadata.modified.cmp(&right.metadata.modified),
-        SortKey::Size => left.metadata.size.cmp(&right.metadata.size),
-    }
-}

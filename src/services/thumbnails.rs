@@ -91,14 +91,15 @@ pub fn generate_preview(path: &Path, max_size: u32) -> Option<Thumbnail> {
         return Some(Thumbnail::new(bytes, Some("image/gif".to_string())));
     }
 
-    // Check 6-byte magic header before loading the entire file
+    // Check 6-byte magic header; if GIF, read file once and return
     {
         use std::io::Read;
         let mut file = std::fs::File::open(path).ok()?;
         let mut header = [0u8; 6];
         if file.read_exact(&mut header).is_ok() && is_gif_header(&header) {
-            drop(file);
-            let bytes = std::fs::read(path).ok()?;
+            // Read remaining bytes after the header we already consumed
+            let mut bytes = header.to_vec();
+            file.read_to_end(&mut bytes).ok()?;
             return Some(Thumbnail::new(bytes, Some("image/gif".to_string())));
         }
     }

@@ -4,7 +4,11 @@
 //! Xion from the Windows shell context menu for folders and drives.
 
 use std::io;
+use std::os::windows::process::CommandExt;
 use std::process::Command;
+
+/// CREATE_NO_WINDOW: prevents cmd.exe flash for each reg.exe call.
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// The registry paths we create for context menu integration.
 const DIR_SHELL_KEY: &str = r"HKEY_CURRENT_USER\Software\Classes\Directory\shell\Xion";
@@ -67,15 +71,13 @@ fn reg_add(key: &str, value_name: &str, data: &str) -> io::Result<()> {
 
     let status = Command::new("reg")
         .args(&args)
+        .creation_flags(CREATE_NO_WINDOW)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()?;
 
     if !status.success() {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("Échec de reg add pour {}", key),
-        ));
+        return Err(io::Error::other(format!("Échec de reg add pour {}", key)));
     }
     Ok(())
 }
@@ -83,6 +85,7 @@ fn reg_add(key: &str, value_name: &str, data: &str) -> io::Result<()> {
 fn reg_delete(key: &str) -> io::Result<()> {
     let status = Command::new("reg")
         .args(["delete", key, "/f"])
+        .creation_flags(CREATE_NO_WINDOW)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()?;

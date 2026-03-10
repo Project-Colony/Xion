@@ -56,6 +56,9 @@ pub enum NamedKey {
     Enter,
     Escape,
     Tab,
+    F2,
+    F5,
+    Delete,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,6 +109,8 @@ impl KeyChord {
             "enter" => KeyKind::Named(NamedKey::Enter),
             "escape" | "esc" => KeyKind::Named(NamedKey::Escape),
             "tab" => KeyKind::Named(NamedKey::Tab),
+            "f2" => KeyKind::Named(NamedKey::F2),
+            "delete" | "del" => KeyKind::Named(NamedKey::Delete),
             other => {
                 if other.chars().count() == 1 {
                     KeyKind::Character(other.to_string())
@@ -156,6 +161,10 @@ pub struct ShortcutBindings {
     pub refresh: KeyChord,
     pub select_all: KeyChord,
     pub toggle_context_menu: KeyChord,
+    pub rename: KeyChord,
+    pub delete: KeyChord,
+    pub new_folder: KeyChord,
+    pub focus_search: KeyChord,
 }
 
 impl Default for ShortcutBindings {
@@ -229,6 +238,30 @@ impl Default for ShortcutBindings {
             }),
             toggle_context_menu: KeyChord::parse("Ctrl+M").unwrap_or_else(|_| KeyChord {
                 key: KeyKind::Character("m".to_string()),
+                ctrl: true,
+                alt: false,
+                shift: false,
+            }),
+            rename: KeyChord {
+                key: KeyKind::Named(NamedKey::F2),
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
+            delete: KeyChord {
+                key: KeyKind::Named(NamedKey::Delete),
+                ctrl: false,
+                alt: false,
+                shift: false,
+            },
+            new_folder: KeyChord::parse("Ctrl+Shift+N").unwrap_or_else(|_| KeyChord {
+                key: KeyKind::Character("n".to_string()),
+                ctrl: true,
+                alt: false,
+                shift: true,
+            }),
+            focus_search: KeyChord::parse("Ctrl+E").unwrap_or_else(|_| KeyChord {
+                key: KeyKind::Character("e".to_string()),
                 ctrl: true,
                 alt: false,
                 shift: false,
@@ -365,6 +398,7 @@ pub struct AppConfig {
     pub view: ViewConfig,
     pub paging: PagingConfig,
     pub shortcuts: ShortcutBindings,
+    pub dark_mode: bool,
 }
 
 impl Default for AppConfig {
@@ -378,6 +412,7 @@ impl Default for AppConfig {
             view: ViewConfig::default(),
             paging: PagingConfig::default(),
             shortcuts: ShortcutBindings::default(),
+            dark_mode: false,
         }
     }
 }
@@ -575,6 +610,10 @@ struct ShortcutBindingsFile {
     refresh: Option<String>,
     select_all: Option<String>,
     toggle_context_menu: Option<String>,
+    rename: Option<String>,
+    delete: Option<String>,
+    new_folder: Option<String>,
+    focus_search: Option<String>,
 }
 
 fn default_config_path() -> PathBuf {
@@ -1047,6 +1086,20 @@ fn merge_shortcuts(
             "shortcuts.toggle_context_menu",
             warnings,
         );
+    }
+    if let Some(value) = shortcuts.rename {
+        fallback.rename = parse_shortcut(value, fallback.rename, "shortcuts.rename", warnings);
+    }
+    if let Some(value) = shortcuts.delete {
+        fallback.delete = parse_shortcut(value, fallback.delete, "shortcuts.delete", warnings);
+    }
+    if let Some(value) = shortcuts.new_folder {
+        fallback.new_folder =
+            parse_shortcut(value, fallback.new_folder, "shortcuts.new_folder", warnings);
+    }
+    if let Some(value) = shortcuts.focus_search {
+        fallback.focus_search =
+            parse_shortcut(value, fallback.focus_search, "shortcuts.focus_search", warnings);
     }
     fallback
 }

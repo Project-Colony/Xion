@@ -97,8 +97,10 @@ pub(super) struct DiskUsage {
 /// Cache TTL: 10 seconds.
 const DISK_CACHE_TTL: Duration = Duration::from_secs(10);
 
+type DiskCacheData = Option<(Instant, Vec<(PathBuf, DiskUsage)>)>;
+
 thread_local! {
-    static DISK_CACHE: RefCell<Option<(Instant, Vec<(PathBuf, DiskUsage)>)>> = const { RefCell::new(None) };
+    static DISK_CACHE: RefCell<DiskCacheData> = const { RefCell::new(None) };
 }
 
 fn refresh_disk_list() -> Vec<(PathBuf, DiskUsage)> {
@@ -117,41 +119,26 @@ fn refresh_disk_list() -> Vec<(PathBuf, DiskUsage)> {
         .collect()
 }
 
-pub(super) fn disk_usage_for(path: &Path) -> Option<DiskUsage> {
-    DISK_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-
-        // Refresh if cache is empty or expired
-        let needs_refresh = cache
-            .as_ref()
-            .is_none_or(|(fetched_at, _)| fetched_at.elapsed() > DISK_CACHE_TTL);
-
-        if needs_refresh {
-            *cache = Some((Instant::now(), refresh_disk_list()));
-        }
-
-        let (_, disk_list) = cache.as_ref()?;
-        let mut best_match: Option<(usize, DiskUsage)> = None;
-
-        for (mount, usage) in disk_list {
-            if path.starts_with(mount) {
-                let depth = mount.components().count();
-                if best_match
-                    .as_ref()
-                    .is_none_or(|(best_depth, _)| depth > *best_depth)
-                {
-                    best_match = Some((depth, *usage));
-                }
-            }
-        }
-
-        best_match.map(|(_, usage)| usage)
-    })
-}
-
 pub(super) fn format_gigabytes(bytes: u64) -> u64 {
     const BYTES_PER_GB: f64 = 1_000_000_000.0;
     ((bytes as f64) / BYTES_PER_GB).round() as u64
+}
+
+/// Returns all mounted drives with their usage info, using the shared disk cache.
+pub(super) fn all_drives() -> Vec<(PathBuf, DiskUsage)> {
+    DISK_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let needs_refresh = cache
+            .as_ref()
+            .is_none_or(|(fetched_at, _)| fetched_at.elapsed() > DISK_CACHE_TTL);
+        if needs_refresh {
+            *cache = Some((Instant::now(), refresh_disk_list()));
+        }
+        cache
+            .as_ref()
+            .map(|(_, list)| list.clone())
+            .unwrap_or_default()
+    })
 }
 
 pub(super) fn drive_label(root_path: &Path) -> String {
@@ -306,12 +293,52 @@ impl MediaState {
     }
 }
 
+// ── Address validation cache ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum AddressValidation {
+    Directory,
+    File,
+    NotFound,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct AddressValidationCache {
+    inner: RefCell<AddressValidationCacheInner>,
+}
+
+#[derive(Debug, Default)]
+struct AddressValidationCacheInner {
+    input: String,
+    result: Option<AddressValidation>,
+}
+
+impl AddressValidationCache {
+    pub(super) fn get(&self, input: &str, resolve: impl FnOnce() -> Option<PathBuf>) -> Option<AddressValidation> {
+        let mut inner = self.inner.borrow_mut();
+        if input != inner.input {
+            inner.input = input.to_string();
+            inner.result = resolve().map(|target| {
+                if target.is_dir() {
+                    AddressValidation::Directory
+                } else if target.exists() {
+                    AddressValidation::File
+                } else {
+                    AddressValidation::NotFound
+                }
+            });
+        }
+        inner.result
+    }
+}
+
 // ── Scroll state ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Default)]
 pub(super) struct ScrollState {
     pub(super) offset: f32,
     pub(super) height: f32,
+    pub(super) content_height: f32,
     pub(super) tree_offset: f32,
     pub(super) tree_height: f32,
 }

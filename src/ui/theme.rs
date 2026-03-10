@@ -72,13 +72,74 @@ pub mod icons {
     pub const COPY: &str = "\u{f018f}";     // 󰆏 nf-md-content_copy
     pub const PASTE: &str = "\u{f0192}";    // 󰆒 nf-md-content_paste
     pub const SORT: &str = "\u{f04ba}";     // 󰒺 nf-md-sort
-    pub const VIEW: &str = "\u{f0574}";     // 󰕴 nf-md-view_grid
+    pub const VIEW_GRID: &str = "\u{f0574}"; // 󰕴 nf-md-view_grid
+    pub const VIEW_LIST: &str = "\u{f0575}"; // 󰕵 nf-md-view_list
     pub const MORE: &str = "\u{f01d8}";     // 󰇘 nf-md-dots_horizontal
     pub const ACTIONS: &str = "\u{f035b}";  // 󰍛 nf-md-menu
     pub const OPEN: &str = "\u{f0256}";     // 󰉖 nf-md-folder_open
     pub const RENAME: &str = "\u{f0ea8}";   // 󰺨 nf-md-rename_box
     pub const DELETE: &str = "\u{f01b4}";   // 󰆴 nf-md-delete
     pub const CLOSE: &str = "\u{f0156}";    // 󰅖 nf-md-close
+    pub const THEME: &str = "\u{f05df}";    // 󰗟 nf-md-weather_night (dark mode toggle)
+
+    // ── File type icons ────────────────────────────────────────────
+    pub const FILE_CODE: &str = "\u{f0217}";    // 󰈗 nf-md-file_code
+    pub const FILE_IMAGE: &str = "\u{f021f}";   // 󰈟 nf-md-file_image
+    pub const FILE_MUSIC: &str = "\u{f0223}";   // 󰈣 nf-md-file_music
+    pub const FILE_VIDEO: &str = "\u{f022b}";   // 󰈫 nf-md-file_video
+    pub const FILE_PDF: &str = "\u{f0226}";     // 󰈦 nf-md-file_pdf_box
+    pub const FILE_ARCHIVE: &str = "\u{f06fb}"; // 󰛻 nf-md-zip_box
+    pub const FILE_TEXT: &str = "\u{f0219}";    // 󰈙 nf-md-file_document
+    pub const FILE_TABLE: &str = "\u{f021b}";   // 󰈛 nf-md-file_excel
+    pub const FILE_CONFIG: &str = "\u{f0493}";  // 󰒓 nf-md-settings
+    pub const FILE_GIT: &str = "\u{f02a2}";     // 󰊢 nf-md-git
+    pub const FILE_LOCK: &str = "\u{f033e}";    // 󰌾 nf-md-lock
+    pub const FILE_FONT: &str = "\u{f031a}";    // 󰌚 nf-md-format_font
+    pub const FILE_EXE: &str = "\u{f0214}";     // 󰈔 nf-md-file (kept same as default)
+    pub const FILE_DB: &str = "\u{f01bc}";      // 󰆼 nf-md-database
+
+    /// Returns the Nerd Font icon for a file based on its extension.
+    pub fn icon_for_extension(ext: &str) -> &'static str {
+        match ext.to_ascii_lowercase().as_str() {
+            // Code
+            "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "c" | "cpp" | "h" | "hpp"
+            | "cs" | "java" | "go" | "rb" | "php" | "swift" | "kt" | "lua" | "zig"
+            | "asm" | "sh" | "bash" | "zsh" | "ps1" | "bat" | "cmd" | "r" | "dart"
+            | "scala" | "html" | "htm" | "css" | "scss" | "sass" | "less" | "vue"
+            | "svelte" => FILE_CODE,
+            // Images
+            "png" | "jpg" | "jpeg" | "gif" | "bmp" | "svg" | "webp" | "ico" | "tiff"
+            | "tif" | "psd" | "ai" | "raw" | "cr2" | "nef" | "heic" | "avif" => FILE_IMAGE,
+            // Audio
+            "mp3" | "wav" | "flac" | "ogg" | "aac" | "wma" | "m4a" | "opus" | "mid"
+            | "midi" => FILE_MUSIC,
+            // Video
+            "mp4" | "avi" | "mkv" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg"
+            | "mpeg" | "3gp" => FILE_VIDEO,
+            // Documents
+            "pdf" => FILE_PDF,
+            "txt" | "md" | "rtf" | "log" | "nfo" | "readme" => FILE_TEXT,
+            "csv" | "xls" | "xlsx" | "ods" => FILE_TABLE,
+            "doc" | "docx" | "odt" => FILE_TEXT,
+            // Archives
+            "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" | "zst" | "lz4"
+            | "cab" | "iso" | "dmg" => FILE_ARCHIVE,
+            // Config
+            "json" | "yaml" | "yml" | "toml" | "xml" | "ini" | "cfg" | "conf"
+            | "env" | "properties" => FILE_CONFIG,
+            // Git
+            "gitignore" | "gitmodules" | "gitattributes" => FILE_GIT,
+            // Fonts
+            "ttf" | "otf" | "woff" | "woff2" | "eot" => FILE_FONT,
+            // Database
+            "db" | "sqlite" | "sqlite3" | "sql" | "mdb" => FILE_DB,
+            // Executables
+            "exe" | "msi" | "dll" | "so" | "dylib" => FILE_EXE,
+            // Lock files
+            "lock" => FILE_LOCK,
+            _ => FILE,
+        }
+    }
 }
 
 /// Color palette for the UI.
@@ -196,6 +257,25 @@ impl Default for UiTypography {
     }
 }
 
+impl UiColors {
+    /// Dark theme color palette.
+    pub fn dark() -> Self {
+        Self {
+            chrome_background: Color::from_rgb8(30, 30, 34),
+            panel_background: Color::from_rgb8(36, 36, 42),
+            border: Color::from_rgb8(58, 58, 68),
+            sidebar_background: Color::from_rgb8(28, 28, 32),
+            accent: Color::from_rgb8(78, 154, 240),
+            text_primary: Color::from_rgb8(220, 222, 228),
+            text_muted: Color::from_rgb8(160, 164, 174),
+            selection: Color::from_rgb8(40, 56, 80),
+            selection_border: Color::from_rgb8(60, 90, 130),
+            hover: Color::from_rgb8(44, 44, 52),
+            pressed: Color::from_rgb8(50, 50, 60),
+        }
+    }
+}
+
 /// Complete design token set for the UI.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UiTokens {
@@ -205,6 +285,25 @@ pub struct UiTokens {
     pub spacing: UiSpacing,
     /// Typography settings.
     pub typography: UiTypography,
+}
+
+impl UiTokens {
+    /// Returns tokens with the dark color palette.
+    pub fn dark() -> Self {
+        Self {
+            colors: UiColors::dark(),
+            ..Default::default()
+        }
+    }
+
+    /// Returns tokens matching the dark_mode flag.
+    pub fn for_mode(dark_mode: bool) -> Self {
+        if dark_mode {
+            Self::dark()
+        } else {
+            Self::default()
+        }
+    }
 }
 
 /// UI timing constants.

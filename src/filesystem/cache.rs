@@ -53,17 +53,16 @@ where
     }
 
     pub fn insert(&mut self, key: K, value: V) {
-        if self.entries.contains_key(&key) {
-            self.order.retain(|existing| existing != &key);
-        }
-
-        self.entries.insert(
+        let existing = self.entries.insert(
             key.clone(),
             CacheEntry {
                 value,
                 inserted_at: Instant::now(),
             },
         );
+        if existing.is_some() {
+            self.order.retain(|existing| existing != &key);
+        }
         self.order.push_back(key);
         self.evict_if_needed();
     }
@@ -144,6 +143,13 @@ impl DirectoryCache {
     pub fn insert(&mut self, path: PathBuf, entries: Vec<FsEntry>) {
         let entry_bytes = entries.len() * ESTIMATED_BYTES_PER_ENTRY;
 
+        // Subtract old size if key already exists to avoid double-counting
+        if let Some(old) = self.inner.entries.get(&path) {
+            self.estimated_bytes = self
+                .estimated_bytes
+                .saturating_sub(old.value.len() * ESTIMATED_BYTES_PER_ENTRY);
+        }
+
         // Evict oldest entries until we're under the byte budget
         while self.estimated_bytes + entry_bytes > self.max_bytes
             && !self.inner.order.is_empty()
@@ -157,8 +163,6 @@ impl DirectoryCache {
             }
         }
 
-        // If the single entry itself exceeds the budget, still insert it
-        // (it will be the only entry) but don't track negative
         self.estimated_bytes += entry_bytes;
         self.inner.insert(path, entries);
     }

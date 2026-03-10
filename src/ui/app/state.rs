@@ -314,7 +314,6 @@ impl XionApp {
                 name_query: None,
             };
             build_tree_nodes(
-                &LocalFileSystem::from_config(self.state.config.filesystem.clone()),
                 &tree_root,
                 current_path,
                 TREE_MAX_DEPTH,

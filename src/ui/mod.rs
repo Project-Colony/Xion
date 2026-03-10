@@ -189,6 +189,16 @@ pub enum UiMessage {
     PreviewResizeEnd,
     DropOnPath(PathBuf),
     FileOperationFinished(OperationReport),
+    NewFolder,
+    NewFolderCreated(Result<PathBuf, String>),
+    AddressEditStart,
+    AddressEditCancel,
+    ToggleDarkMode,
+    TextPreviewLoaded {
+        path: PathBuf,
+        content: String,
+    },
+    PreviewAnimTick,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,6 +222,10 @@ pub enum KeyboardCommand {
     ClearSelection,
     ToggleContextMenu,
     CyclePaneFocus,
+    Rename,
+    Delete,
+    NewFolder,
+    FocusSearch,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

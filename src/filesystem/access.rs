@@ -78,7 +78,7 @@ impl Default for ListOptions {
 
 impl ListOptions {
     pub fn with_name_query(mut self, query: impl Into<String>) -> Self {
-        self.name_query = Some(query.into());
+        self.name_query = Some(query.into().to_lowercase());
         self
     }
 }
@@ -138,7 +138,7 @@ impl LocalFileSystem {
 
     fn matches_query(name: &str, query: &Option<String>) -> bool {
         match query {
-            Some(query) if !query.is_empty() => name.to_lowercase().contains(&query.to_lowercase()),
+            Some(query) if !query.is_empty() => name.to_lowercase().contains(query),
             _ => true,
         }
     }

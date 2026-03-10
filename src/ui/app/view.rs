@@ -4,7 +4,6 @@
 
 use std::path::PathBuf;
 
-use directories::UserDirs;
 use iced::widget::button::Status as ButtonStatus;
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -37,12 +36,11 @@ use super::helpers::{
 
 impl XionApp {
     pub(super) fn view(&self) -> Element<'_, UiMessage> {
-        let tokens = UiTokens::default();
+        let tokens = UiTokens::for_mode(self.state.config.dark_mode);
         let colors = tokens.colors;
         let spacing = tokens.spacing;
         let typography = tokens.typography;
-        let user_dirs = UserDirs::new();
-        let home_dir = user_dirs.as_ref().map(|dirs| dirs.home_dir().to_path_buf());
+        let home_dir = self.cached_home_dir.clone();
 
         let toolbar_button = |label: String| {
             button(text(label).size(typography.body).font(typography.body_font))
@@ -63,7 +61,7 @@ impl XionApp {
                             style.border = border::rounded(6.0).color(colors.border).width(1.0);
                         }
                         ButtonStatus::Disabled => {
-                            style.text_color = Color::from_rgb8(150, 150, 150);
+                            style.text_color = colors.text_muted;
                         }
                         ButtonStatus::Active => {}
                     }
@@ -148,7 +146,7 @@ impl XionApp {
                         style.border = border::rounded(8.0).color(colors.border).width(1.0);
                     }
 
-                    if matches!(status, ButtonStatus::Hovered) {
+                    if !active && matches!(status, ButtonStatus::Hovered) {
                         style.background = Some(Background::Color(colors.hover));
                     }
 
@@ -190,30 +188,113 @@ impl XionApp {
         tabs = tabs.push(tab_button(icons::NEW.to_string(), false).on_press(UiMessage::AddTab));
         let tabs = tabs.spacing(spacing.sm);
 
-        let address_input = text_input("Chemin…", &self.address_input)
-            .on_input(UiMessage::AddressInputChanged)
-            .on_submit(UiMessage::AddressInputSubmitted)
-            .size(typography.body)
-            .font(typography.body_font)
-            .padding([spacing.xs, spacing.md]);
+        let address_bar: Element<'_, UiMessage> = if self.address_editing {
+            // Editable text input mode
+            let address_input = text_input("Chemin…", &self.address_input)
+                .on_input(UiMessage::AddressInputChanged)
+                .on_submit(UiMessage::AddressInputSubmitted)
+                .size(typography.body)
+                .font(typography.body_font)
+                .padding([spacing.xs, spacing.md]);
 
-        let address_bar = container(address_input)
-            .width(Length::Fill)
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.panel_background)),
-                border: border::rounded(6.0).color(colors.border).width(1.0),
-                ..Default::default()
-            });
+            container(address_input)
+                .width(Length::Fill)
+                .style(move |_| iced::widget::container::Style {
+                    background: Some(Background::Color(colors.panel_background)),
+                    border: border::rounded(6.0).color(colors.border).width(1.0),
+                    ..Default::default()
+                })
+                .into()
+        } else {
+            // Breadcrumb mode — clickable path segments
+            let current_path = self.state.route.address_label();
+            let mut breadcrumb_row = row![].spacing(0).align_y(Alignment::Center);
 
-        let address_validation = self.address_target_from_input().map(|target| {
-            if target.is_dir() {
-                ("Dossier".to_string(), Color::from_rgb8(55, 125, 60))
-            } else if target.exists() {
-                ("Fichier".to_string(), Color::from_rgb8(186, 120, 40))
-            } else {
-                ("Introuvable".to_string(), Color::from_rgb8(176, 72, 72))
+            let segments: Vec<&str> = current_path.split('\\').filter(|s| !s.is_empty()).collect();
+            let mut accumulated = String::new();
+
+            for (i, segment) in segments.iter().enumerate() {
+                if i == 0 && segment.ends_with(':') {
+                    // Drive root, e.g. "C:"
+                    accumulated = format!("{}\\", segment);
+                } else {
+                    accumulated = format!("{}{}\\", accumulated, segment);
+                }
+
+                if i > 0 {
+                    breadcrumb_row = breadcrumb_row.push(
+                        text(" ❯ ")
+                            .size(typography.caption)
+                            .font(typography.caption_font)
+                            .style(move |_| iced::widget::text::Style {
+                                color: Some(colors.text_muted),
+                            }),
+                    );
+                }
+
+                let target = PathBuf::from(&accumulated);
+                let is_last = i == segments.len() - 1;
+                let label = segment.to_string();
+
+                if is_last {
+                    breadcrumb_row = breadcrumb_row.push(
+                        text(label)
+                            .size(typography.body)
+                            .font(typography.body_font),
+                    );
+                } else {
+                    breadcrumb_row = breadcrumb_row.push(
+                        button(
+                            text(label)
+                                .size(typography.body)
+                                .font(typography.body_font),
+                        )
+                        .padding([spacing.xs, spacing.xs])
+                        .style(move |_theme: &Theme, status: ButtonStatus| {
+                            let mut style = iced::widget::button::Style {
+                                text_color: colors.accent,
+                                ..Default::default()
+                            };
+                            if matches!(status, ButtonStatus::Hovered) {
+                                style.background = Some(Background::Color(colors.hover));
+                                style.border = border::rounded(4.0).color(colors.border).width(1.0);
+                            }
+                            style
+                        })
+                        .on_press(UiMessage::NavigateTo(target)),
+                    );
+                }
             }
-        });
+
+            let breadcrumb_button = mouse_area(
+                container(breadcrumb_row)
+                    .width(Length::Fill)
+                    .padding([spacing.xs, spacing.md])
+                    .style(move |_| iced::widget::container::Style {
+                        background: Some(Background::Color(colors.panel_background)),
+                        border: border::rounded(6.0).color(colors.border).width(1.0),
+                        ..Default::default()
+                    }),
+            )
+            .on_press(UiMessage::AddressEditStart);
+
+            breadcrumb_button.into()
+        };
+
+        let address_validation = {
+            use super::types::AddressValidation;
+            if self.address_editing {
+                self.address_validation_cache
+                    .get(&self.address_input, || self.address_target_from_input())
+                    .map(|v| match v {
+                        AddressValidation::Directory => ("Dossier".to_string(), Color::from_rgb8(55, 125, 60)),
+                        AddressValidation::File => ("Fichier".to_string(), Color::from_rgb8(186, 120, 40)),
+                        AddressValidation::NotFound => ("Introuvable".to_string(), Color::from_rgb8(176, 72, 72)),
+                    })
+            } else {
+                None
+            }
+        };
 
         let address_status: Element<'_, UiMessage> =
             if let Some((label, status_color)) = address_validation {
@@ -337,12 +418,21 @@ impl XionApp {
             &format!("Rechercher dans : {}", active_tab_title),
             &self.search.input,
         )
+        .id(text_input::Id::new("search_input"))
         .on_input(UiMessage::SearchInputChanged)
         .on_submit(UiMessage::SearchInputSubmitted)
         .size(typography.caption)
         .font(typography.caption_font)
         .padding([spacing.xs, spacing.sm])
-        .width(Length::Fill);
+        .width(Length::Fill)
+        .style(move |_theme: &Theme, _status| iced::widget::text_input::Style {
+            background: Background::Color(Color::TRANSPARENT),
+            border: border::rounded(0.0).width(0.0),
+            icon: colors.text_muted,
+            placeholder: colors.text_muted,
+            value: colors.text_primary,
+            selection: colors.selection,
+        });
         let search_bar = container(
             row![
                 text(icons::SEARCH)
@@ -382,20 +472,18 @@ impl XionApp {
             toolbar_button(format!("{} Coller", icons::PASTE))
         };
 
-        let view_label = match self.state.config.view.mode {
-            ViewMode::List => "Liste",
-            ViewMode::Grid => "Grille",
+        let dark_mode_label = if self.state.config.dark_mode {
+            format!("{} Clair", icons::THEME)
+        } else {
+            format!("{} Sombre", icons::THEME)
         };
 
         let command_bar = row![
-            toolbar_button(format!("{} Nouveau", icons::NEW)),
+            toolbar_button(format!("{} Nouveau", icons::NEW)).on_press(UiMessage::NewFolder),
             cut_button,
             copy_button,
             paste_button,
-            toolbar_button(format!("{} Trier", icons::SORT)),
-            toolbar_button(format!("{} Afficher: {}", icons::VIEW, view_label))
-                .on_press(UiMessage::ToggleViewMode),
-            toolbar_button(icons::MORE.to_string()),
+            toolbar_button(dark_mode_label).on_press(UiMessage::ToggleDarkMode),
             toolbar_button(format!("{} Actions", icons::ACTIONS))
                 .on_press(UiMessage::ToggleContextMenu(!self.context_menu_open))
         ]
@@ -500,6 +588,7 @@ impl XionApp {
         let filtered_indices = self.filtered_indices_for(display_entries);
 
         let view_mode = self.state.config.view.mode;
+        let row_height = self.state.config.view.row_height;
         let is_filtered = filtered_indices.is_some();
         let total_entries = filtered_indices
             .as_ref()
@@ -527,7 +616,11 @@ impl XionApp {
                             .into()
                     })
                     .unwrap_or_else(|| {
-                        text(icons::FILE)
+                        let icon = entry.path.extension()
+                            .and_then(|ext| ext.to_str())
+                            .map(icons::icon_for_extension)
+                            .unwrap_or(icons::FILE);
+                        text(icon)
                             .size(typography.body)
                             .font(typography.body_font)
                             .into()
@@ -616,7 +709,9 @@ impl XionApp {
                 };
                 placeholder_row = placeholder_row.push(cell);
             }
-            button(placeholder_row).into()
+            button(placeholder_row)
+                .height(Length::Fixed(row_height))
+                .into()
         };
         let build_grid_tile = |entry: &FsEntry| -> Element<'_, UiMessage> {
             let tile_content = column![
@@ -708,6 +803,7 @@ impl XionApp {
                                 mouse_area(
                                     button(build_list_row(entry))
                                         .padding([spacing.xs, spacing.sm])
+                                        .height(Length::Fixed(row_height))
                                         .style(move |_theme: &Theme, status: ButtonStatus| {
                                             let mut style = iced::widget::button::Style {
                                                 text_color: colors.text_primary,
@@ -924,6 +1020,7 @@ impl XionApp {
 
             container(header_row)
                 .padding([spacing.xs, spacing.sm])
+                .height(Length::Fixed(row_height))
                 .style(move |_| iced::widget::container::Style {
                     background: Some(Background::Color(colors.chrome_background)),
                     border: border::rounded(6.0).color(colors.border).width(1.0),
@@ -963,7 +1060,14 @@ impl XionApp {
             container(row![])
         };
 
-        let list_column = column![rename_prompt, list_header, list_content].spacing(spacing.xl);
+        let mut list_column = column![].spacing(spacing.xl);
+        if self.rename_dialog.is_some() {
+            list_column = list_column.push(rename_prompt);
+        }
+        if list_header_visible {
+            list_column = list_column.push(list_header);
+        }
+        list_column = list_column.push(list_content);
 
         let list = mouse_area(
             scrollable(container(list_column).padding(spacing.md)).on_scroll(|viewport| {
@@ -1084,20 +1188,59 @@ impl XionApp {
         .on_release(UiMessage::TreeResizeEnd)
         .into();
 
+        // ── Quick Access with user folders ──────────────────────────────
         let mut quick_access =
             column![section_title("Accès rapide".to_string())].spacing(spacing.xs);
-        quick_access = quick_access.push(sidebar_button(icons::HOME, "Accueil", home_dir.clone()));
+
+        // Add specific user folders with proper icons
+        let user_folder_entries: Vec<(&str, &str, Option<PathBuf>)> = {
+            let favorites = self.favorites.list();
+            let find_favorite = |name: &str| -> Option<PathBuf> {
+                favorites.iter().find(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n == name)
+                }).cloned()
+            };
+            vec![
+                (icons::HOME, "Accueil", home_dir.clone()),
+                (icons::DESKTOP, "Bureau", find_favorite("Desktop")),
+                (icons::DOWNLOAD, "Téléchargements", find_favorite("Downloads")),
+                (icons::DOCUMENTS, "Documents", find_favorite("Documents")),
+                (icons::GALLERY, "Images", find_favorite("Pictures")),
+                (icons::MUSIC, "Musique", find_favorite("Music")),
+                (icons::VIDEO, "Vidéos", find_favorite("Videos")),
+            ]
+        };
+
+        for (icon, label, path) in &user_folder_entries {
+            if path.is_some() {
+                quick_access = quick_access.push(sidebar_button(icon, label, path.clone()));
+            }
+        }
+
+        // Custom favorites (user-added, not duplicating system folders)
+        let system_paths: std::collections::HashSet<PathBuf> = user_folder_entries
+            .iter()
+            .filter_map(|(_, _, p)| p.clone())
+            .collect();
+        let custom_favorites: Vec<_> = self
+            .favorites
+            .list()
+            .iter()
+            .filter(|p| !system_paths.contains(*p))
+            .collect();
 
         let mut favorites_section =
             column![section_title("Favoris".to_string())].spacing(spacing.xs);
-        if self.favorites.list().is_empty() {
+        if custom_favorites.is_empty() {
             favorites_section = favorites_section.push(
                 text("Aucun favori")
                     .size(typography.caption)
                     .font(typography.caption_font),
             );
         } else {
-            for favorite in self.favorites.list() {
+            for favorite in custom_favorites {
                 let label = format_sidebar_label(favorite);
                 favorites_section = favorites_section.push(sidebar_button(
                     icons::FOLDER,
@@ -1107,9 +1250,17 @@ impl XionApp {
             }
         }
 
+        // ── All drives ───────────────────────────────────────────────────
         let mut drive_section = column![section_title("Lecteurs".to_string())].spacing(spacing.xs);
-        if let Some(root_path) = self.state.route.local_path().and_then(|p| root_path_for(p)) {
-            if let Some(usage) = disk_usage_for(&root_path) {
+        let drives = all_drives();
+        if drives.is_empty() {
+            drive_section = drive_section.push(
+                text("Aucun lecteur")
+                    .size(typography.caption)
+                    .font(typography.caption_font),
+            );
+        } else {
+            for (mount, usage) in &drives {
                 let total_gb = format_gigabytes(usage.total);
                 let free_gb = format_gigabytes(usage.available);
                 let used_ratio = if usage.total == 0 {
@@ -1117,12 +1268,13 @@ impl XionApp {
                 } else {
                     1.0 - (usage.available as f32 / usage.total as f32)
                 };
+                let mount_path = mount.clone();
                 let content: Element<'_, UiMessage> = column![
                     row![
-                        text(icons::DEVICE)
+                        text(icons::DRIVE)
                             .size(typography.caption)
                             .font(typography.caption_font),
-                        text(drive_label(&root_path))
+                        text(drive_label(mount))
                             .size(typography.caption)
                             .font(typography.caption_font)
                     ]
@@ -1145,7 +1297,6 @@ impl XionApp {
                                 text_color: colors.text_primary,
                                 ..Default::default()
                             };
-
                             match status {
                                 ButtonStatus::Hovered => {
                                     style.background = Some(Background::Color(colors.hover));
@@ -1157,22 +1308,11 @@ impl XionApp {
                                 }
                                 ButtonStatus::Active | ButtonStatus::Disabled => {}
                             }
-
                             style
                         })
-                        .on_press(UiMessage::NavigateTo(root_path)),
+                        .on_press(UiMessage::NavigateTo(mount_path)),
                 );
-            } else {
-                let label = format_sidebar_label(&root_path);
-                drive_section =
-                    drive_section.push(sidebar_button(icons::DRIVE, &label, Some(root_path)));
             }
-        } else {
-            drive_section = drive_section.push(
-                text("Aucun lecteur")
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-            );
         }
         drive_section = drive_section.push(sidebar_button(
             icons::NETWORK,
@@ -1226,7 +1366,10 @@ impl XionApp {
             Some(entry) => {
                 let icon = match entry.entry_type {
                     FsEntryType::Directory => icons::FOLDER,
-                    FsEntryType::File => icons::FILE,
+                    FsEntryType::File => entry.path.extension()
+                        .and_then(|ext| ext.to_str())
+                        .map(icons::icon_for_extension)
+                        .unwrap_or(icons::FILE),
                     FsEntryType::Symlink => icons::SYMLINK,
                     FsEntryType::Other => icons::UNKNOWN,
                 };
@@ -1292,6 +1435,35 @@ impl XionApp {
                 ]
                 .spacing(spacing.xs);
 
+                // Text preview for code/text files
+                let text_preview_section: Element<'_, UiMessage> = self
+                    .cached_text_preview
+                    .as_ref()
+                    .filter(|(p, _)| p == &entry.path)
+                    .map(|(_, content)| {
+                        let preview_text = container(
+                            scrollable(
+                                container(
+                                    text(content)
+                                        .size(typography.caption)
+                                        .font(typography.body_font),
+                                )
+                                .padding(spacing.sm)
+                                .width(Length::Fill),
+                            )
+                            .height(Length::Fixed(200.0)),
+                        )
+                        .style(move |_| iced::widget::container::Style {
+                            background: Some(Background::Color(colors.chrome_background)),
+                            border: border::rounded(6.0).color(colors.border).width(1.0),
+                            ..Default::default()
+                        })
+                        .width(Length::Fill);
+                        let el: Element<'_, UiMessage> = preview_text.into();
+                        el
+                    })
+                    .unwrap_or_else(|| container(row![]).into());
+
                 column![
                     preview_media,
                     text(&entry.name)
@@ -1303,6 +1475,7 @@ impl XionApp {
                         .style(move |_| iced::widget::text::Style {
                             color: Some(colors.text_muted),
                         }),
+                    text_preview_section,
                     metadata
                 ]
                 .spacing(spacing.sm)
@@ -1333,41 +1506,10 @@ impl XionApp {
             .into(),
         };
 
-        let preview_panel = container(
-            column![section_title("Prévisualisation".to_string()), preview_body]
-                .spacing(spacing.md),
-        )
-        .padding(spacing.md)
-        .width(Length::Fixed(self.pane_resize.preview_width))
-        .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.panel_background)),
-            border: border::rounded(10.0).color(colors.border).width(1.0),
-            ..Default::default()
-        });
+        let preview_progress = self.preview_anim_progress;
+        let preview_visible = preview_progress > 0.001;
 
-        let preview_resize_bar: Element<'_, UiMessage> = mouse_area(
-            container(row![])
-                .width(Length::Fixed(PREVIEW_RESIZE_BAR_WIDTH))
-                .height(Length::Fill)
-                .style(move |_| iced::widget::container::Style {
-                    background: if self.pane_resize.preview_resizing {
-                        Some(Background::Color(colors.hover))
-                    } else {
-                        None
-                    },
-                    border: if self.pane_resize.preview_resizing {
-                        border::rounded(6.0).color(colors.border).width(1.0)
-                    } else {
-                        border::rounded(6.0).width(0.0)
-                    },
-                    ..Default::default()
-                }),
-        )
-        .on_press(UiMessage::PreviewResizeStart)
-        .on_release(UiMessage::PreviewResizeEnd)
-        .into();
-
-        let body = row![
+        let mut body = row![
             sidebar.width(Length::Fixed(220.0)),
             container(list)
                 .width(Length::Fill)
@@ -1377,40 +1519,120 @@ impl XionApp {
                     border: border::rounded(10.0).color(colors.border).width(1.0),
                     ..Default::default()
                 }),
-            preview_resize_bar,
-            preview_panel
-        ]
-        .height(Length::Fill)
-        .spacing(spacing.xs);
+        ];
+
+        if preview_visible {
+            let animated_width = self.pane_resize.preview_width * preview_progress;
+
+            let preview_resize_bar: Element<'_, UiMessage> = mouse_area(
+                container(row![])
+                    .width(Length::Fixed(PREVIEW_RESIZE_BAR_WIDTH))
+                    .height(Length::Fill)
+                    .style(move |_| iced::widget::container::Style {
+                        background: if self.pane_resize.preview_resizing {
+                            Some(Background::Color(colors.hover))
+                        } else {
+                            None
+                        },
+                        border: if self.pane_resize.preview_resizing {
+                            border::rounded(6.0).color(colors.border).width(1.0)
+                        } else {
+                            border::rounded(6.0).width(0.0)
+                        },
+                        ..Default::default()
+                    }),
+            )
+            .on_press(UiMessage::PreviewResizeStart)
+            .on_release(UiMessage::PreviewResizeEnd)
+            .into();
+
+            let preview_panel = container(
+                column![section_title("Prévisualisation".to_string()), preview_body]
+                    .spacing(spacing.md),
+            )
+            .padding(spacing.md)
+            .width(Length::Fixed(animated_width))
+            .style(move |_| iced::widget::container::Style {
+                background: Some(Background::Color(colors.panel_background)),
+                border: border::rounded(10.0).color(colors.border).width(1.0),
+                ..Default::default()
+            });
+
+            body = body.push(preview_resize_bar);
+            body = body.push(preview_panel);
+        }
+
+        let body = body.height(Length::Fill).spacing(spacing.xs);
 
         let selection = &self.state.navigation.selection;
-        let entry_count = if let Some(indices) = &filtered_indices {
-            indices.len()
-        } else {
-            display_entries.total
-        };
 
-        let entry_count_label = if entry_count == 0 {
-            "aucun élément".to_string()
-        } else if entry_count == 1 {
-            "1 élément".to_string()
-        } else {
-            format!("{} éléments", entry_count)
+        // Count folders and files separately for status bar
+        let (dir_count, file_count) = {
+            let items_iter: Box<dyn Iterator<Item = &FsEntry>> = if let Some(indices) = &filtered_indices {
+                Box::new(indices.iter().filter_map(|&i| display_entries.get(i)))
+            } else {
+                Box::new(display_entries.items.iter().flatten())
+            };
+            let mut dirs = 0usize;
+            let mut files = 0usize;
+            for entry in items_iter {
+                match entry.entry_type {
+                    FsEntryType::Directory => dirs += 1,
+                    _ => files += 1,
+                }
+            }
+            (dirs, files)
+        };
+        let entry_count_label = match (dir_count, file_count) {
+            (0, 0) => "aucun élément".to_string(),
+            (d, 0) => if d == 1 { "1 dossier".to_string() } else { format!("{d} dossiers") },
+            (0, f) => if f == 1 { "1 fichier".to_string() } else { format!("{f} fichiers") },
+            (d, f) => {
+                let d_label = if d == 1 { "1 dossier".to_string() } else { format!("{d} dossiers") };
+                let f_label = if f == 1 { "1 fichier".to_string() } else { format!("{f} fichiers") };
+                format!("{d_label}, {f_label}")
+            }
         };
 
         let selection_part = if selection.selected.is_empty() {
             String::new()
-        } else if selection.selected.len() == 1 {
-            let name = selection
+        } else {
+            let selected_size: u64 = selection
                 .selected
                 .iter()
-                .next()
-                .and_then(|path| path.file_name())
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_else(|| "—".to_string());
-            format!("Sélection : {} — ", name)
-        } else {
-            format!("Sélection : {} fichiers — ", selection.selected.len())
+                .filter_map(|path| {
+                    display_entries
+                        .items
+                        .iter()
+                        .flatten()
+                        .find(|e| &e.path == path)
+                })
+                .filter(|e| e.entry_type != FsEntryType::Directory)
+                .map(|e| e.metadata.size)
+                .sum();
+
+            let size_suffix = if selected_size > 0 {
+                format!(" ({})", super::helpers::format_bytes(selected_size))
+            } else {
+                String::new()
+            };
+
+            if selection.selected.len() == 1 {
+                let name = selection
+                    .selected
+                    .iter()
+                    .next()
+                    .and_then(|path| path.file_name())
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "—".to_string());
+                format!("Sélection : {}{} — ", name, size_suffix)
+            } else {
+                format!(
+                    "Sélection : {} fichiers{} — ",
+                    selection.selected.len(),
+                    size_suffix
+                )
+            }
         };
 
         let index_status = if self.is_loading {
@@ -1419,8 +1641,6 @@ impl XionApp {
             "Indexation…".to_string()
         } else if let Some(count) = self.search.matches {
             format!("Résultats indexés : {count}")
-        } else if self.search.index.as_ref().is_some_and(|i| !i.is_empty()) {
-            format!("Indexation terminée : {}", entry_count_label)
         } else {
             entry_count_label.clone()
         };
@@ -1435,7 +1655,40 @@ impl XionApp {
         .spacing(spacing.md)
         .align_y(Alignment::Center);
 
-        let mut status_right = row![].spacing(spacing.md).align_y(Alignment::Center);
+        let is_list = matches!(view_mode, ViewMode::List);
+        let is_grid = matches!(view_mode, ViewMode::Grid);
+
+        let view_button = |icon: String, active: bool| {
+            button(
+                text(icon)
+                    .size(typography.caption)
+                    .font(typography.body_font),
+            )
+            .padding([spacing.xs, spacing.xs])
+            .style(move |_theme: &Theme, status: ButtonStatus| {
+                let mut style = iced::widget::button::Style {
+                    text_color: if active { colors.accent } else { colors.text_muted },
+                    ..Default::default()
+                };
+                if active {
+                    style.background = Some(Background::Color(colors.selection));
+                    style.border = border::rounded(4.0).color(colors.selection_border).width(1.0);
+                }
+                if matches!(status, ButtonStatus::Hovered) {
+                    style.background = Some(Background::Color(colors.hover));
+                }
+                style
+            })
+            .on_press(UiMessage::ToggleViewMode)
+        };
+
+        let mut status_right = row![
+            view_button(icons::VIEW_LIST.to_string(), is_list),
+            view_button(icons::VIEW_GRID.to_string(), is_grid),
+        ]
+        .spacing(spacing.xs)
+        .align_y(Alignment::Center);
+
         if let Some(status) = self.last_action.clone() {
             status_right = status_right.push(
                 text(status)

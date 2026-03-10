@@ -13,7 +13,7 @@ use crate::core::{
     EntryFilterConfig, KeyInput, KeyKind, NamedKey, ShortcutBindings,
     SortKeyConfig, SortOrderConfig, ViewColumn,
 };
-use crate::filesystem::{EntryFilter, FileSystem, FsEntry, FsEntryType, ListOptions, LocalFileSystem, SortKey, SortOrder};
+use crate::filesystem::{EntryFilter, FsEntry, FsEntryType, ListOptions, SortKey, SortOrder};
 use crate::ui::KeyboardCommand;
 use crate::services::Thumbnail;
 use crate::ui::theme::layout::TREE_MAX_CHILDREN;
@@ -58,7 +58,7 @@ pub fn format_modified(modified: Option<std::time::SystemTime>) -> String {
     modified
         .map(|time| {
             let datetime: DateTime<Local> = time.into();
-            datetime.format("%Y-%m-%d %H:%M").to_string()
+            datetime.format("%d/%m/%Y %H:%M").to_string()
         })
         .unwrap_or_else(|| "—".to_string())
 }
@@ -194,7 +194,6 @@ pub fn tree_label_for_path(path: &Path) -> String {
 }
 
 pub fn build_tree_nodes(
-    filesystem: &LocalFileSystem,
     root: &Path,
     current_path: &Path,
     max_depth: usize,
@@ -204,12 +203,11 @@ pub fn build_tree_nodes(
     if !root.exists() {
         return nodes;
     }
-    collect_tree_nodes(filesystem, root, current_path, 0, max_depth, options, &mut nodes);
+    collect_tree_nodes(root, current_path, 0, max_depth, options, &mut nodes);
     nodes
 }
 
 fn collect_tree_nodes(
-    filesystem: &LocalFileSystem,
     path: &Path,
     current_path: &Path,
     depth: usize,
@@ -230,19 +228,31 @@ fn collect_tree_nodes(
         return;
     }
 
-    let entries: Vec<FsEntry> = match filesystem.list_dir(path, options.clone()) {
-        Ok(entries) => entries,
+    // Read directory entries directly — we only need names and types,
+    // not metadata, so we skip the full list_dir + metadata_batch pipeline.
+    let read_dir = match std::fs::read_dir(path) {
+        Ok(rd) => rd,
         Err(_) => return,
     };
 
-    let mut directories: Vec<FsEntry> = entries
-        .into_iter()
-        .filter(|entry| matches!(entry.entry_type, FsEntryType::Directory))
+    let mut directories: Vec<(PathBuf, String)> = read_dir
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let ft = entry.file_type().ok()?;
+            if !ft.is_dir() {
+                return None;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !options.show_hidden && name.starts_with('.') {
+                return None;
+            }
+            Some((entry.path(), name))
+        })
         .collect();
-    directories.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    directories.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
 
-    for entry in directories.into_iter().take(TREE_MAX_CHILDREN) {
-        collect_tree_nodes(filesystem, &entry.path, current_path, depth + 1, max_depth, options, nodes);
+    for (dir_path, _) in directories.into_iter().take(TREE_MAX_CHILDREN) {
+        collect_tree_nodes(&dir_path, current_path, depth + 1, max_depth, options, nodes);
     }
 }
 
@@ -292,6 +302,22 @@ pub fn command_from_key_press_with_shortcuts(
     if shortcuts.toggle_context_menu.matches(&input, false) {
         return Some(KeyboardCommand::ToggleContextMenu);
     }
+    if shortcuts.rename.matches(&input, false) {
+        return Some(KeyboardCommand::Rename);
+    }
+    if shortcuts.delete.matches(&input, false) {
+        return Some(KeyboardCommand::Delete);
+    }
+    if shortcuts.new_folder.matches(&input, false) {
+        return Some(KeyboardCommand::NewFolder);
+    }
+    if shortcuts.focus_search.matches(&input, false) {
+        return Some(KeyboardCommand::FocusSearch);
+    }
+    // F5 as alternate refresh (standard Windows shortcut)
+    if matches!(input.key, KeyKind::Named(NamedKey::F5)) && !input.ctrl && !input.alt {
+        return Some(KeyboardCommand::Refresh);
+    }
 
     None
 }
@@ -308,6 +334,9 @@ pub fn key_input_from_event(key: keyboard::Key, modifiers: keyboard::Modifiers) 
             keyboard::key::Named::Enter => KeyKind::Named(NamedKey::Enter),
             keyboard::key::Named::Escape => KeyKind::Named(NamedKey::Escape),
             keyboard::key::Named::Tab => KeyKind::Named(NamedKey::Tab),
+            keyboard::key::Named::F2 => KeyKind::Named(NamedKey::F2),
+            keyboard::key::Named::F5 => KeyKind::Named(NamedKey::F5),
+            keyboard::key::Named::Delete => KeyKind::Named(NamedKey::Delete),
             _ => return None,
         },
         keyboard::Key::Character(character) => {

@@ -177,8 +177,28 @@ impl SearchService {
         query: &SearchQuery,
         page: PageRequest,
     ) -> Page<FsEntry> {
-        let results = self.search_index(index, query);
-        page.apply(results)
+        let (normalized_text, normalized_extensions) = Self::normalize_query(query);
+
+        // Single pass: skip, collect page, then count remaining
+        let mut items = Vec::with_capacity(page.limit);
+        let mut total = 0usize;
+        for entry in &index.entries {
+            if !Self::matches_query(entry, query, normalized_text.as_ref(), &normalized_extensions) {
+                continue;
+            }
+            if total >= page.offset && items.len() < page.limit {
+                items.push(entry.entry.clone());
+            }
+            total += 1;
+        }
+
+        let offset = page.offset.min(total);
+        Page {
+            items,
+            total,
+            offset,
+            limit: page.limit,
+        }
     }
 
     pub fn count_index_matches(&self, index: &SearchIndex, query: &SearchQuery) -> usize {

@@ -67,11 +67,9 @@ pub fn matches_filter(entry: &FsEntry, options: &ListOptions) -> bool {
         return false;
     }
 
-    // Check name query filter
+    // Check name query filter (query is already lowercased by with_name_query)
     match &options.name_query {
-        Some(query) if !query.is_empty() => {
-            entry.name.to_lowercase().contains(&query.to_lowercase())
-        }
+        Some(query) if !query.is_empty() => entry.name.to_lowercase().contains(query.as_str()),
         _ => true,
     }
 }
@@ -83,7 +81,42 @@ pub fn matches_filter(entry: &FsEntry, options: &ListOptions) -> bool {
 /// * `entries` - Mutable reference to the entries to sort.
 /// * `options` - Sorting options.
 pub fn sort_entries(entries: &mut [FsEntry], options: &ListOptions) {
-    entries.sort_by(|left, right| compare_entries(left, right, options));
+    if matches!(options.sort_by, SortKey::Name) {
+        // Pre-compute lowercase names to avoid O(2n log n) transient String allocations
+        let lowercase: Vec<String> = entries.iter().map(|e| e.name.to_lowercase()).collect();
+        let dirs_first = options.directories_first;
+        let desc = matches!(options.sort_order, SortOrder::Desc);
+
+        // Sort using indices to reference the cached lowercase names
+        let mut indices: Vec<usize> = (0..entries.len()).collect();
+        indices.sort_by(|&a, &b| {
+            if dirs_first && entries[a].entry_type != entries[b].entry_type {
+                return match (entries[a].entry_type, entries[b].entry_type) {
+                    (FsEntryType::Directory, _) => Ordering::Less,
+                    (_, FsEntryType::Directory) => Ordering::Greater,
+                    _ => Ordering::Equal,
+                };
+            }
+            let ord = lowercase[a].cmp(&lowercase[b]);
+            if desc { ord.reverse() } else { ord }
+        });
+
+        // Apply the permutation in-place
+        apply_permutation(entries, &mut indices);
+    } else {
+        entries.sort_by(|left, right| compare_entries(left, right, options));
+    }
+}
+
+/// Reorders `data` according to the permutation in `indices` (in-place, O(n) swaps).
+fn apply_permutation<T>(data: &mut [T], indices: &mut [usize]) {
+    for i in 0..indices.len() {
+        while indices[i] != i {
+            let target = indices[i];
+            data.swap(i, target);
+            indices.swap(i, target);
+        }
+    }
 }
 
 /// Filters and sorts entries, returning a new vector.

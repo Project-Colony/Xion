@@ -3,19 +3,10 @@ use std::path::PathBuf;
 
 const MAX_HISTORY: usize = 200;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct HistoryService {
     entries: VecDeque<PathBuf>,
     cursor: Option<usize>,
-}
-
-impl Default for HistoryService {
-    fn default() -> Self {
-        Self {
-            entries: VecDeque::new(),
-            cursor: None,
-        }
-    }
 }
 
 impl HistoryService {

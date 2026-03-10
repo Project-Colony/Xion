@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tracing::warn;
@@ -27,7 +27,7 @@ impl DirectoryLoader {
     pub fn load_page(
         &mut self,
         filesystem: &dyn FileSystem,
-        path: &PathBuf,
+        path: &Path,
         options: ListOptions,
         page: PageRequest,
     ) -> AppResult<Page<FsEntry>> {
@@ -46,7 +46,7 @@ impl DirectoryLoader {
 
         if page_data.offset == 0 && page_data.items.len() == page_data.total {
             self.directory_cache
-                .insert(path.clone(), page_data.items.clone());
+                .insert(path.to_path_buf(), page_data.items.clone());
         }
 
         Ok(page_data)
@@ -55,7 +55,7 @@ impl DirectoryLoader {
     pub fn load_next_page(
         &mut self,
         filesystem: &dyn FileSystem,
-        path: &PathBuf,
+        path: &Path,
         options: ListOptions,
         current_page: &Page<FsEntry>,
     ) -> AppResult<Page<FsEntry>> {

@@ -21,6 +21,8 @@ use iced::{
     Task, Theme, keyboard, mouse, time,
 };
 
+use directories::UserDirs;
+
 use crate::core::{
     ConfigManager, SortKeyConfig,
     SortOrderConfig, ViewColumn, ViewMode,
@@ -106,6 +108,12 @@ pub struct XionApp {
     file_watcher: FileWatcherHandle,
     watched_path: Option<PathBuf>,
     cached_tree_nodes: Vec<TreeNode>,
+    cached_home_dir: Option<PathBuf>,
+    address_validation_cache: AddressValidationCache,
+    address_editing: bool,
+    cached_text_preview: Option<(PathBuf, String)>,
+    preview_anim_progress: f32,
+    preview_anim_target: f32,
 }
 
 
@@ -148,6 +156,8 @@ impl XionApp {
         );
         let entries = PagedEntries::new(0, page_size);
         let address_input = state.route.address_label();
+        let cached_home_dir = UserDirs::new()
+            .map(|dirs| dirs.home_dir().to_path_buf());
         let favorites = build_default_favorites();
         let mut watcher_error = None;
         let file_watcher: FileWatcherHandle = match NativeFileWatcher::new() {
@@ -177,6 +187,7 @@ impl XionApp {
             scroll: ScrollState {
                 offset: 0.0,
                 height: 480.0,
+                content_height: 0.0,
                 tree_offset: 0.0,
                 tree_height: 240.0,
             },
@@ -210,6 +221,12 @@ impl XionApp {
             file_watcher,
             watched_path: None,
             cached_tree_nodes: Vec::new(),
+            cached_home_dir,
+            address_validation_cache: AddressValidationCache::default(),
+            address_editing: false,
+            cached_text_preview: None,
+            preview_anim_progress: 0.0,
+            preview_anim_target: 0.0,
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -278,6 +295,8 @@ impl XionApp {
                     self.begin_user_selection();
                     if let Some(content_point) = self.list_content_point(position, true) {
                         self.selection_box_current = Some(content_point);
+                        let selected = self.entries_in_selection_box();
+                        self.apply_box_selection(selected, self.selection_kind_from_modifiers());
                     }
                 }
                 if self.mouse_pressed && self.drag_state.is_none() {
@@ -335,26 +354,31 @@ impl XionApp {
                 }
                 self.history_menu_open = false;
                 self.history_menu_position = None;
+                self.address_editing = false;
                 tasks.push(self.navigate_to(path));
             }
             UiMessage::AddTab => {
                 self.history_menu_open = false;
                 self.history_menu_position = None;
+                self.address_editing = false;
                 tasks.push(self.add_tab());
             }
             UiMessage::SwitchTab(index) => {
                 self.history_menu_open = false;
                 self.history_menu_position = None;
+                self.address_editing = false;
                 tasks.push(self.switch_tab(index));
             }
             UiMessage::CloseTab(index) => {
                 self.history_menu_open = false;
                 self.history_menu_position = None;
+                self.address_editing = false;
                 tasks.push(self.close_tab(index));
             }
             UiMessage::Back => {
                 self.history_menu_open = false;
                 self.history_menu_position = None;
+                self.address_editing = false;
                 if let Some(path) = self.history.back() {
                     self.update_active_tab_path(path);
                     tasks.push(self.refresh_entries());
@@ -363,6 +387,7 @@ impl XionApp {
             UiMessage::Forward => {
                 self.history_menu_open = false;
                 self.history_menu_position = None;
+                self.address_editing = false;
                 if let Some(path) = self.history.forward() {
                     self.update_active_tab_path(path);
                     tasks.push(self.refresh_entries());
@@ -433,7 +458,13 @@ impl XionApp {
                 tasks.push(self.activate_entry(path));
             }
             UiMessage::KeyboardCommand(command) => {
-                tasks.push(self.handle_keyboard_command(command));
+                // Escape while editing the address bar cancels editing
+                if self.address_editing && matches!(command, KeyboardCommand::ClearSelection) {
+                    self.address_editing = false;
+                    self.address_input = self.state.route.address_label();
+                } else {
+                    tasks.push(self.handle_keyboard_command(command));
+                }
             }
             UiMessage::ToggleContextMenu(force_open) => {
                 self.context_menu_open = force_open;
@@ -479,6 +510,7 @@ impl XionApp {
                 tasks.push(self.navigate_to(path));
             }
             UiMessage::AddressInputSubmitted => {
+                self.address_editing = false;
                 self.history_menu_open = false;
                 self.history_menu_position = None;
                 if let Some(target) = self.address_target_from_input() {
@@ -515,6 +547,7 @@ impl XionApp {
             UiMessage::Scroll(viewport) => {
                 self.scroll.offset = viewport.offset_y;
                 self.scroll.height = viewport.viewport_height.max(1.0);
+                self.scroll.content_height = viewport.content_height;
                 self.list_viewport_bounds = Some(viewport.bounds);
                 tasks.push(self.ensure_visible_pages());
             }
@@ -758,6 +791,51 @@ impl XionApp {
                 self.handle_operation_report(&report);
                 tasks.push(self.refresh_entries());
             }
+            UiMessage::NewFolder => {
+                tasks.push(self.create_new_folder());
+            }
+            UiMessage::NewFolderCreated(result) => {
+                match result {
+                    Ok(path) => {
+                        let name = path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        self.last_action = Some(format!("Dossier créé : {name}"));
+                        tasks.push(self.refresh_entries());
+                        self.rename_dialog = Some(RenameDialog {
+                            path,
+                            input: name,
+                        });
+                    }
+                    Err(error) => {
+                        self.last_action = Some(format!("Erreur création dossier : {error}"));
+                    }
+                }
+            }
+            UiMessage::AddressEditStart => {
+                self.address_editing = true;
+            }
+            UiMessage::AddressEditCancel => {
+                self.address_editing = false;
+                self.address_input = self.state.route.address_label();
+            }
+            UiMessage::ToggleDarkMode => {
+                self.state.config.dark_mode = !self.state.config.dark_mode;
+            }
+            UiMessage::TextPreviewLoaded { path, content } => {
+                self.cached_text_preview = Some((path, content));
+            }
+            UiMessage::PreviewAnimTick => {
+                // Ease-out interpolation: fast start, smooth stop
+                let speed = 0.15;
+                let diff = self.preview_anim_target - self.preview_anim_progress;
+                if diff.abs() < 0.005 {
+                    self.preview_anim_progress = self.preview_anim_target;
+                } else {
+                    self.preview_anim_progress += diff * speed;
+                }
+            }
             UiMessage::DropOnPath(path) => {
                 if let Some(drag_state) = self.drag_state.take() {
                     let destination = path.clone();
@@ -827,6 +905,13 @@ impl XionApp {
         }
 
         subscriptions.push(time::every(WATCHER_POLL_INTERVAL).map(|_| UiMessage::FileWatchTick));
+
+        // Preview panel slide animation — only ticks while animating
+        if (self.preview_anim_progress - self.preview_anim_target).abs() > 0.001 {
+            subscriptions.push(
+                time::every(Duration::from_millis(16)).map(|_| UiMessage::PreviewAnimTick),
+            );
+        }
 
         Subscription::batch(subscriptions)
     }
@@ -934,14 +1019,15 @@ impl XionApp {
     }
 
     fn list_content_offset(&self, list_header_visible: bool) -> f32 {
-        let tokens = UiTokens::default();
-        let mut offset = tokens.spacing.md;
+        let tokens = UiTokens::for_mode(self.state.config.dark_mode);
+        let mut offset = tokens.spacing.md; // container top padding
         if self.rename_dialog.is_some() {
             offset += self.state.config.view.row_height + tokens.spacing.xl;
         }
         if list_header_visible {
-            offset += tokens.typography.caption as f32 + tokens.spacing.xs * 2.0;
-            offset += tokens.spacing.xl;
+            // Header has same structure as a data row — use row_height as height
+            offset += self.state.config.view.row_height;
+            offset += tokens.spacing.xl; // column spacing
         }
         offset
     }
@@ -967,7 +1053,7 @@ impl XionApp {
         let list_header_visible =
             self.list_header_visible(view_mode, display_entries, filtered_indices.as_ref());
         let list_content_offset = self.list_content_offset(list_header_visible);
-        let tokens = UiTokens::default();
+        let tokens = UiTokens::for_mode(self.state.config.dark_mode);
         let list_padding = tokens.spacing.md;
         let content_width = (bounds.width - list_padding * 2.0).max(1.0);
         let entry_index_for = |display_index: usize| -> Option<usize> {
@@ -1225,6 +1311,9 @@ impl XionApp {
         if selection.focused != previous_focus {
             self.reset_preview_state();
         }
+        // Animate preview panel open/close
+        let has_selection = !self.state.navigation.selection.selected.is_empty();
+        self.preview_anim_target = if has_selection { 1.0 } else { 0.0 };
     }
 
     fn selected_entry<'a>(&'a self, entries: &'a PagedEntries) -> Option<&'a FsEntry> {
@@ -1299,6 +1388,12 @@ impl XionApp {
             KeyboardCommand::CyclePaneFocus => {
                 self.cycle_focus();
                 Task::none()
+            }
+            KeyboardCommand::Rename => self.open_rename_dialog(),
+            KeyboardCommand::Delete => self.delete_selection(),
+            KeyboardCommand::NewFolder => self.create_new_folder(),
+            KeyboardCommand::FocusSearch => {
+                iced::widget::text_input::focus(iced::widget::text_input::Id::new("search_input"))
             }
         }
     }
@@ -1538,8 +1633,56 @@ impl XionApp {
                 }
                 return self.navigate_to(entry.path.clone());
             }
+            // Open file with system default application
+            let file_path = entry.path.clone();
+            self.last_action = Some(format!(
+                "Ouverture : {}",
+                file_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            ));
+            #[cfg(target_os = "windows")]
+            {
+                let _ = std::process::Command::new("cmd")
+                    .args(["/C", "start", "", &file_path.display().to_string()])
+                    .spawn();
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let _ = std::process::Command::new("open").arg(&file_path).spawn();
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let _ = std::process::Command::new("xdg-open")
+                    .arg(&file_path)
+                    .spawn();
+            }
         }
         Task::none()
+    }
+
+    fn create_new_folder(&mut self) -> Task<UiMessage> {
+        let Some(current_dir) = self.state.route.local_path().cloned() else {
+            self.last_action = Some("Création impossible en vue réseau".to_string());
+            return Task::none();
+        };
+        Task::perform(
+            async move {
+                let base_name = "Nouveau dossier";
+                let mut target = current_dir.join(base_name);
+                let mut counter = 1u32;
+                while target.exists() {
+                    counter += 1;
+                    target = current_dir.join(format!("{base_name} ({counter})"));
+                }
+                match std::fs::create_dir(&target) {
+                    Ok(()) => Ok(target),
+                    Err(error) => Err(error.to_string()),
+                }
+            },
+            UiMessage::NewFolderCreated,
+        )
     }
 
     fn index_for_path_in(entries: &PagedEntries, path: &Path) -> Option<usize> {
@@ -1712,6 +1855,7 @@ impl XionApp {
         self.context_menu_open = false;
         self.context_menu_position = None;
         self.reset_preview_state();
+        self.preview_anim_target = 0.0;
     }
 
     fn reset_preview_state(&mut self) {
@@ -1720,6 +1864,7 @@ impl XionApp {
         self.media.previews_in_flight.clear();
         self.media.previews.clear();
         self.media.animated = None;
+        self.cached_text_preview = None;
     }
 
     fn advance_animated_preview(&mut self, now: Instant) {
@@ -1971,9 +2116,50 @@ impl XionApp {
             return Task::none();
         }
 
+        let mut tasks = Vec::new();
+
+        // Request text preview for text-previewable files
+        if Self::is_text_previewable(&entry_path) {
+            let already_cached = self
+                .cached_text_preview
+                .as_ref()
+                .is_some_and(|(p, _)| p == &entry_path);
+            if !already_cached {
+                let path = entry_path.clone();
+                tasks.push(Task::perform(
+                    async move {
+                        let content = std::fs::read_to_string(&path).ok();
+                        (path, content)
+                    },
+                    |(path, content): (PathBuf, Option<String>)| match content {
+                        Some(content) => {
+                            // Limit to first ~4000 chars, snapping to a char boundary
+                            let truncated = if content.len() > 4000 {
+                                let end = content
+                                    .char_indices()
+                                    .map(|(i, _)| i)
+                                    .take_while(|&i| i <= 4000)
+                                    .last()
+                                    .unwrap_or(0);
+                                format!("{}…", &content[..end])
+                            } else {
+                                content
+                            };
+                            UiMessage::TextPreviewLoaded {
+                                path,
+                                content: truncated,
+                            }
+                        }
+                        None => UiMessage::Noop,
+                    },
+                ));
+            }
+        }
+
+        // Request image preview
         if let Some(animated) = &self.media.animated {
             if animated.path == entry_path {
-                return Task::none();
+                return Task::batch(tasks);
             }
         }
 
@@ -1984,25 +2170,48 @@ impl XionApp {
                     image::Handle::from_bytes(preview.bytes.clone()),
                 );
             }
-            return Task::none();
+            return Task::batch(tasks);
         }
 
         if self.media.preview_handles.contains_key(&entry_path)
             || self.media.preview_misses.contains(&entry_path)
             || self.media.previews_in_flight.contains(&entry_path)
         {
-            return Task::none();
+            return Task::batch(tasks);
         }
 
         let path = entry_path.clone();
         let preview_size = self.preview_image_size();
         self.media.previews_in_flight.insert(path.clone());
-        Task::perform(
+        tasks.push(Task::perform(
             async move {
                 let preview = generate_preview(path.as_path(), preview_size);
                 (path, preview)
             },
             |(path, preview)| UiMessage::PreviewLoaded { path, preview },
+        ));
+        Task::batch(tasks)
+    }
+
+    /// Returns true if the file extension suggests a text/code file suitable for preview.
+    fn is_text_previewable(path: &Path) -> bool {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        matches!(
+            ext.as_str(),
+            "txt" | "md" | "log" | "nfo" | "readme"
+                | "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "c" | "cpp" | "h" | "hpp"
+                | "cs" | "java" | "go" | "rb" | "php" | "swift" | "kt" | "lua" | "zig"
+                | "sh" | "bash" | "zsh" | "ps1" | "bat" | "cmd"
+                | "html" | "htm" | "css" | "scss" | "sass" | "less"
+                | "json" | "yaml" | "yml" | "toml" | "xml" | "ini" | "cfg" | "conf"
+                | "env" | "properties" | "csv" | "sql"
+                | "gitignore" | "gitmodules" | "gitattributes"
+                | "dockerfile" | "makefile" | "cmake"
+                | "r" | "dart" | "scala" | "vue" | "svelte"
         )
     }
 

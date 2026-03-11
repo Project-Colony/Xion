@@ -1,6 +1,10 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 
 use crate::core::XionError;
 
@@ -50,7 +54,12 @@ impl LocalFileOperations {
         Self
     }
 
-    pub fn copy_items(&self, items: &[PathBuf], dest_dir: &Path) -> OperationReport {
+    pub fn copy_items(
+        &self,
+        items: &[PathBuf],
+        dest_dir: &Path,
+        progress: Option<Arc<AtomicUsize>>,
+    ) -> OperationReport {
         let mut report = OperationReport::new(FileOperationKind::Copy);
         for item in items {
             match destination_for(item, dest_dir) {
@@ -60,11 +69,19 @@ impl LocalFileOperations {
                 },
                 Err(error) => report.push_failure(item.clone(), error),
             }
+            if let Some(ref counter) = progress {
+                counter.fetch_add(1, Ordering::Relaxed);
+            }
         }
         report
     }
 
-    pub fn move_items(&self, items: &[PathBuf], dest_dir: &Path) -> OperationReport {
+    pub fn move_items(
+        &self,
+        items: &[PathBuf],
+        dest_dir: &Path,
+        progress: Option<Arc<AtomicUsize>>,
+    ) -> OperationReport {
         let mut report = OperationReport::new(FileOperationKind::Move);
         for item in items {
             match destination_for(item, dest_dir) {
@@ -73,6 +90,9 @@ impl LocalFileOperations {
                     Err(error) => report.push_failure(item.clone(), error),
                 },
                 Err(error) => report.push_failure(item.clone(), error),
+            }
+            if let Some(ref counter) = progress {
+                counter.fetch_add(1, Ordering::Relaxed);
             }
         }
         report

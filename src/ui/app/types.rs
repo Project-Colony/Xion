@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, atomic::AtomicUsize};
 use std::time::{Duration, Instant};
 
 use directories::UserDirs;
@@ -14,7 +15,7 @@ use iced::widget::image;
 use sysinfo::Disks;
 
 use crate::core::AppResult;
-use crate::filesystem::{FsEntry, FileWatcher, Page, WatchEvent};
+use crate::filesystem::{FileOperationKind, FsEntry, FileWatcher, Page, WatchEvent};
 use crate::services::{
     FavoritesService, PreviewImageService, SearchIndex, ThumbnailService, VirtualWindow,
 };
@@ -187,6 +188,15 @@ pub(super) struct AnimatedPreview {
     pub(super) current: usize,
     pub(super) next_frame_at: Instant,
     pub(super) handle: image::Handle,
+}
+
+// ── File operation progress ───────────────────────────────────────────────────
+
+#[derive(Debug)]
+pub(super) struct FileOpProgress {
+    pub(super) counter: Arc<AtomicUsize>,
+    pub(super) total: usize,
+    pub(super) kind: FileOperationKind,
 }
 
 // ── Drag & drop ───────────────────────────────────────────────────────────────

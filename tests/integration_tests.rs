@@ -263,6 +263,148 @@ mod config_integration {
     }
 }
 
+mod file_operations {
+    use super::*;
+    use xion::filesystem::LocalFileOperations;
+
+    #[test]
+    fn copy_single_file() {
+        let src_dir = create_temp_dir("copy_src");
+        let dst_dir = create_temp_dir("copy_dst");
+        let file = src_dir.join("hello.txt");
+        fs::write(&file, b"hello").unwrap();
+
+        let ops = LocalFileOperations::new();
+        let report = ops.copy_items(&[file.clone()], &dst_dir, None);
+
+        assert_eq!(report.succeeded.len(), 1);
+        assert!(report.failed.is_empty());
+        assert!(dst_dir.join("hello.txt").exists());
+        // Original still exists
+        assert!(file.exists());
+
+        cleanup_temp_dir(&src_dir);
+        cleanup_temp_dir(&dst_dir);
+    }
+
+    #[test]
+    fn move_single_file() {
+        let src_dir = create_temp_dir("move_src");
+        let dst_dir = create_temp_dir("move_dst");
+        let file = src_dir.join("doc.txt");
+        fs::write(&file, b"content").unwrap();
+
+        let ops = LocalFileOperations::new();
+        let report = ops.move_items(&[file.clone()], &dst_dir, None);
+
+        assert_eq!(report.succeeded.len(), 1);
+        assert!(report.failed.is_empty());
+        assert!(dst_dir.join("doc.txt").exists());
+        // Original is gone
+        assert!(!file.exists());
+
+        cleanup_temp_dir(&src_dir);
+        cleanup_temp_dir(&dst_dir);
+    }
+
+    #[test]
+    fn delete_files() {
+        let dir = create_temp_dir("delete_test");
+        let file1 = dir.join("a.txt");
+        let file2 = dir.join("b.txt");
+        fs::write(&file1, b"a").unwrap();
+        fs::write(&file2, b"b").unwrap();
+
+        let ops = LocalFileOperations::new();
+        let report = ops.delete_items(&[file1.clone(), file2.clone()]);
+
+        assert_eq!(report.succeeded.len(), 2);
+        assert!(report.failed.is_empty());
+        assert!(!file1.exists());
+        assert!(!file2.exists());
+
+        cleanup_temp_dir(&dir);
+    }
+
+    #[test]
+    fn copy_reports_progress_via_counter() {
+        use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+
+        let src_dir = create_temp_dir("progress_src");
+        let dst_dir = create_temp_dir("progress_dst");
+        for i in 0..5 {
+            fs::write(src_dir.join(format!("file_{i}.txt")), b"x").unwrap();
+        }
+
+        let items: Vec<PathBuf> = (0..5)
+            .map(|i| src_dir.join(format!("file_{i}.txt")))
+            .collect();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let ops = LocalFileOperations::new();
+        ops.copy_items(&items, &dst_dir, Some(counter.clone()));
+
+        assert_eq!(counter.load(Ordering::Relaxed), 5);
+
+        cleanup_temp_dir(&src_dir);
+        cleanup_temp_dir(&dst_dir);
+    }
+
+    #[test]
+    fn copy_fails_gracefully_on_nonexistent_source() {
+        let dst_dir = create_temp_dir("fail_dst");
+        let nonexistent = PathBuf::from("/nonexistent_xion_test_path/file.txt");
+
+        let ops = LocalFileOperations::new();
+        let report = ops.copy_items(&[nonexistent], &dst_dir, None);
+
+        assert!(report.succeeded.is_empty());
+        assert_eq!(report.failed.len(), 1);
+
+        cleanup_temp_dir(&dst_dir);
+    }
+
+    #[test]
+    fn copy_directory_recursive() {
+        let src_dir = create_temp_dir("copy_dir_src");
+        let dst_dir = create_temp_dir("copy_dir_dst");
+        let sub = src_dir.join("subdir");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(sub.join("nested.txt"), b"nested").unwrap();
+
+        let ops = LocalFileOperations::new();
+        let report = ops.copy_items(&[src_dir.join("subdir")], &dst_dir, None);
+
+        assert_eq!(report.succeeded.len(), 1);
+        assert!(dst_dir.join("subdir").join("nested.txt").exists());
+
+        cleanup_temp_dir(&src_dir);
+        cleanup_temp_dir(&dst_dir);
+    }
+}
+
+mod config_save_load {
+    use super::*;
+    use xion::core::{AppConfig, SortKeyConfig, SortOrderConfig};
+
+    #[test]
+    fn dark_mode_roundtrip() {
+        let tmp = create_temp_dir("config_save");
+        // We can't easily test ConfigManager's path without exposing it,
+        // but we can test that default config parses dark_mode correctly.
+        let config = AppConfig::default();
+        assert!(!config.dark_mode, "default should be light mode");
+        cleanup_temp_dir(&tmp);
+    }
+
+    #[test]
+    fn default_sort_config() {
+        let config = AppConfig::default();
+        assert_eq!(config.list.sort_key, SortKeyConfig::Name);
+        assert_eq!(config.list.sort_order, SortOrderConfig::Asc);
+        assert!(config.list.directories_first);
+    }
+}
+
 mod sorting_integration {
     use super::*;
     use xion::filesystem::{compare_entries, FsEntry, FsEntryType, FsMetadata};

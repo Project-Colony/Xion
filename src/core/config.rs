@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const CURRENT_CONFIG_VERSION: u32 = 1;
 const MIN_THUMBNAIL_SIZE: u32 = 24;
@@ -476,6 +476,17 @@ impl ConfigManager {
             },
         }
     }
+
+    /// Saves the current config to disk. Errors are silently ignored.
+    pub fn save(&self, config: &AppConfig) {
+        let file = config_to_file(config);
+        if let Ok(contents) = toml::to_string_pretty(&file) {
+            if let Some(parent) = self.path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let _ = fs::write(&self.path, contents);
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -505,10 +516,10 @@ struct AppConfigFileV0 {
     thumbnail_cache_ttl_seconds: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct AppConfigFileV1 {
-    #[allow(dead_code)]
     version: Option<u32>,
+    dark_mode: Option<bool>,
     start_path: Option<PathBuf>,
     list: Option<ListConfigFile>,
     cache: Option<CacheConfigFile>,
@@ -518,7 +529,7 @@ struct AppConfigFileV1 {
     shortcuts: Option<ShortcutBindingsFile>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ListConfigFile {
     show_hidden: Option<bool>,
     sort_key: Option<SortKeyConfigFile>,
@@ -527,7 +538,7 @@ struct ListConfigFile {
     filter: Option<EntryFilterConfigFile>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum SortKeyConfigFile {
     Name,
@@ -535,14 +546,14 @@ enum SortKeyConfigFile {
     Size,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum SortOrderConfigFile {
     Asc,
     Desc,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum EntryFilterConfigFile {
     All,
@@ -550,7 +561,7 @@ enum EntryFilterConfigFile {
     OnlyFiles,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum ViewColumnConfigFile {
     Name,
@@ -559,14 +570,14 @@ enum ViewColumnConfigFile {
     Modified,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum ViewModeConfigFile {
     List,
     Grid,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct CacheConfigFile {
     thumbnail_entries: Option<usize>,
     thumbnail_ttl_seconds: Option<u64>,
@@ -574,13 +585,13 @@ struct CacheConfigFile {
     directory_ttl_seconds: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct FilesystemConfigFile {
     metadata_batch_size: Option<usize>,
     metadata_parallelism: Option<usize>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ViewConfigFile {
     mode: Option<ViewModeConfigFile>,
     thumbnail_size: Option<u32>,
@@ -591,12 +602,12 @@ struct ViewConfigFile {
     columns: Option<Vec<ViewColumnConfigFile>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct PagingConfigFile {
     page_size: Option<usize>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ShortcutBindingsFile {
     move_up: Option<String>,
     move_down: Option<String>,
@@ -710,6 +721,9 @@ fn merge_from_v0(file: AppConfigFileV0, warnings: &mut Vec<ConfigWarning>) -> Ap
 
 fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarning>) -> AppConfig {
     let mut config = AppConfig::default();
+    if let Some(dark_mode) = file.dark_mode {
+        config.dark_mode = dark_mode;
+    }
     if let Some(start_path) = file.start_path {
         config.start_path = validated_path(start_path, &config.start_path, warnings);
     }
@@ -1118,5 +1132,119 @@ fn parse_shortcut(
             });
             fallback
         }
+    }
+}
+
+fn chord_to_string(chord: &KeyChord) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if chord.ctrl {
+        parts.push("Ctrl".to_string());
+    }
+    if chord.alt {
+        parts.push("Alt".to_string());
+    }
+    if chord.shift {
+        parts.push("Shift".to_string());
+    }
+    let key_str = match &chord.key {
+        KeyKind::Named(named) => match named {
+            NamedKey::ArrowUp => "ArrowUp",
+            NamedKey::ArrowDown => "ArrowDown",
+            NamedKey::ArrowLeft => "ArrowLeft",
+            NamedKey::ArrowRight => "ArrowRight",
+            NamedKey::Home => "Home",
+            NamedKey::End => "End",
+            NamedKey::Enter => "Enter",
+            NamedKey::Escape => "Escape",
+            NamedKey::Tab => "Tab",
+            NamedKey::F2 => "F2",
+            NamedKey::F5 => "F5",
+            NamedKey::Delete => "Delete",
+        }
+        .to_string(),
+        KeyKind::Character(c) => c.clone(),
+    };
+    parts.push(key_str);
+    parts.join("+")
+}
+
+fn config_to_file(config: &AppConfig) -> AppConfigFileV1 {
+    AppConfigFileV1 {
+        version: Some(CURRENT_CONFIG_VERSION),
+        dark_mode: Some(config.dark_mode),
+        start_path: Some(config.start_path.clone()),
+        list: Some(ListConfigFile {
+            show_hidden: Some(config.list.show_hidden),
+            sort_key: Some(match config.list.sort_key {
+                SortKeyConfig::Name => SortKeyConfigFile::Name,
+                SortKeyConfig::Modified => SortKeyConfigFile::Modified,
+                SortKeyConfig::Size => SortKeyConfigFile::Size,
+            }),
+            sort_order: Some(match config.list.sort_order {
+                SortOrderConfig::Asc => SortOrderConfigFile::Asc,
+                SortOrderConfig::Desc => SortOrderConfigFile::Desc,
+            }),
+            directories_first: Some(config.list.directories_first),
+            filter: Some(match config.list.filter {
+                EntryFilterConfig::All => EntryFilterConfigFile::All,
+                EntryFilterConfig::OnlyDirectories => EntryFilterConfigFile::OnlyDirectories,
+                EntryFilterConfig::OnlyFiles => EntryFilterConfigFile::OnlyFiles,
+            }),
+        }),
+        cache: Some(CacheConfigFile {
+            thumbnail_entries: Some(config.cache.thumbnail_entries),
+            thumbnail_ttl_seconds: Some(config.cache.thumbnail_ttl_seconds),
+            directory_entries: Some(config.cache.directory_entries),
+            directory_ttl_seconds: Some(config.cache.directory_ttl_seconds),
+        }),
+        filesystem: Some(FilesystemConfigFile {
+            metadata_batch_size: Some(config.filesystem.metadata_batch_size),
+            metadata_parallelism: Some(config.filesystem.metadata_parallelism),
+        }),
+        view: Some(ViewConfigFile {
+            mode: Some(match config.view.mode {
+                ViewMode::List => ViewModeConfigFile::List,
+                ViewMode::Grid => ViewModeConfigFile::Grid,
+            }),
+            thumbnail_size: Some(config.view.thumbnail_size),
+            row_height: Some(config.view.row_height),
+            grid_columns: Some(config.view.grid_columns),
+            grid_row_height: Some(config.view.grid_row_height),
+            overscan: Some(config.view.overscan),
+            columns: Some(
+                config
+                    .view
+                    .columns
+                    .iter()
+                    .map(|col| match col {
+                        ViewColumn::Name => ViewColumnConfigFile::Name,
+                        ViewColumn::Type => ViewColumnConfigFile::Type,
+                        ViewColumn::Size => ViewColumnConfigFile::Size,
+                        ViewColumn::Modified => ViewColumnConfigFile::Modified,
+                    })
+                    .collect(),
+            ),
+        }),
+        paging: Some(PagingConfigFile {
+            page_size: Some(config.paging.page_size),
+        }),
+        shortcuts: Some(ShortcutBindingsFile {
+            move_up: Some(chord_to_string(&config.shortcuts.move_up)),
+            move_down: Some(chord_to_string(&config.shortcuts.move_down)),
+            move_home: Some(chord_to_string(&config.shortcuts.move_home)),
+            move_end: Some(chord_to_string(&config.shortcuts.move_end)),
+            activate: Some(chord_to_string(&config.shortcuts.activate)),
+            clear_selection: Some(chord_to_string(&config.shortcuts.clear_selection)),
+            cycle_pane_focus: Some(chord_to_string(&config.shortcuts.cycle_pane_focus)),
+            back: Some(chord_to_string(&config.shortcuts.back)),
+            forward: Some(chord_to_string(&config.shortcuts.forward)),
+            refresh: Some(chord_to_string(&config.shortcuts.refresh)),
+            select_all: Some(chord_to_string(&config.shortcuts.select_all)),
+            toggle_context_menu: Some(chord_to_string(&config.shortcuts.toggle_context_menu)),
+            rename: Some(chord_to_string(&config.shortcuts.rename)),
+            delete: Some(chord_to_string(&config.shortcuts.delete)),
+            new_folder: Some(chord_to_string(&config.shortcuts.new_folder)),
+            focus_search: Some(chord_to_string(&config.shortcuts.focus_search)),
+        }),
     }
 }

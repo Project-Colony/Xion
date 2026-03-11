@@ -193,6 +193,7 @@ pub enum UiMessage {
     PreviewResizeEnd,
     DropOnPath(PathBuf),
     FileOperationFinished(OperationReport),
+    OperationProgressTick,
     NewFolder,
     NewFolderCreated(Result<PathBuf, String>),
     AddressEditStart,
@@ -230,6 +231,10 @@ pub enum KeyboardCommand {
     Delete,
     NewFolder,
     FocusSearch,
+    NewTab,
+    CloseCurrentTab,
+    NextTab,
+    PrevTab,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

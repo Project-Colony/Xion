@@ -319,6 +319,26 @@ pub fn command_from_key_press_with_shortcuts(
         return Some(KeyboardCommand::Refresh);
     }
 
+    // Tab management shortcuts (hardcoded, not user-configurable)
+    if input.ctrl && !input.alt {
+        match &input.key {
+            KeyKind::Character(c) if c == "t" && !input.shift => {
+                return Some(KeyboardCommand::NewTab);
+            }
+            KeyKind::Character(c) if c == "w" && !input.shift => {
+                return Some(KeyboardCommand::CloseCurrentTab);
+            }
+            KeyKind::Named(NamedKey::Tab) => {
+                return Some(if input.shift {
+                    KeyboardCommand::PrevTab
+                } else {
+                    KeyboardCommand::NextTab
+                });
+            }
+            _ => {}
+        }
+    }
+
     None
 }
 

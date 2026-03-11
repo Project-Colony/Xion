@@ -5,7 +5,10 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
 use std::time::{Duration, Instant};
 
 /// Holds the CLI-provided start path, consumed once during app initialization.
@@ -93,6 +96,7 @@ pub struct XionApp {
     tabs: Vec<TabState>,
     active_tab: usize,
     clipboard: ClipboardState,
+    operation_progress: Option<FileOpProgress>,
     rename_dialog: Option<RenameDialog>,
     last_click_time: Option<Instant>,
     last_clicked_path: Option<PathBuf>,
@@ -206,6 +210,7 @@ impl XionApp {
             tabs,
             active_tab: 0,
             clipboard: ClipboardState::default(),
+            operation_progress: None,
             rename_dialog: None,
             last_click_time: None,
             last_clicked_path: None,
@@ -802,8 +807,21 @@ impl XionApp {
                 self.drag_state = None;
             }
             UiMessage::FileOperationFinished(report) => {
+                self.operation_progress = None;
                 self.handle_operation_report(&report);
                 tasks.push(self.refresh_entries());
+            }
+            UiMessage::OperationProgressTick => {
+                if let Some(op) = &self.operation_progress {
+                    let done = op.counter.load(Ordering::Relaxed).min(op.total);
+                    let label = match op.kind {
+                        FileOperationKind::Copy => "Copie",
+                        FileOperationKind::Move => "Déplacement",
+                        FileOperationKind::Delete => "Suppression",
+                        FileOperationKind::Rename => "Renommage",
+                    };
+                    self.last_action = Some(format!("{label} : {done}/{} éléments…", op.total));
+                }
             }
             UiMessage::NewFolder => {
                 tasks.push(self.create_new_folder());
@@ -836,6 +854,7 @@ impl XionApp {
             }
             UiMessage::ToggleDarkMode => {
                 self.state.config.dark_mode = !self.state.config.dark_mode;
+                self.config_manager.save(&self.state.config);
             }
             UiMessage::TextPreviewLoaded { path, content } => {
                 self.cached_text_preview = Some((path, content));
@@ -867,13 +886,20 @@ impl XionApp {
                     } else {
                         FileOperationKind::Move
                     };
+                    let total = items.len();
+                    let counter = Arc::new(AtomicUsize::new(0));
+                    self.operation_progress = Some(FileOpProgress {
+                        counter: counter.clone(),
+                        total,
+                        kind: operation,
+                    });
                     tasks.push(Task::perform(
                         async move {
                             let operations = LocalFileOperations::new();
                             if matches!(operation, FileOperationKind::Copy) {
-                                operations.copy_items(&items, &destination)
+                                operations.copy_items(&items, &destination, Some(counter))
                             } else {
-                                operations.move_items(&items, &destination)
+                                operations.move_items(&items, &destination, Some(counter))
                             }
                         },
                         UiMessage::FileOperationFinished,
@@ -898,6 +924,12 @@ impl XionApp {
         }
 
         subscriptions.push(time::every(WATCHER_POLL_INTERVAL).map(|_| UiMessage::FileWatchTick));
+
+        if self.operation_progress.is_some() {
+            subscriptions.push(
+                time::every(Duration::from_millis(100)).map(|_| UiMessage::OperationProgressTick),
+            );
+        }
 
         // Preview panel slide animation — only ticks while animating
         if (self.preview_anim_progress - self.preview_anim_target).abs() > 0.001 {
@@ -1388,6 +1420,35 @@ impl XionApp {
             KeyboardCommand::FocusSearch => {
                 iced::widget::operation::focus(iced::widget::Id::new("search_input"))
             }
+            KeyboardCommand::NewTab => Task::done(UiMessage::AddTab),
+            KeyboardCommand::CloseCurrentTab => {
+                let idx = self.active_tab;
+                if idx > 0 {
+                    Task::done(UiMessage::CloseTab(idx))
+                } else {
+                    Task::none()
+                }
+            }
+            KeyboardCommand::NextTab => {
+                if self.tabs.len() > 1 {
+                    let next = (self.active_tab + 1) % self.tabs.len();
+                    Task::done(UiMessage::SwitchTab(next))
+                } else {
+                    Task::none()
+                }
+            }
+            KeyboardCommand::PrevTab => {
+                if self.tabs.len() > 1 {
+                    let prev = if self.active_tab == 0 {
+                        self.tabs.len() - 1
+                    } else {
+                        self.active_tab - 1
+                    };
+                    Task::done(UiMessage::SwitchTab(prev))
+                } else {
+                    Task::none()
+                }
+            }
         }
     }
 
@@ -1470,12 +1531,22 @@ impl XionApp {
             self.last_action = Some("Opération indisponible en vue réseau".to_string());
             return Task::none();
         };
+        let total = items.len();
+        let counter = Arc::new(AtomicUsize::new(0));
+        self.operation_progress = Some(FileOpProgress {
+            counter: counter.clone(),
+            total,
+            kind: match kind {
+                ClipboardKind::Copy => FileOperationKind::Copy,
+                ClipboardKind::Cut => FileOperationKind::Move,
+            },
+        });
         Task::perform(
             async move {
                 let operations = LocalFileOperations::new();
                 match kind {
-                    ClipboardKind::Copy => operations.copy_items(&items, &destination),
-                    ClipboardKind::Cut => operations.move_items(&items, &destination),
+                    ClipboardKind::Copy => operations.copy_items(&items, &destination, Some(counter)),
+                    ClipboardKind::Cut => operations.move_items(&items, &destination, Some(counter)),
                 }
             },
             UiMessage::FileOperationFinished,

@@ -118,6 +118,9 @@ pub struct XionApp {
     cached_text_preview: Option<(PathBuf, String)>,
     preview_anim_progress: f32,
     preview_anim_target: f32,
+    terminal: TerminalState,
+    terminal_anim_progress: f32,
+    terminal_anim_target: f32,
 }
 
 
@@ -232,6 +235,9 @@ impl XionApp {
             cached_text_preview: None,
             preview_anim_progress: 0.0,
             preview_anim_target: 0.0,
+            terminal: TerminalState::default(),
+            terminal_anim_progress: 0.0,
+            terminal_anim_target: 0.0,
         };
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(
@@ -279,6 +285,11 @@ impl XionApp {
         }
         match message {
             UiMessage::Noop => {}
+            UiMessage::ExitRequested => {
+                // Kill cmd.exe before exiting so no orphan processes remain.
+                self.terminal.process = None;
+                std::process::exit(0);
+            }
             UiMessage::CursorMoved(position) => {
                 self.cursor_position = Some(position);
                 if self.pane_resize.tree_resizing {
@@ -869,6 +880,86 @@ impl XionApp {
                     self.preview_anim_progress += diff * speed;
                 }
             }
+            UiMessage::ToggleTerminal => {
+                if self.terminal_anim_target > 0.5 {
+                    // Close: drop process — closing stdin causes cmd.exe to exit
+                    self.terminal.process = None;
+                    self.terminal_anim_target = 0.0;
+                } else {
+                    // Open: spawn a persistent cmd.exe session
+                    self.terminal_anim_target = 1.0;
+                    let cwd = self
+                        .state
+                        .route
+                        .local_path()
+                        .cloned()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."));
+                    self.terminal.cwd = Some(cwd.clone());
+                    tasks.push(Task::perform(
+                        async move {
+                            crate::terminal::TerminalProcess::spawn(&cwd)
+                                .await
+                                .map_err(|e| e.to_string())
+                        },
+                        UiMessage::TerminalSpawned,
+                    ));
+                }
+            }
+            UiMessage::TerminalSpawned(result) => match result {
+                Ok(process) => {
+                    self.terminal.process = Some(process);
+                    self.terminal.lines.push("CMD prêt.".to_string());
+                }
+                Err(e) => {
+                    self.terminal.lines.push(format!("Erreur démarrage terminal : {e}"));
+                    self.terminal_anim_target = 0.0;
+                }
+            },
+            UiMessage::TerminalInputChanged(input) => {
+                self.terminal.input = input;
+            }
+            UiMessage::TerminalInputSubmitted => {
+                let cmd = self.terminal.input.trim().to_string();
+                if cmd.is_empty() {
+                    return Task::batch(tasks);
+                }
+                let fallback = self
+                    .state
+                    .route
+                    .local_path()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| std::path::PathBuf::from("."));
+                let cwd = self.terminal.effective_cwd(&fallback).to_path_buf();
+                self.terminal.push_prompt(&cwd, &cmd);
+                // Track cd locally for accurate prompt display
+                self.terminal.apply_cd(&cmd, &cwd);
+                self.terminal.input.clear();
+                if let Some(process) = self.terminal.process.clone() {
+                    tasks.push(Task::perform(
+                        async move { process.write_line(&cmd).await },
+                        |_| UiMessage::Noop,
+                    ));
+                } else {
+                    self.terminal.lines.push("Erreur : terminal non démarré.".to_string());
+                }
+            }
+            UiMessage::TerminalPollOutput => {
+                if let Some(process) = &self.terminal.process {
+                    let lines = process.poll();
+                    if !lines.is_empty() {
+                        self.terminal.push_lines(lines);
+                    }
+                }
+            }
+            UiMessage::TerminalAnimTick => {
+                let speed = 0.15;
+                let diff = self.terminal_anim_target - self.terminal_anim_progress;
+                if diff.abs() < 0.005 {
+                    self.terminal_anim_progress = self.terminal_anim_target;
+                } else {
+                    self.terminal_anim_progress += diff * speed;
+                }
+            }
             UiMessage::DropOnPath(path) => {
                 if let Some(drag_state) = self.drag_state.take() {
                     let destination = path.clone();
@@ -935,6 +1026,20 @@ impl XionApp {
         if (self.preview_anim_progress - self.preview_anim_target).abs() > 0.001 {
             subscriptions.push(
                 time::every(Duration::from_millis(16)).map(|_| UiMessage::PreviewAnimTick),
+            );
+        }
+
+        // Terminal panel slide animation — only ticks while animating
+        if (self.terminal_anim_progress - self.terminal_anim_target).abs() > 0.001 {
+            subscriptions.push(
+                time::every(Duration::from_millis(16)).map(|_| UiMessage::TerminalAnimTick),
+            );
+        }
+
+        // Terminal output polling — only when a live process exists
+        if self.terminal.process.is_some() {
+            subscriptions.push(
+                time::every(Duration::from_millis(50)).map(|_| UiMessage::TerminalPollOutput),
             );
         }
 
@@ -2330,6 +2435,9 @@ fn map_event_to_message(
     _window: iced::window::Id,
 ) -> Option<UiMessage> {
     match event {
+        iced::Event::Window(iced::window::Event::CloseRequested) => {
+            Some(UiMessage::ExitRequested)
+        }
         iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
             Some(UiMessage::ModifiersChanged(ModifiersState {
                 shift: modifiers.shift(),
@@ -2357,7 +2465,7 @@ pub fn run(start_path: Option<PathBuf>) -> iced::Result {
         }
     }
 
-    iced::application(
+    let _ = iced::application(
         XionApp::new,
         XionApp::update,
         XionApp::view,
@@ -2382,5 +2490,10 @@ pub fn run(start_path: Option<PathBuf>) -> iced::Result {
     .font(fonts::EXTRA_BOLD_ITALIC)
     .default_font(Font::with_name(FONT_NAME))
     .subscription(XionApp::subscription)
-    .run()
+    .exit_on_close_request(false)
+    .run();
+
+    // Force a clean exit — background threads (notify watcher, tokio worker
+    // threads) can keep the process alive after the event loop ends.
+    std::process::exit(0);
 }

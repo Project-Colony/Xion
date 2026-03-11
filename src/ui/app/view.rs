@@ -25,6 +25,7 @@ use crate::ui::{
 use crate::ui::theme::{UiTokens, icons};
 use crate::ui::theme::layout::{
     PREVIEW_RESIZE_BAR_WIDTH,
+    TERMINAL_DEFAULT_HEIGHT,
     TREE_RESIZE_BAR_HEIGHT,
 };
 
@@ -1510,8 +1511,9 @@ impl XionApp {
         let preview_progress = self.preview_anim_progress;
         let preview_visible = preview_progress > 0.001;
 
-        let mut body = row![
-            sidebar.width(Length::Fixed(220.0)),
+        // ── Terminal panel (slides up below the file list only) ──────────────
+        let term_progress = self.terminal_anim_progress;
+        let mut list_col = column![
             container(list)
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -1519,7 +1521,118 @@ impl XionApp {
                     background: Some(Background::Color(colors.panel_background)),
                     border: border::rounded(10.0).color(colors.border).width(1.0),
                     ..Default::default()
-                }),
+                })
+        ];
+
+        if term_progress > 0.001 {
+            let animated_height = TERMINAL_DEFAULT_HEIGHT * term_progress;
+
+            let output_text: Element<'_, UiMessage> = if self.terminal.lines.is_empty() {
+                text("Entrez une commande…")
+                    .size(typography.caption)
+                    .font(typography.caption_font)
+                    .style(move |_: &Theme| iced::widget::text::Style {
+                        color: Some(colors.text_muted),
+                    })
+                    .into()
+            } else {
+                let combined = self.terminal.lines.join("\n");
+                text(combined)
+                    .size(typography.caption)
+                    .font(typography.caption_font)
+                    .style(move |_: &Theme| iced::widget::text::Style {
+                        color: Some(colors.text_primary),
+                    })
+                    .into()
+            };
+
+            let output_area: Element<'_, UiMessage> = container(
+                scrollable(
+                    container(output_text)
+                        .width(Length::Fill)
+                        .padding([spacing.xs, spacing.sm]),
+                )
+                .id(iced::widget::Id::new("terminal_output"))
+                .width(Length::Fill)
+                .height(Length::Fill),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
+
+            let fallback_path = std::path::PathBuf::from(".");
+            let fallback_cwd = self
+                .state
+                .route
+                .local_path()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| fallback_path.clone());
+            let cwd_display = self
+                .terminal
+                .effective_cwd(&fallback_cwd)
+                .display()
+                .to_string();
+
+            let prompt_label = text(format!("{cwd_display} >"))
+                .size(typography.caption)
+                .font(typography.body_font)
+                .style(move |_: &Theme| iced::widget::text::Style {
+                    color: Some(colors.accent),
+                });
+
+            let input_field = text_input("commande…", &self.terminal.input)
+                .id(iced::widget::Id::new("terminal_input"))
+                .size(typography.caption)
+                .font(typography.caption_font)
+                .on_input(UiMessage::TerminalInputChanged)
+                .on_submit(UiMessage::TerminalInputSubmitted)
+                .style(move |_theme: &Theme, _status| iced::widget::text_input::Style {
+                    background: Background::Color(Color::TRANSPARENT),
+                    border: border::rounded(0.0).color(Color::TRANSPARENT).width(0.0),
+                    icon: colors.text_muted,
+                    placeholder: colors.text_muted,
+                    value: colors.text_primary,
+                    selection: colors.selection,
+                });
+
+            let input_row: Element<'_, UiMessage> = container(
+                row![prompt_label, input_field]
+                    .spacing(spacing.sm)
+                    .align_y(Alignment::Center),
+            )
+            .padding([spacing.xs, spacing.sm])
+            .width(Length::Fill)
+            .style(move |_| iced::widget::container::Style {
+                background: Some(Background::Color(colors.sidebar_background)),
+                border: iced::Border {
+                    color: colors.border,
+                    width: 1.0,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            })
+            .into();
+
+            let term_panel: Element<'_, UiMessage> = container(
+                column![output_area, input_row].spacing(0),
+            )
+            .width(Length::Fill)
+            .height(Length::Fixed(animated_height))
+            .style(move |_| iced::widget::container::Style {
+                background: Some(Background::Color(colors.panel_background)),
+                border: border::rounded(8.0).color(colors.border).width(1.0),
+                ..Default::default()
+            })
+            .into();
+
+            list_col = list_col.push(term_panel);
+        }
+
+        let list_col = list_col.width(Length::Fill).height(Length::Fill).spacing(spacing.xs);
+
+        let mut body = row![
+            sidebar.width(Length::Fixed(220.0)),
+            list_col,
         ];
 
         if preview_visible {
@@ -1683,7 +1796,31 @@ impl XionApp {
             .on_press(UiMessage::ToggleViewMode)
         };
 
+        let terminal_active = self.terminal_anim_target > 0.5;
+        let terminal_btn = button(
+            text(icons::TERMINAL.to_string())
+                .size(typography.caption)
+                .font(typography.body_font),
+        )
+        .padding([spacing.xs, spacing.xs])
+        .style(move |_theme: &Theme, status: ButtonStatus| {
+            let mut style = iced::widget::button::Style {
+                text_color: if terminal_active { colors.accent } else { colors.text_muted },
+                ..Default::default()
+            };
+            if terminal_active {
+                style.background = Some(Background::Color(colors.selection));
+                style.border = border::rounded(4.0).color(colors.selection_border).width(1.0);
+            }
+            if matches!(status, ButtonStatus::Hovered) {
+                style.background = Some(Background::Color(colors.hover));
+            }
+            style
+        })
+        .on_press(UiMessage::ToggleTerminal);
+
         let mut status_right = row![
+            terminal_btn,
             view_button(icons::VIEW_LIST.to_string(), is_list),
             view_button(icons::VIEW_GRID.to_string(), is_grid),
         ]

@@ -81,6 +81,7 @@ pub mod icons {
     pub const DELETE: &str = "\u{f01b4}";   // 󰆴 nf-md-delete
     pub const CLOSE: &str = "\u{f0156}";    // 󰅖 nf-md-close
     pub const THEME: &str = "\u{f05df}";    // 󰗟 nf-md-weather_night (dark mode toggle)
+    pub const TERMINAL: &str = "\u{f0489}"; // 󰒉 nf-md-console
 
     // ── File type icons ────────────────────────────────────────────
     pub const FILE_CODE: &str = "\u{f0217}";    // 󰈗 nf-md-file_code
@@ -340,4 +341,8 @@ pub mod layout {
     pub const PREVIEW_RESIZE_BAR_WIDTH: f32 = 6.0;
     /// Minimum drag distance to start drag operation.
     pub const DRAG_START_THRESHOLD: f32 = 6.0;
+    /// Default height for terminal panel.
+    pub const TERMINAL_DEFAULT_HEIGHT: f32 = 240.0;
+    /// Minimum height for terminal panel.
+    pub const TERMINAL_MIN_HEIGHT: f32 = 120.0;
 }

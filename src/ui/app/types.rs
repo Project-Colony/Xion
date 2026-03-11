@@ -342,6 +342,63 @@ impl AddressValidationCache {
     }
 }
 
+// ── Terminal state ────────────────────────────────────────────────────────────
+
+/// Maximum number of output lines kept in the terminal buffer.
+const TERMINAL_MAX_LINES: usize = 500;
+
+#[derive(Debug, Default)]
+pub(super) struct TerminalState {
+    pub(super) input: String,
+    pub(super) lines: Vec<String>,
+    /// Live CMD process — None when terminal is closed.
+    pub(super) process: Option<crate::terminal::TerminalProcess>,
+    /// Working directory tracked from `cd` commands.
+    pub(super) cwd: Option<std::path::PathBuf>,
+}
+
+impl TerminalState {
+    pub(super) fn push_lines(&mut self, new_lines: Vec<String>) {
+        self.lines.extend(new_lines);
+        if self.lines.len() > TERMINAL_MAX_LINES {
+            let excess = self.lines.len() - TERMINAL_MAX_LINES;
+            self.lines.drain(..excess);
+        }
+    }
+
+    pub(super) fn push_prompt(&mut self, cwd: &std::path::Path, cmd: &str) {
+        self.lines.push(format!("{}> {}", cwd.display(), cmd));
+    }
+
+    /// Effective working directory: uses tracked cwd or falls back to `fallback`.
+    pub(super) fn effective_cwd<'a>(&'a self, fallback: &'a std::path::Path) -> &'a std::path::Path {
+        self.cwd.as_deref().unwrap_or(fallback)
+    }
+
+    /// Try to parse and track a `cd` command, returning the new cwd if successful.
+    pub(super) fn apply_cd(&mut self, cmd: &str, fallback: &std::path::Path) {
+        let trimmed = cmd.trim();
+        // Match "cd <path>" or "chdir <path>" (case-insensitive)
+        let rest = if let Some(r) = trimmed.strip_prefix("cd ").or_else(|| trimmed.strip_prefix("CD ")).or_else(|| trimmed.strip_prefix("chdir ")).or_else(|| trimmed.strip_prefix("CHDIR ")) {
+            r.trim()
+        } else if trimmed.eq_ignore_ascii_case("cd") || trimmed.eq_ignore_ascii_case("chdir") {
+            // `cd` with no args prints cwd — don't update anything
+            return;
+        } else {
+            return;
+        };
+
+        let base = self.cwd.as_deref().unwrap_or(fallback);
+        let new_cwd = if std::path::Path::new(rest).is_absolute() {
+            std::path::PathBuf::from(rest)
+        } else {
+            base.join(rest)
+        };
+        // Only update if the resulting path looks valid (best-effort)
+        self.cwd = Some(new_cwd);
+    }
+}
+
 // ── Scroll state ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Default)]

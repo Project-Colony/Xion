@@ -124,6 +124,7 @@ impl AppState {
 #[derive(Debug, Clone)]
 pub enum UiMessage {
     Noop,
+    ExitRequested,
     CursorMoved(Point),
     NavigateTo(PathBuf),
     AddTab,
@@ -204,6 +205,12 @@ pub enum UiMessage {
         content: String,
     },
     PreviewAnimTick,
+    ToggleTerminal,
+    TerminalInputChanged(String),
+    TerminalInputSubmitted,
+    TerminalSpawned(Result<crate::terminal::TerminalProcess, String>),
+    TerminalPollOutput,
+    TerminalAnimTick,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

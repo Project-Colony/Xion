@@ -32,6 +32,7 @@ pub mod core;
 pub mod filesystem;
 pub mod registry;
 pub mod services;
+pub mod terminal;
 pub mod ui;
 
 // Re-export commonly used types for convenience

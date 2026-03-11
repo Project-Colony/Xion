@@ -218,11 +218,11 @@ impl Default for UiSpacing {
 #[derive(Debug, Clone, Copy)]
 pub struct UiTypography {
     /// Title font size.
-    pub title: u16,
+    pub title: f32,
     /// Body text font size.
-    pub body: u16,
+    pub body: f32,
     /// Caption/small text font size.
-    pub caption: u16,
+    pub caption: f32,
     /// Font for titles.
     pub title_font: Font,
     /// Font for body text.
@@ -234,9 +234,9 @@ pub struct UiTypography {
 impl Default for UiTypography {
     fn default() -> Self {
         Self {
-            title: 16,
-            body: 14,
-            caption: 12,
+            title: 16.0,
+            body: 14.0,
+            caption: 12.0,
             title_font: Font {
                 family: Family::Name(FONT_NAME),
                 weight: Weight::Semibold,

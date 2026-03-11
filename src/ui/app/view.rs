@@ -8,9 +8,10 @@ use iced::widget::button::Status as ButtonStatus;
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 use iced::widget::{
-    button, column, container, horizontal_space, image, mouse_area, opaque, progress_bar, row,
-    scrollable, stack, text, text_input, vertical_space,
+    button, column, container, image, mouse_area, opaque, progress_bar, row,
+    scrollable, stack, text, text_input,
 };
+use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
 use iced::{
     Alignment, Background, Border, Color, Element, Length, Point, Theme,
     border,
@@ -418,7 +419,7 @@ impl XionApp {
             &format!("Rechercher dans : {}", active_tab_title),
             &self.search.input,
         )
-        .id(text_input::Id::new("search_input"))
+        .id(iced::widget::Id::new("search_input"))
         .on_input(UiMessage::SearchInputChanged)
         .on_submit(UiMessage::SearchInputSubmitted)
         .size(typography.caption)
@@ -495,8 +496,8 @@ impl XionApp {
                     .size(typography.caption)
                     .font(typography.caption_font),
                 progress_bar(0.0..=1.0, 0.5)
-                    .height(Length::Fixed(4.0))
-                    .width(Length::Fixed(64.0)),
+                    .girth(Length::Fixed(4.0))
+                    .length(Length::Fixed(64.0)),
             ]
             .spacing(spacing.xs)
             .align_y(Alignment::Center)
@@ -1280,7 +1281,7 @@ impl XionApp {
                     ]
                     .spacing(spacing.xs)
                     .align_y(Alignment::Center),
-                    progress_bar(0.0..=1.0, used_ratio).height(Length::Fixed(6.0)),
+                    progress_bar(0.0..=1.0, used_ratio).girth(Length::Fixed(6.0)),
                     text(format!("{} Go libres sur {} Go", free_gb, total_gb))
                         .size(typography.caption)
                         .font(typography.caption_font)

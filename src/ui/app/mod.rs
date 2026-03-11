@@ -457,6 +457,20 @@ impl XionApp {
                 self.history_menu_position = None;
                 tasks.push(self.activate_entry(path));
             }
+            UiMessage::RawKeyPressed { key, modifiers } => {
+                if let Some(command) = command_from_key_press_with_shortcuts(
+                    &self.state.config.shortcuts,
+                    key,
+                    modifiers,
+                ) {
+                    if self.address_editing && matches!(command, KeyboardCommand::ClearSelection) {
+                        self.address_editing = false;
+                        self.address_input = self.state.route.address_label();
+                    } else {
+                        tasks.push(self.handle_keyboard_command(command));
+                    }
+                }
+            }
             UiMessage::KeyboardCommand(command) => {
                 // Escape while editing the address bar cancels editing
                 if self.address_editing && matches!(command, KeyboardCommand::ClearSelection) {
@@ -874,30 +888,9 @@ impl XionApp {
     }
 
     fn subscription(&self) -> Subscription<UiMessage> {
-        let shortcuts = self.state.config.shortcuts.clone();
-        let mut subscriptions = vec![iced::event::listen().map(move |event| {
-            match event {
-                iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
-                    UiMessage::ModifiersChanged(ModifiersState {
-                        shift: modifiers.shift(),
-                        control: modifiers.control(),
-                        alt: modifiers.alt(),
-                    })
-                }
-                iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
-                    command_from_key_press_with_shortcuts(&shortcuts, key, modifiers)
-                        .map(UiMessage::KeyboardCommand)
-                        .unwrap_or(UiMessage::Noop)
-                }
-                iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
-                    UiMessage::CursorMoved(position)
-                }
-                iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                    UiMessage::MouseReleased
-                }
-                _ => UiMessage::Noop,
-            }
-        })];
+        let mut subscriptions = vec![
+            iced::event::listen_with(map_event_to_message),
+        ];
 
         if self.media.animated.is_some() {
             subscriptions
@@ -1393,7 +1386,7 @@ impl XionApp {
             KeyboardCommand::Delete => self.delete_selection(),
             KeyboardCommand::NewFolder => self.create_new_folder(),
             KeyboardCommand::FocusSearch => {
-                iced::widget::text_input::focus(iced::widget::text_input::Id::new("search_input"))
+                iced::widget::operation::focus(iced::widget::Id::new("search_input"))
             }
         }
     }
@@ -2260,6 +2253,32 @@ impl ColumnSpec {
     }
 }
 
+fn map_event_to_message(
+    event: iced::Event,
+    _status: iced::event::Status,
+    _window: iced::window::Id,
+) -> Option<UiMessage> {
+    match event {
+        iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
+            Some(UiMessage::ModifiersChanged(ModifiersState {
+                shift: modifiers.shift(),
+                control: modifiers.control(),
+                alt: modifiers.alt(),
+            }))
+        }
+        iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+            Some(UiMessage::RawKeyPressed { key, modifiers })
+        }
+        iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+            Some(UiMessage::CursorMoved(position))
+        }
+        iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+            Some(UiMessage::MouseReleased)
+        }
+        _ => None,
+    }
+}
+
 pub fn run(start_path: Option<PathBuf>) -> iced::Result {
     if let Some(path) = start_path {
         if let Ok(mut guard) = CLI_START_PATH.lock() {
@@ -2268,11 +2287,12 @@ pub fn run(start_path: Option<PathBuf>) -> iced::Result {
     }
 
     iced::application(
-        |state: &XionApp| format!("Xion — {}", state.state.route.display_label()),
+        XionApp::new,
         XionApp::update,
         XionApp::view,
     )
-    .theme(|_| Theme::Light)
+    .title(|state: &XionApp| format!("Xion — {}", state.state.route.display_label()))
+    .theme(|_: &XionApp| Theme::Light)
     .font(fonts::REGULAR)
     .font(fonts::ITALIC)
     .font(fonts::THIN)
@@ -2291,5 +2311,5 @@ pub fn run(start_path: Option<PathBuf>) -> iced::Result {
     .font(fonts::EXTRA_BOLD_ITALIC)
     .default_font(Font::with_name(FONT_NAME))
     .subscription(XionApp::subscription)
-    .run_with(XionApp::new)
+    .run()
 }

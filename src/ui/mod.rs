@@ -5,7 +5,7 @@ use std::time::Instant;
 use crate::core::{AppConfig, SortKeyConfig};
 use crate::filesystem::{FsEntry, OperationReport, Page};
 use crate::services::{SearchIndex, Thumbnail};
-use iced::{Point, Rectangle};
+use iced::{Point, Rectangle, keyboard};
 
 pub mod app;
 pub mod theme;
@@ -141,6 +141,10 @@ pub enum UiMessage {
     },
     ActivateEntry(PathBuf),
     KeyboardCommand(KeyboardCommand),
+    RawKeyPressed {
+        key: keyboard::Key,
+        modifiers: keyboard::Modifiers,
+    },
     ToggleContextMenu(bool),
     ToggleHistoryMenu(bool),
     OpenContextMenuForEntry(PathBuf),

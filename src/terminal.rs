@@ -97,6 +97,92 @@ fn push_chunk(
 }
 
 impl TerminalProcess {
+    /// Spawn a custom shell process.
+    pub async fn spawn_custom(shell_path: &str, cwd: &Path) -> std::io::Result<Self> {
+        let mut cmd = tokio::process::Command::new(shell_path);
+        cmd.current_dir(cwd)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        #[cfg(windows)]
+        cmd.creation_flags(0x0800_0000);
+
+        let mut child = cmd.spawn()?;
+        let stdin = child.stdin.take().expect("stdin was piped");
+        let stdout = child.stdout.take().expect("stdout was piped");
+        let stderr = child.stderr.take().expect("stderr was piped");
+        Ok(Self::build_process(child, stdin, stdout, stderr, b"echo ---XION_READY---\r\n").await)
+    }
+
+    /// Spawn a PowerShell session.
+    pub async fn spawn_powershell(cwd: &Path) -> std::io::Result<Self> {
+        let mut cmd = tokio::process::Command::new("powershell");
+        cmd.args(["-NoLogo", "-NoProfile"])
+            .current_dir(cwd)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        #[cfg(windows)]
+        cmd.creation_flags(0x0800_0000);
+
+        let mut child = cmd.spawn()?;
+        let stdin = child.stdin.take().expect("stdin was piped");
+        let stdout = child.stdout.take().expect("stdout was piped");
+        let stderr = child.stderr.take().expect("stderr was piped");
+        let init = b"$env:TERM = 'xterm'\r\nfunction prompt { \"`n\" }\r\nWrite-Output \"---XION_READY---\"\r\n";
+        Ok(Self::build_process(child, stdin, stdout, stderr, init).await)
+    }
+
+    async fn build_process(
+        child: tokio::process::Child,
+        stdin: tokio::process::ChildStdin,
+        mut stdout: tokio::process::ChildStdout,
+        mut stderr: tokio::process::ChildStderr,
+        init_bytes: &'static [u8],
+    ) -> Self {
+        let output_buf: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
+        let stdout_ready = Arc::new(AtomicBool::new(false));
+        let buf_out = Arc::clone(&output_buf);
+        let ready_out = Arc::clone(&stdout_ready);
+        tokio::spawn(async move {
+            let mut tmp = vec![0u8; 4096];
+            let mut partial: Vec<u8> = Vec::new();
+            loop {
+                match stdout.read(&mut tmp).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => push_chunk(&tmp[..n], &mut partial, &buf_out, &ready_out),
+                }
+            }
+        });
+        let stderr_ready = Arc::new(AtomicBool::new(true));
+        let buf_err = Arc::clone(&output_buf);
+        let ready_err = Arc::clone(&stderr_ready);
+        tokio::spawn(async move {
+            let mut tmp = vec![0u8; 4096];
+            let mut partial: Vec<u8> = Vec::new();
+            loop {
+                match stderr.read(&mut tmp).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => push_chunk(&tmp[..n], &mut partial, &buf_err, &ready_err),
+                }
+            }
+        });
+        let inner = Arc::new(Inner {
+            stdin: AsyncMutex::new(stdin),
+            output_buf,
+            child: Mutex::new(Some(child)),
+        });
+        let init_inner = Arc::clone(&inner);
+        tokio::spawn(async move {
+            let mut s = init_inner.stdin.lock().await;
+            let _ = s.write_all(init_bytes).await;
+            let _ = s.flush().await;
+        });
+        Self { inner }
+    }
+
     /// Spawn a new `cmd.exe` session in `cwd`.
     pub async fn spawn(cwd: &Path) -> std::io::Result<Self> {
         let mut cmd = tokio::process::Command::new("cmd");

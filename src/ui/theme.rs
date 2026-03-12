@@ -275,6 +275,68 @@ impl UiColors {
             pressed: Color::from_rgb8(50, 50, 60),
         }
     }
+
+    /// Nord theme palette (https://www.nordtheme.com/).
+    pub fn nord() -> Self {
+        Self {
+            chrome_background: Color::from_rgb8(46, 52, 64),
+            panel_background: Color::from_rgb8(59, 66, 82),
+            border: Color::from_rgb8(67, 76, 94),
+            sidebar_background: Color::from_rgb8(46, 52, 64),
+            accent: Color::from_rgb8(129, 161, 193),
+            text_primary: Color::from_rgb8(236, 239, 244),
+            text_muted: Color::from_rgb8(143, 188, 187),
+            selection: Color::from_rgb8(67, 76, 94),
+            selection_border: Color::from_rgb8(129, 161, 193),
+            hover: Color::from_rgb8(67, 76, 94),
+            pressed: Color::from_rgb8(76, 86, 106),
+        }
+    }
+
+    /// Solarized Dark theme palette.
+    pub fn solarized() -> Self {
+        Self {
+            chrome_background: Color::from_rgb8(0, 43, 54),
+            panel_background: Color::from_rgb8(7, 54, 66),
+            border: Color::from_rgb8(0, 43, 54),
+            sidebar_background: Color::from_rgb8(0, 43, 54),
+            accent: Color::from_rgb8(42, 161, 152),
+            text_primary: Color::from_rgb8(131, 148, 150),
+            text_muted: Color::from_rgb8(88, 110, 117),
+            selection: Color::from_rgb8(7, 54, 66),
+            selection_border: Color::from_rgb8(42, 161, 152),
+            hover: Color::from_rgb8(7, 54, 66),
+            pressed: Color::from_rgb8(0, 43, 54),
+        }
+    }
+
+    /// High contrast theme palette.
+    pub fn high_contrast() -> Self {
+        Self {
+            chrome_background: Color::BLACK,
+            panel_background: Color::BLACK,
+            border: Color::WHITE,
+            sidebar_background: Color::BLACK,
+            accent: Color::from_rgb8(255, 255, 0),
+            text_primary: Color::WHITE,
+            text_muted: Color::from_rgb8(200, 200, 200),
+            selection: Color::from_rgb8(0, 0, 128),
+            selection_border: Color::from_rgb8(255, 255, 0),
+            hover: Color::from_rgb8(32, 32, 32),
+            pressed: Color::from_rgb8(64, 64, 64),
+        }
+    }
+
+    /// Returns colors for the given theme config.
+    pub fn from_theme(theme: &crate::core::ThemeConfig) -> Self {
+        match theme {
+            crate::core::ThemeConfig::Light => Self::default(),
+            crate::core::ThemeConfig::Dark => Self::dark(),
+            crate::core::ThemeConfig::Nord => Self::nord(),
+            crate::core::ThemeConfig::Solarized => Self::solarized(),
+            crate::core::ThemeConfig::HighContrast => Self::high_contrast(),
+        }
+    }
 }
 
 /// Complete design token set for the UI.
@@ -303,6 +365,14 @@ impl UiTokens {
             Self::dark()
         } else {
             Self::default()
+        }
+    }
+
+    /// Returns tokens for a specific theme config.
+    pub fn for_theme(theme: &crate::core::ThemeConfig) -> Self {
+        Self {
+            colors: UiColors::from_theme(theme),
+            ..Default::default()
         }
     }
 }

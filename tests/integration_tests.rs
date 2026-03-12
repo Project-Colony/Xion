@@ -460,3 +460,229 @@ mod sorting_integration {
         assert_eq!(ordering, std::cmp::Ordering::Less); // Desc: larger comes first
     }
 }
+
+/// Tests for `XionApp::update` state transitions.
+///
+/// These tests exercise the message-handling logic without an Iced runtime.
+/// `new_for_test()` creates a minimal app (no window, no GPU, no real file watcher).
+/// `update_for_test()` calls `update()` and returns the Task; tests ignore Tasks
+/// and inspect only the resulting state changes.
+mod ui_update {
+    use std::path::PathBuf;
+    use xion::ui::app::XionApp;
+    use xion::ui::UiMessage;
+
+    // ── Dark mode ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn toggle_dark_mode_cycles_themes() {
+        use xion::core::ThemeConfig;
+        let mut app = XionApp::new_for_test();
+        // Default is Light (dark_mode = false)
+        assert_eq!(app.state_for_test().config.theme, ThemeConfig::Light);
+        assert!(!app.state_for_test().config.dark_mode);
+        // Light → Dark
+        let _ = app.update_for_test(UiMessage::ToggleDarkMode);
+        assert_eq!(app.state_for_test().config.theme, ThemeConfig::Dark);
+        assert!(app.state_for_test().config.dark_mode);
+        // 4 more toggles complete the cycle back to Light
+        let _ = app.update_for_test(UiMessage::ToggleDarkMode); // Nord
+        let _ = app.update_for_test(UiMessage::ToggleDarkMode); // Solarized
+        let _ = app.update_for_test(UiMessage::ToggleDarkMode); // HighContrast
+        let _ = app.update_for_test(UiMessage::ToggleDarkMode); // Light
+        assert_eq!(app.state_for_test().config.theme, ThemeConfig::Light);
+        assert!(!app.state_for_test().config.dark_mode);
+    }
+
+    // ── Gitignore ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn toggle_gitignore_flips_flag() {
+        let mut app = XionApp::new_for_test();
+        let initial = app.state_for_test().config.respect_gitignore;
+        app.update_for_test(UiMessage::ToggleGitignore);
+        assert_eq!(app.state_for_test().config.respect_gitignore, !initial);
+        app.update_for_test(UiMessage::ToggleGitignore);
+        assert_eq!(app.state_for_test().config.respect_gitignore, initial);
+    }
+
+    // ── Dual pane ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn toggle_dual_pane_enables_and_disables() {
+        let mut app = XionApp::new_for_test();
+        assert!(!app.dual_pane_for_test());
+        app.update_for_test(UiMessage::ToggleDualPane);
+        assert!(app.dual_pane_for_test());
+        app.update_for_test(UiMessage::ToggleDualPane);
+        assert!(!app.dual_pane_for_test());
+    }
+
+    // ── Quick filter ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn quick_filter_sets_and_clears() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::QuickFilterChanged("rust".to_string()));
+        assert_eq!(app.quick_filter_for_test(), "rust");
+        assert!(app.quick_filter_active_for_test());
+        app.update_for_test(UiMessage::QuickFilterClear);
+        assert!(app.quick_filter_for_test().is_empty());
+        assert!(!app.quick_filter_active_for_test());
+    }
+
+    // ── Tabs ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn add_tab_increments_count() {
+        let mut app = XionApp::new_for_test();
+        assert_eq!(app.tab_count_for_test(), 1);
+        app.update_for_test(UiMessage::AddTab);
+        assert_eq!(app.tab_count_for_test(), 2);
+    }
+
+    #[test]
+    fn close_tab_decrements_count() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::AddTab);
+        assert_eq!(app.tab_count_for_test(), 2);
+        app.update_for_test(UiMessage::CloseTab(1));
+        assert_eq!(app.tab_count_for_test(), 1);
+    }
+
+    #[test]
+    fn switch_tab_changes_active() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::AddTab);
+        app.update_for_test(UiMessage::SwitchTab(1));
+        assert_eq!(app.active_tab_for_test(), 1);
+        app.update_for_test(UiMessage::SwitchTab(0));
+        assert_eq!(app.active_tab_for_test(), 0);
+    }
+
+    // ── Context menu ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn toggle_context_menu_opens_and_closes() {
+        let mut app = XionApp::new_for_test();
+        assert!(!app.context_menu_open_for_test());
+        app.update_for_test(UiMessage::ToggleContextMenu(true));
+        assert!(app.context_menu_open_for_test());
+        app.update_for_test(UiMessage::ToggleContextMenu(false));
+        assert!(!app.context_menu_open_for_test());
+    }
+
+    // ── Rename dialog ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn rename_cancel_clears_dialog() {
+        let mut app = XionApp::new_for_test();
+        // Simulate opening rename for a path that doesn't need to exist for cancel
+        app.update_for_test(UiMessage::RenameCancel);
+        assert!(!app.rename_dialog_for_test());
+    }
+
+    // ── Properties dialog ─────────────────────────────────────────────────────
+
+    #[test]
+    fn close_properties_clears_dialog() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::CloseProperties);
+        assert!(!app.properties_dialog_for_test());
+    }
+
+    // ── Hex viewer ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn close_hex_view_clears_state() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::CloseHexView);
+        assert!(!app.hex_view_for_test());
+    }
+
+    // ── Diff viewer ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn close_diff_clears_state() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::CloseDiff);
+        assert!(!app.diff_view_for_test());
+    }
+
+    // ── Grep ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn close_grep_clears_state() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::CloseGrep);
+        assert!(!app.grep_state_for_test());
+    }
+
+    // ── Navigation ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn navigate_to_recent_sets_recent_route() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::NavigateToRecent);
+        assert!(app.state_for_test().route.is_recent());
+    }
+
+    #[test]
+    fn navigate_to_local_path_updates_route() {
+        let mut app = XionApp::new_for_test();
+        let target = std::env::temp_dir();
+        app.update_for_test(UiMessage::NavigateTo(target.clone()));
+        assert_eq!(app.state_for_test().route.local_path(), Some(&target));
+    }
+
+    // ── Recents ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn clear_recents_empties_service() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::ClearRecents);
+        // After clearing, navigating to Recent should show 0 recents
+        assert!(app.recents_is_empty_for_test());
+    }
+
+    // ── Bulk rename ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn bulk_rename_cancel_clears_state() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::BulkRenameCancel);
+        assert!(!app.bulk_rename_for_test());
+    }
+
+    // ── Address bar ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn address_input_changed_updates_field() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::AddressInputChanged("C:\\Windows".to_string()));
+        assert_eq!(app.address_input_for_test(), "C:\\Windows");
+    }
+
+    #[test]
+    fn address_edit_start_and_cancel() {
+        let mut app = XionApp::new_for_test();
+        app.update_for_test(UiMessage::AddressEditStart);
+        assert!(app.address_editing_for_test());
+        app.update_for_test(UiMessage::AddressEditCancel);
+        assert!(!app.address_editing_for_test());
+    }
+
+    // ── Network discovery ─────────────────────────────────────────────────────
+
+    #[test]
+    fn network_scan_completed_updates_discovery_cache() {
+        use xion::services::NetworkResource;
+        let mut app = XionApp::new_for_test();
+        let resources = vec![
+            NetworkResource { name: "NAS".to_string(), path: "smb://NAS".to_string() },
+        ];
+        app.update_for_test(UiMessage::NetworkScanCompleted(resources));
+        // Cache is no longer stale after update
+        assert!(!app.network_needs_scan_for_test());
+    }
+}

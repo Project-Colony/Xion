@@ -7,6 +7,78 @@ use crate::filesystem::{FsEntry, OperationReport, Page};
 use crate::services::{SearchIndex, Thumbnail};
 use iced::{Point, Rectangle, keyboard};
 
+// ── Shared types used in UiMessage ───────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub enum DiffLine {
+    Same(String),
+    Added(String),
+    Removed(String),
+    Header(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum FileLabel {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Blue,
+    Purple,
+    Gray,
+}
+
+impl FileLabel {
+    pub fn color(&self) -> iced::Color {
+        match self {
+            FileLabel::Red => iced::Color::from_rgb(0.9, 0.2, 0.2),
+            FileLabel::Orange => iced::Color::from_rgb(0.9, 0.5, 0.1),
+            FileLabel::Yellow => iced::Color::from_rgb(0.9, 0.8, 0.1),
+            FileLabel::Green => iced::Color::from_rgb(0.2, 0.7, 0.3),
+            FileLabel::Blue => iced::Color::from_rgb(0.2, 0.5, 0.9),
+            FileLabel::Purple => iced::Color::from_rgb(0.6, 0.2, 0.8),
+            FileLabel::Gray => iced::Color::from_rgb(0.5, 0.5, 0.5),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GrepResult {
+    pub path: PathBuf,
+    pub line_number: usize,
+    pub line: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AclEntry {
+    pub principal: String,
+    pub allow: bool,
+    pub permissions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GitFileStatus {
+    Modified,
+    Untracked,
+    Staged,
+    Conflict,
+    Deleted,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArchiveEntry {
+    pub name: String,
+    pub inner_path: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub compressed_size: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct HighlightedLine {
+    pub spans: Vec<(u32, String)>,  // (RGBA color, text)
+}
+
 pub mod app;
 pub mod theme;
 
@@ -26,6 +98,7 @@ pub const NETWORK_ROUTE: &str = "network://";
 pub enum RouteKind {
     Local(PathBuf),
     Network,
+    Recent,
 }
 
 #[derive(Debug, Clone)]
@@ -34,11 +107,13 @@ pub struct Route {
     pub kind: RouteKind,
 }
 
+pub const RECENT_ROUTE: &str = "recent://";
+
 impl Route {
     pub fn local_path(&self) -> Option<&PathBuf> {
         match &self.kind {
             RouteKind::Local(path) => Some(path),
-            RouteKind::Network => None,
+            RouteKind::Network | RouteKind::Recent => None,
         }
     }
 
@@ -46,6 +121,7 @@ impl Route {
         match &self.kind {
             RouteKind::Local(path) => path.clone(),
             RouteKind::Network => PathBuf::from(NETWORK_ROUTE),
+            RouteKind::Recent => PathBuf::from(RECENT_ROUTE),
         }
     }
 
@@ -53,6 +129,7 @@ impl Route {
         match &self.kind {
             RouteKind::Local(path) => path.display().to_string(),
             RouteKind::Network => NETWORK_ROUTE.to_string(),
+            RouteKind::Recent => RECENT_ROUTE.to_string(),
         }
     }
 
@@ -60,11 +137,16 @@ impl Route {
         match &self.kind {
             RouteKind::Local(path) => path.display().to_string(),
             RouteKind::Network => "Réseau".to_string(),
+            RouteKind::Recent => "Récents".to_string(),
         }
     }
 
     pub fn is_network(&self) -> bool {
         matches!(self.kind, RouteKind::Network)
+    }
+
+    pub fn is_recent(&self) -> bool {
+        matches!(self.kind, RouteKind::Recent)
     }
 }
 
@@ -200,6 +282,10 @@ pub enum UiMessage {
     AddressEditStart,
     AddressEditCancel,
     ToggleDarkMode,
+    /// Fold/unfold a named sidebar section (accordion).
+    ToggleSidebarSection(String),
+    /// Switch between compact (22 px) and normal (32 px) list row height.
+    ToggleCompactMode,
     TextPreviewLoaded {
         path: PathBuf,
         content: String,
@@ -211,6 +297,89 @@ pub enum UiMessage {
     TerminalSpawned(Result<crate::terminal::TerminalProcess, String>),
     TerminalPollOutput,
     TerminalAnimTick,
+    // Feature 1: Trash
+    TrashCompleted(Result<(), String>),
+    // Feature 3: Properties dialog
+    OpenProperties(PathBuf),
+    PropertiesHashComputed { path: PathBuf, hash: String },
+    CloseProperties,
+    // Feature 4: Color themes
+    SetTheme(crate::core::ThemeConfig),
+    // Feature 5: Bulk rename
+    OpenBulkRename,
+    BulkRenameFindChanged(String),
+    BulkRenameReplaceChanged(String),
+    BulkRenameToggleRegex,
+    BulkRenameApply,
+    BulkRenameCancel,
+    BulkRenameCompleted(Result<usize, String>),
+    // Feature 6: Syntax highlighting
+    TextHighlightComplete { path: PathBuf, lines: Vec<HighlightedLine> },
+    // Feature 7: Git status
+    GitStatusLoaded { root: PathBuf, statuses: std::collections::HashMap<PathBuf, GitFileStatus> },
+    // Feature 8: Disk usage
+    DirSizeLoaded { path: PathBuf, bytes: u64 },
+    // Feature 10: Archive browser
+    ArchiveListLoaded { archive_path: PathBuf, inner_path: String, entries: Vec<ArchiveEntry> },
+    ArchiveFolderOpen { inner_path: String },
+    ExtractArchiveEntry { archive: PathBuf, inner_path: String, dest_dir: PathBuf },
+    ExtractComplete(Result<PathBuf, String>),
+    // Feature 11: Dual pane
+    ToggleDualPane,
+    PaneBNavigate(PathBuf),
+    PaneBLoaded { path: PathBuf, entries: Vec<crate::filesystem::FsEntry> },
+    PaneBActivate(PathBuf),
+    SwitchActivePane,
+    // Feature A: Compress to ZIP
+    CompressToZip,
+    CompressCompleted(Result<std::path::PathBuf, String>),
+    // Feature B: Open With
+    OpenWith(std::path::PathBuf),
+    // Feature C: File Diff
+    OpenDiff,
+    DiffLoaded { path_a: std::path::PathBuf, path_b: std::path::PathBuf, lines: Vec<DiffLine> },
+    CloseDiff,
+    // Feature D: Multi-selection properties
+    SelectionSizeComputed(u64),
+    // Feature E: Quick Filter
+    QuickFilterChanged(String),
+    QuickFilterClear,
+    // Feature F: File Labels
+    SetLabel(std::path::PathBuf, Option<FileLabel>),
+    // Feature G: Recent Files
+    NavigateToRecent,
+    ClearRecents,
+    // Feature H: Column Resizing
+    ColumnResizeStart(String),
+    ColumnResizeEnd,
+    ColumnResized(String, f32),
+    // Feature I: Terminal Tabs
+    TerminalAddTab,
+    TerminalCloseTab(usize),
+    TerminalSwitchTab(usize),
+    // Feature J: Shell Switcher
+    SetShell(crate::core::ShellConfig),
+    // Feature K: Hex Viewer
+    OpenHexView(std::path::PathBuf),
+    HexViewLoaded { path: std::path::PathBuf, data: Vec<u8> },
+    CloseHexView,
+    HexViewScroll(usize),
+    // Feature L: Encoding detection (handled in TextPreviewLoaded, no extra message)
+    // Feature M: TAR.GZ / 7Z (reuses ArchiveListLoaded)
+    // Network discovery
+    NetworkScanCompleted(Vec<crate::services::NetworkResource>),
+    // Feature N: Gitignore
+    ToggleGitignore,
+    // Feature O: Grep
+    OpenGrep,
+    GrepQueryChanged(String),
+    GrepSearch,
+    GrepResultsLoaded(Vec<GrepResult>),
+    CloseGrep,
+    // Feature P: NTFS Permissions
+    OpenPermissions(std::path::PathBuf),
+    PermissionsLoaded { path: std::path::PathBuf, entries: Vec<AclEntry> },
+    ClosePermissions,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -220,7 +389,7 @@ pub enum SelectionKind {
     Range,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum KeyboardCommand {
     MoveUp { extend: bool },
     MoveDown { extend: bool },
@@ -242,6 +411,14 @@ pub enum KeyboardCommand {
     CloseCurrentTab,
     NextTab,
     PrevTab,
+    QuickLook,
+    BulkRename,
+    ToggleDualPane,
+    SwitchActivePane,
+    OpenDiff,
+    QuickFilterChanged(String),
+    QuickFilterClear,
+    OpenGrep,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -255,8 +432,23 @@ pub struct ModifiersState {
 pub enum ContextAction {
     Open,
     Rename,
+    MoveToTrash,
     Delete,
     CopyPath,
+    OpenProperties,
+    OpenBulkRename,
+    CompressToZip,
+    OpenWith,
+    OpenDiff,
+    OpenHexView,
+    OpenPermissions,
+    SetLabelRed,
+    SetLabelOrange,
+    SetLabelYellow,
+    SetLabelGreen,
+    SetLabelBlue,
+    SetLabelPurple,
+    RemoveLabel,
 }
 
 #[derive(Debug, Clone, Copy)]

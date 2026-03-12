@@ -128,6 +128,15 @@ impl LocalFileSystem {
         name.starts_with('.')
     }
 
+    #[cfg(target_os = "windows")]
+    fn is_hidden_windows(path: &std::path::Path) -> bool {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x0002;
+        std::fs::metadata(path)
+            .map(|m| m.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0)
+            .unwrap_or(false)
+    }
+
     fn matches_filter(entry_type: FsEntryType, filter: EntryFilter) -> bool {
         match filter {
             EntryFilter::All => true,
@@ -185,8 +194,12 @@ impl FileSystem for LocalFileSystem {
             let file_name = entry.file_name();
             let name = file_name.to_string_lossy().to_string();
 
-            if !options.show_hidden && Self::is_hidden(&name) {
-                continue;
+            if !options.show_hidden {
+                #[cfg(target_os = "windows")]
+                let hidden = Self::is_hidden(&name) || Self::is_hidden_windows(&entry.path());
+                #[cfg(not(target_os = "windows"))]
+                let hidden = Self::is_hidden(&name);
+                if hidden { continue; }
             }
 
             let file_type = entry.file_type()?;
@@ -264,8 +277,12 @@ impl FileSystem for LocalFileSystem {
             let file_name = entry.file_name();
             let name = file_name.to_string_lossy().to_string();
 
-            if !options.show_hidden && Self::is_hidden(&name) {
-                continue;
+            if !options.show_hidden {
+                #[cfg(target_os = "windows")]
+                let hidden = Self::is_hidden(&name) || Self::is_hidden_windows(&entry.path());
+                #[cfg(not(target_os = "windows"))]
+                let hidden = Self::is_hidden(&name);
+                if hidden { continue; }
             }
 
             let file_type = entry.file_type()?;

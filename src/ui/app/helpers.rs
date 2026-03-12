@@ -319,6 +319,21 @@ pub fn command_from_key_press_with_shortcuts(
         return Some(KeyboardCommand::Refresh);
     }
 
+    // Space → QuickLook (no modifiers)
+    if matches!(&input.key, KeyKind::Named(NamedKey::Space)) && !input.ctrl && !input.alt && !input.shift {
+        return Some(KeyboardCommand::QuickLook);
+    }
+
+    // Shift+F2 → BulkRename
+    if matches!(&input.key, KeyKind::Named(NamedKey::F2)) && input.shift && !input.ctrl && !input.alt {
+        return Some(KeyboardCommand::BulkRename);
+    }
+
+    // F3 → ToggleDualPane
+    if matches!(&input.key, KeyKind::Named(NamedKey::F3)) && !input.ctrl && !input.alt && !input.shift {
+        return Some(KeyboardCommand::ToggleDualPane);
+    }
+
     // Tab management shortcuts (hardcoded, not user-configurable)
     if input.ctrl && !input.alt {
         match &input.key {
@@ -339,6 +354,42 @@ pub fn command_from_key_press_with_shortcuts(
         }
     }
 
+    // Tab without Ctrl → SwitchActivePane (only handled in app based on dual_pane state)
+    if matches!(&input.key, KeyKind::Named(NamedKey::Tab)) && !input.ctrl && !input.alt && !input.shift {
+        // CyclePaneFocus handled via shortcut binding; this fallback for SwitchActivePane
+        // is handled via the CyclePaneFocus binding in the default config (Tab = CyclePaneFocus)
+        // so we don't emit SwitchActivePane here; the app handles it contextually
+    }
+
+    // Ctrl+D → OpenDiff (when 2 files selected)
+    if input.ctrl && !input.alt && !input.shift {
+        if let KeyKind::Character(c) = &input.key {
+            if c == "d" {
+                return Some(KeyboardCommand::OpenDiff);
+            }
+        }
+    }
+
+    // Ctrl+Shift+F → OpenGrep
+    if input.ctrl && !input.alt && input.shift {
+        if let KeyKind::Character(c) = &input.key {
+            if c == "f" {
+                return Some(KeyboardCommand::OpenGrep);
+            }
+        }
+    }
+
+    // Quick filter: printable single character, no modifiers
+    if !input.ctrl && !input.alt && !input.shift {
+        if let KeyKind::Character(c) = &input.key {
+            if c.len() == 1 && c.chars().next().map_or(false, |ch| ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '.') {
+                return Some(KeyboardCommand::QuickFilterChanged(c.clone()));
+            }
+        }
+    }
+
+    // Escape clears quick filter (handled in mod.rs via ClearSelection pattern)
+
     None
 }
 
@@ -354,7 +405,9 @@ pub fn key_input_from_event(key: keyboard::Key, modifiers: keyboard::Modifiers) 
             keyboard::key::Named::Enter => KeyKind::Named(NamedKey::Enter),
             keyboard::key::Named::Escape => KeyKind::Named(NamedKey::Escape),
             keyboard::key::Named::Tab => KeyKind::Named(NamedKey::Tab),
+            keyboard::key::Named::Space => KeyKind::Named(NamedKey::Space),
             keyboard::key::Named::F2 => KeyKind::Named(NamedKey::F2),
+            keyboard::key::Named::F3 => KeyKind::Named(NamedKey::F3),
             keyboard::key::Named::F5 => KeyKind::Named(NamedKey::F5),
             keyboard::key::Named::Delete => KeyKind::Named(NamedKey::Delete),
             _ => return None,

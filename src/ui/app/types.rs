@@ -19,7 +19,7 @@ use crate::filesystem::{FileOperationKind, FsEntry, FileWatcher, Page, WatchEven
 use crate::services::{
     FavoritesService, PreviewImageService, SearchIndex, ThumbnailService, VirtualWindow,
 };
-use crate::ui::{NETWORK_ROUTE, RouteKind};
+use crate::ui::{NETWORK_ROUTE, RECENT_ROUTE, RouteKind, DiffLine, GrepResult, AclEntry};
 
 // ── Paginated entry buffer ────────────────────────────────────────────────────
 
@@ -262,7 +262,7 @@ pub(super) struct PaneResizeState {
 impl Default for PaneResizeState {
     fn default() -> Self {
         Self {
-            tree_height: 240.0,
+            tree_height: 150.0,
             tree_resizing: false,
             tree_resize_anchor: None,
             preview_width: 280.0,
@@ -348,16 +348,15 @@ impl AddressValidationCache {
 const TERMINAL_MAX_LINES: usize = 500;
 
 #[derive(Debug, Default)]
-pub(super) struct TerminalState {
+pub(super) struct TerminalTab {
+    pub(super) title: String,
     pub(super) input: String,
     pub(super) lines: Vec<String>,
-    /// Live CMD process — None when terminal is closed.
     pub(super) process: Option<crate::terminal::TerminalProcess>,
-    /// Working directory tracked from `cd` commands.
     pub(super) cwd: Option<std::path::PathBuf>,
 }
 
-impl TerminalState {
+impl TerminalTab {
     pub(super) fn push_lines(&mut self, new_lines: Vec<String>) {
         self.lines.extend(new_lines);
         if self.lines.len() > TERMINAL_MAX_LINES {
@@ -370,19 +369,15 @@ impl TerminalState {
         self.lines.push(format!("{}> {}", cwd.display(), cmd));
     }
 
-    /// Effective working directory: uses tracked cwd or falls back to `fallback`.
     pub(super) fn effective_cwd<'a>(&'a self, fallback: &'a std::path::Path) -> &'a std::path::Path {
         self.cwd.as_deref().unwrap_or(fallback)
     }
 
-    /// Try to parse and track a `cd` command, returning the new cwd if successful.
     pub(super) fn apply_cd(&mut self, cmd: &str, fallback: &std::path::Path) {
         let trimmed = cmd.trim();
-        // Match "cd <path>" or "chdir <path>" (case-insensitive)
         let rest = if let Some(r) = trimmed.strip_prefix("cd ").or_else(|| trimmed.strip_prefix("CD ")).or_else(|| trimmed.strip_prefix("chdir ")).or_else(|| trimmed.strip_prefix("CHDIR ")) {
             r.trim()
         } else if trimmed.eq_ignore_ascii_case("cd") || trimmed.eq_ignore_ascii_case("chdir") {
-            // `cd` with no args prints cwd — don't update anything
             return;
         } else {
             return;
@@ -394,9 +389,198 @@ impl TerminalState {
         } else {
             base.join(rest)
         };
-        // Only update if the resulting path looks valid (best-effort)
         self.cwd = Some(new_cwd);
     }
+}
+
+#[derive(Debug)]
+pub(super) struct TerminalState {
+    pub(super) tabs: Vec<TerminalTab>,
+    pub(super) active_tab: usize,
+    #[allow(dead_code)]
+    pub(super) visible: bool,
+    #[allow(dead_code)]
+    pub(super) anim_progress: f32,
+}
+
+impl Default for TerminalState {
+    fn default() -> Self {
+        let mut default_tab = TerminalTab::default();
+        default_tab.title = "Terminal 1".to_string();
+        Self {
+            tabs: vec![default_tab],
+            active_tab: 0,
+            visible: false,
+            anim_progress: 0.0,
+        }
+    }
+}
+
+impl TerminalState {
+    /// Get a mutable reference to the active tab.
+    pub(super) fn active(&mut self) -> &mut TerminalTab {
+        let idx = self.active_tab;
+        &mut self.tabs[idx]
+    }
+
+    /// Get an immutable reference to the active tab.
+    pub(super) fn active_ref(&self) -> &TerminalTab {
+        &self.tabs[self.active_tab]
+    }
+
+    // Delegate helpers to active tab for backward compat
+    pub(super) fn push_lines(&mut self, new_lines: Vec<String>) {
+        self.active().push_lines(new_lines);
+    }
+
+    pub(super) fn push_prompt(&mut self, cwd: &std::path::Path, cmd: &str) {
+        self.active().push_prompt(cwd, cmd);
+    }
+
+    pub(super) fn effective_cwd<'a>(&'a self, fallback: &'a std::path::Path) -> &'a std::path::Path {
+        self.active_ref().effective_cwd(fallback)
+    }
+
+    pub(super) fn apply_cd(&mut self, cmd: &str, fallback: &std::path::Path) {
+        let idx = self.active_tab;
+        self.tabs[idx].apply_cd(cmd, fallback);
+    }
+}
+
+// ── Properties dialog ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub(super) struct PropertiesDialog {
+    pub(super) path: PathBuf,
+    pub(super) size_bytes: Option<u64>,
+    pub(super) created: Option<String>,
+    pub(super) modified: Option<String>,
+    pub(super) readonly: bool,
+    pub(super) sha256: Option<String>,
+    pub(super) computing_hash: bool,
+    pub(super) selection_count: Option<usize>,
+}
+
+// ── Bulk rename ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub(super) struct BulkRenameState {
+    pub(super) paths: Vec<PathBuf>,
+    pub(super) find: String,
+    pub(super) replace: String,
+    pub(super) use_regex: bool,
+    pub(super) previews: Vec<(String, String)>,  // (original name, new name)
+    pub(super) error: Option<String>,
+}
+
+// ── Archive browser ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ArchiveType {
+    Zip,
+    TarGz,
+    SevenZ,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ArchiveBrowserState {
+    pub(super) archive_path: PathBuf,
+    pub(super) inner_path: String,       // current folder within archive
+    pub(super) entries: Vec<crate::ui::ArchiveEntry>,
+    #[allow(dead_code)]
+    pub(super) archive_type: ArchiveType,
+}
+
+// ── Diff viewer ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub(super) struct DiffViewState {
+    pub(super) path_a: PathBuf,
+    pub(super) path_b: PathBuf,
+    pub(super) lines: Vec<DiffLine>,
+    pub(super) loading: bool,
+}
+
+// ── Hex viewer ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub(super) struct HexViewState {
+    pub(super) path: PathBuf,
+    pub(super) data: Vec<u8>,
+    pub(super) offset: usize,  // scroll offset in rows of 16 bytes
+}
+
+// ── Grep ──────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub(super) struct GrepState {
+    pub(super) query: String,
+    pub(super) root: PathBuf,
+    pub(super) results: Vec<GrepResult>,
+    pub(super) searching: bool,
+}
+
+// ── Permissions viewer ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub(super) struct PermissionsViewState {
+    pub(super) path: PathBuf,
+    pub(super) entries: Vec<AclEntry>,
+    pub(super) loading: bool,
+}
+
+// ── Recents service ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub(super) struct RecentEntry {
+    pub(super) path: PathBuf,
+    #[allow(dead_code)]
+    pub(super) accessed: std::time::SystemTime,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct RecentsService {
+    pub(super) entries: std::collections::VecDeque<RecentEntry>,
+}
+
+impl RecentsService {
+    const MAX_ENTRIES: usize = 50;
+
+    pub(super) fn record(&mut self, path: PathBuf) {
+        // Remove existing entry for this path
+        self.entries.retain(|e| e.path != path);
+        self.entries.push_front(RecentEntry {
+            path,
+            accessed: std::time::SystemTime::now(),
+        });
+        if self.entries.len() > Self::MAX_ENTRIES {
+            self.entries.pop_back();
+        }
+    }
+
+    pub(super) fn list(&self) -> &std::collections::VecDeque<RecentEntry> {
+        &self.entries
+    }
+}
+
+// ── Column resize state ───────────────────────────────────────────────────────
+
+#[derive(Debug)]
+pub(super) struct ColumnResizeState {
+    pub(super) column: String,
+    pub(super) start_x: f32,
+    pub(super) start_width: f32,
+}
+
+// ── Dual pane ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub(super) struct PaneB {
+    pub(super) path: PathBuf,
+    pub(super) entries: Vec<crate::filesystem::FsEntry>,
+    #[allow(dead_code)]
+    pub(super) selection: std::collections::HashSet<std::path::PathBuf>,
+    pub(super) is_loading: bool,
 }
 
 // ── Scroll state ──────────────────────────────────────────────────────────────
@@ -448,9 +632,15 @@ pub(super) fn is_network_path(path: &Path) -> bool {
     path.to_string_lossy().starts_with(NETWORK_ROUTE)
 }
 
+pub(super) fn is_recent_path(path: &Path) -> bool {
+    path.to_string_lossy().starts_with(RECENT_ROUTE)
+}
+
 pub(super) fn route_kind_from_path(path: &Path) -> RouteKind {
     if is_network_path(path) {
         RouteKind::Network
+    } else if is_recent_path(path) {
+        RouteKind::Recent
     } else {
         RouteKind::Local(path.to_path_buf())
     }

@@ -3,7 +3,7 @@
 //! Handles directory loading, search indexing, navigation, tab management,
 //! and file watcher synchronization.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -11,7 +11,7 @@ use iced::Task;
 
 use crate::filesystem::{EntryFilter, ListOptions, LocalFileSystem, PageRequest, SortKey, SortOrder, WatchEvent};
 use crate::services::{SearchIndexOptions, SearchQuery, SearchService};
-use crate::ui::UiMessage;
+use crate::ui::{GitFileStatus, UiMessage};
 use crate::ui::theme::layout::TREE_MAX_DEPTH;
 use crate::ui::theme::timing::LOADING_INDICATOR_DELAY;
 
@@ -55,7 +55,23 @@ impl XionApp {
             self.request_page(0),
             self.schedule_loading_indicator(self.loading_generation),
             self.start_search_indexing(),
+            self.load_git_status(),
+            self.start_network_scan_if_needed(),
         ])
+    }
+
+    pub(super) fn start_network_scan_if_needed(&mut self) -> Task<UiMessage> {
+        if !self.state.route.is_network() {
+            return Task::none();
+        }
+        if !self.network_discovery.needs_scan() {
+            return Task::none();
+        }
+        self.network_discovery.mark_scanning();
+        Task::perform(
+            tokio::task::spawn_blocking(crate::services::network::NetworkDiscoveryService::run_scan),
+            |result| UiMessage::NetworkScanCompleted(result.unwrap_or_default()),
+        )
     }
 
     pub(super) fn sync_watcher(&mut self) {
@@ -158,6 +174,7 @@ impl XionApp {
     pub(super) fn navigate_to(&mut self, path: PathBuf) -> Task<UiMessage> {
         self.update_active_tab_path(path.clone());
         self.history.record(path);
+        self.save_tabs_to_config();
         self.refresh_entries()
     }
 
@@ -230,6 +247,11 @@ impl XionApp {
                     crate::ui::RouteKind::Network => {
                         Ok(network_discovery.list_page(options, page_request))
                     }
+                    crate::ui::RouteKind::Recent => {
+                        // Recent view handled separately; return empty page
+                        use crate::filesystem::Page;
+                        Ok(Page { items: vec![], total: 0, offset: 0, limit: 0 })
+                    }
                 };
                 (route_key, page_index, result)
             },
@@ -269,6 +291,7 @@ impl XionApp {
             .unwrap_or_else(|| self.state.config.start_path.clone());
         self.update_active_tab_path(active_path.clone());
         self.history.record(active_path);
+        self.save_tabs_to_config();
         self.refresh_entries()
     }
 
@@ -280,6 +303,7 @@ impl XionApp {
         let path = self.tabs[index].path.clone();
         self.update_active_tab_path(path.clone());
         self.history.record(path);
+        self.save_tabs_to_config();
         self.refresh_entries()
     }
 
@@ -297,9 +321,115 @@ impl XionApp {
             let path = tab.path.clone();
             self.update_active_tab_path(path.clone());
             self.history.record(path);
+            self.save_tabs_to_config();
             return self.refresh_entries();
         }
         Task::none()
+    }
+
+    /// Persists current tab state to config on disk.
+    pub(super) fn save_tabs_to_config(&mut self) {
+        self.state.config.tabs = self
+            .tabs
+            .iter()
+            .map(|t| crate::core::TabPersistConfig { path: t.path.clone() })
+            .collect();
+        self.state.config.active_tab_index = self.active_tab;
+        self.config_manager.save(&self.state.config);
+    }
+
+    pub(super) fn load_git_status(&self) -> Task<UiMessage> {
+        let Some(path) = self.state.route.local_path().cloned() else {
+            return Task::none();
+        };
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    let repo = git2::Repository::discover(&path).ok()?;
+                    let root = repo.workdir()?.to_path_buf();
+                    let statuses = repo.statuses(None).ok()?;
+                    let mut map: HashMap<PathBuf, GitFileStatus> = HashMap::new();
+                    for entry in statuses.iter() {
+                        let s = entry.status();
+                        let rel = entry.path()?;
+                        let file_path = root.join(rel);
+                        let status = if s.contains(git2::Status::CONFLICTED) {
+                            GitFileStatus::Conflict
+                        } else if s.intersects(
+                            git2::Status::INDEX_NEW
+                                | git2::Status::INDEX_MODIFIED
+                                | git2::Status::INDEX_DELETED,
+                        ) {
+                            GitFileStatus::Staged
+                        } else if s.intersects(
+                            git2::Status::WT_MODIFIED | git2::Status::WT_DELETED,
+                        ) {
+                            GitFileStatus::Modified
+                        } else if s.contains(git2::Status::WT_NEW) {
+                            GitFileStatus::Untracked
+                        } else {
+                            return None;
+                        };
+                        map.insert(file_path, status);
+                    }
+                    Some((root, map))
+                })
+                .await
+                .ok()
+                .flatten()
+            },
+            |result| match result {
+                Some((root, statuses)) => UiMessage::GitStatusLoaded { root, statuses },
+                None => UiMessage::Noop,
+            },
+        )
+    }
+
+    pub(super) fn request_dir_sizes(&mut self) -> Task<UiMessage> {
+        let mut tasks = Vec::new();
+        let entries_snapshot: Vec<PathBuf> = self
+            .entries
+            .items
+            .iter()
+            .flatten()
+            .filter(|e| e.entry_type == crate::filesystem::FsEntryType::Directory)
+            .map(|e| e.path.clone())
+            .collect();
+
+        for path in entries_snapshot {
+            if self.dir_sizes.contains_key(&path) || self.dir_sizes_loading.contains(&path) {
+                continue;
+            }
+            self.dir_sizes_loading.insert(path.clone());
+            let task_path = path.clone();
+            tasks.push(Task::perform(
+                async move {
+                    let bytes = tokio::task::spawn_blocking(move || {
+                        let mut total: u64 = 0;
+                        let mut count = 0usize;
+                        for e in walkdir::WalkDir::new(&task_path).min_depth(1).max_depth(6) {
+                            if count >= 50_000 {
+                                break;
+                            }
+                            if let Ok(e) = e {
+                                if let Ok(m) = e.metadata() {
+                                    if m.is_file() {
+                                        total += m.len();
+                                        count += 1;
+                                    }
+                                }
+                            }
+                        }
+                        total
+                    })
+                    .await
+                    .unwrap_or(0);
+                    (path, bytes)
+                },
+                |(path, bytes)| UiMessage::DirSizeLoaded { path, bytes },
+            ));
+        }
+        Task::batch(tasks)
     }
 
     pub(super) fn rebuild_tree_cache(&mut self) {

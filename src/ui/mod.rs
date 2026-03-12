@@ -322,6 +322,7 @@ pub enum UiMessage {
     // Feature 10: Archive browser
     ArchiveListLoaded { archive_path: PathBuf, inner_path: String, entries: Vec<ArchiveEntry> },
     ArchiveFolderOpen { inner_path: String },
+    CloseArchiveBrowser,
     ExtractArchiveEntry { archive: PathBuf, inner_path: String, dest_dir: PathBuf },
     ExtractComplete(Result<PathBuf, String>),
     // Feature 11: Dual pane

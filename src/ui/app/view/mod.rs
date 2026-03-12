@@ -1847,12 +1847,15 @@ impl XionApp {
 
             let archive_entries: Vec<Element<'_, UiMessage>> = archive.entries.iter()
                 .filter(|e| {
-                    // Show only entries in the current inner_path folder
+                    // Show only entries directly inside the current inner_path folder.
                     let path = &e.inner_path;
                     if archive.inner_path.is_empty() {
-                        !path.contains('/') || path.ends_with('/')
+                        // Root level: no '/' (files) or exactly one trailing '/' (dirs)
+                        !path.contains('/') || path.ends_with('/') && path.matches('/').count() == 1
                     } else {
-                        path.starts_with(&archive.inner_path)
+                        // Must start with "<inner_path>/" to avoid matching siblings
+                        let prefix = format!("{}/", archive.inner_path.trim_end_matches('/'));
+                        path.starts_with(&prefix)
                     }
                 })
                 .map(|entry| {
@@ -1908,7 +1911,6 @@ impl XionApp {
                     Some(parts[..parts.len() - 1].join("/"))
                 }
             };
-            let archive_close_path = archive.archive_path.clone();
             let mut archive_header_row = row![]
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center);
@@ -1932,11 +1934,7 @@ impl XionApp {
                 .push(horizontal_space())
                 .push(
                     button(text(icons::CLOSE).size(typography.body).font(typography.body_font))
-                        .on_press(UiMessage::ArchiveListLoaded {
-                            archive_path: archive_close_path,
-                            inner_path: String::new(),
-                            entries: Vec::new(),
-                        })
+                        .on_press(UiMessage::CloseArchiveBrowser)
                         .padding([spacing.xs, spacing.sm])
                         .style(move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
                             text_color: colors.text_muted,

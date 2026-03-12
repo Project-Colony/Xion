@@ -1372,6 +1372,9 @@ impl XionApp {
                     browser.inner_path = inner_path;
                 }
             }
+            UiMessage::CloseArchiveBrowser => {
+                self.archive_browser = None;
+            }
             UiMessage::ExtractArchiveEntry { archive, inner_path, dest_dir } => {
                 tasks.push(self.extract_archive_entry(archive, inner_path, dest_dir));
             }

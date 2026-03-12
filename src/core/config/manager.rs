@@ -134,6 +134,7 @@ struct AppConfigFileV1 {
     shortcuts: Option<ShortcutBindingsFile>,
     tabs: Option<Vec<TabPersistConfigFile>>,
     active_tab_index: Option<usize>,
+    compact_mode: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -444,6 +445,13 @@ fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarning>) -> Ap
     if let Some(idx) = file.active_tab_index {
         config.active_tab_index = idx;
     }
+    if let Some(compact_mode) = file.compact_mode {
+        config.compact_mode = compact_mode;
+        // Keep row_height in sync with persisted compact_mode
+        if compact_mode {
+            config.view.row_height = 22.0;
+        }
+    }
     config
 }
 
@@ -685,6 +693,7 @@ pub(super) fn config_to_file(config: &AppConfig) -> AppConfigFileV1 {
             .map(|t| TabPersistConfigFile { path: Some(t.path.clone()) })
             .collect()),
         active_tab_index: Some(config.active_tab_index),
+        compact_mode: Some(config.compact_mode),
         shortcuts: Some(ShortcutBindingsFile {
             move_up:              Some(chord_to_string(&config.shortcuts.move_up)),
             move_down:            Some(chord_to_string(&config.shortcuts.move_down)),

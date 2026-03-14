@@ -61,6 +61,8 @@ where
             },
         );
         if existing.is_some() {
+            // O(n) scan — acceptable for small max_entries; IndexMap would be O(1)
+            // but adds a dependency for negligible gain at typical cache sizes (<200).
             self.order.retain(|existing| existing != &key);
         }
         self.order.push_back(key);
@@ -163,8 +165,22 @@ impl DirectoryCache {
             }
         }
 
+        // After eviction, check if we can fit — single entry exceeds budget
+        if self.estimated_bytes + entry_bytes > self.max_bytes {
+            return;
+        }
+
         self.estimated_bytes += entry_bytes;
         self.inner.insert(path, entries);
+    }
+
+    pub fn remove(&mut self, path: &Path) {
+        if let Some(old) = self.inner.entries.get(path) {
+            self.estimated_bytes = self
+                .estimated_bytes
+                .saturating_sub(old.value.len() * ESTIMATED_BYTES_PER_ENTRY);
+        }
+        self.inner.remove(path);
     }
 
     pub fn clear(&mut self) {

@@ -8,6 +8,30 @@ use std::sync::{
 
 use crate::core::XionError;
 
+#[cfg(windows)]
+fn ensure_long_path(path: &std::path::Path) -> std::borrow::Cow<'_, std::path::Path> {
+    let s = path.to_string_lossy();
+    if s.len() > 240 && !s.starts_with("\\\\?\\") && path.is_absolute() {
+        if s.starts_with("\\\\") {
+            // UNC path: \\server\share -> \\?\UNC\server\share
+            std::borrow::Cow::Owned(std::path::PathBuf::from(
+                format!("\\\\?\\UNC\\{}", s.strip_prefix("\\\\").unwrap_or(&s))
+            ))
+        } else {
+            std::borrow::Cow::Owned(std::path::PathBuf::from(
+                format!("\\\\?\\{}", s)
+            ))
+        }
+    } else {
+        std::borrow::Cow::Borrowed(path)
+    }
+}
+
+#[cfg(not(windows))]
+fn ensure_long_path(path: &std::path::Path) -> std::borrow::Cow<'_, std::path::Path> {
+    std::borrow::Cow::Borrowed(path)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileOperationKind {
     Copy,
@@ -100,6 +124,18 @@ impl LocalFileOperations {
 
     pub fn rename_item(&self, from: &Path, to: &Path) -> OperationReport {
         let mut report = OperationReport::new(FileOperationKind::Rename);
+        if let Some(name) = to.file_name().and_then(|n| n.to_str()) {
+            if is_reserved_windows_name(name) {
+                report.push_failure(
+                    from.to_path_buf(),
+                    XionError::Io(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("'{}' is a reserved Windows filename", name),
+                    )),
+                );
+                return report;
+            }
+        }
         match move_entry(from, to) {
             Ok(()) => report.succeeded.push(to.to_path_buf()),
             Err(error) => report.push_failure(from.to_path_buf(), error),
@@ -119,6 +155,21 @@ impl LocalFileOperations {
     }
 }
 
+#[cfg(windows)]
+fn is_reserved_windows_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
+    matches!(stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL"
+        | "COM1" | "COM2" | "COM3" | "COM4" | "COM5" | "COM6" | "COM7" | "COM8" | "COM9"
+        | "LPT1" | "LPT2" | "LPT3" | "LPT4" | "LPT5" | "LPT6" | "LPT7" | "LPT8" | "LPT9"
+    )
+}
+
+#[cfg(not(windows))]
+fn is_reserved_windows_name(_name: &str) -> bool {
+    false
+}
+
 fn destination_for(source: &Path, dest_dir: &Path) -> Result<PathBuf, XionError> {
     let name = source
         .file_name()
@@ -126,6 +177,11 @@ fn destination_for(source: &Path, dest_dir: &Path) -> Result<PathBuf, XionError>
     Ok(dest_dir.join(name))
 }
 
+/// Best-effort pre-check for destination existence.
+///
+/// This is subject to TOCTOU races: another process may create the path
+/// between this check and the actual operation. Callers should also handle
+/// `AlreadyExists` errors from the underlying fs operations.
 fn ensure_destination_absent(destination: &Path) -> Result<(), XionError> {
     if destination.exists() {
         return Err(XionError::Io(io::Error::new(
@@ -137,25 +193,51 @@ fn ensure_destination_absent(destination: &Path) -> Result<(), XionError> {
 }
 
 fn copy_entry(source: &Path, destination: &Path) -> Result<(), XionError> {
-    ensure_destination_absent(destination)?;
-    let metadata = fs::symlink_metadata(source)?;
+    let source = ensure_long_path(source);
+    let destination = ensure_long_path(destination);
+    ensure_destination_absent(&destination)?;
+    let metadata = fs::symlink_metadata(source.as_ref())?;
     if metadata.file_type().is_dir() {
-        copy_dir_recursive(source, destination)?;
+        copy_dir_recursive(source.as_ref(), destination.as_ref())?;
     } else {
-        fs::copy(source, destination)?;
-        copy_file_times(source, destination);
+        match fs::copy(source.as_ref(), destination.as_ref()) {
+            Ok(_) => {}
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                return Err(XionError::Io(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!("Destination already exists: {}", destination.display()),
+                )));
+            }
+            Err(e) => return Err(XionError::Io(e)),
+        }
+        copy_file_times(source.as_ref(), destination.as_ref());
     }
     Ok(())
 }
 
 fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), XionError> {
-    ensure_destination_absent(destination)?;
-    fs::create_dir_all(destination)?;
-    for entry in fs::read_dir(source)? {
+    let source = ensure_long_path(source);
+    let destination = ensure_long_path(destination);
+    ensure_destination_absent(&destination)?;
+    match fs::create_dir_all(destination.as_ref()) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            return Err(XionError::Io(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("Destination already exists: {}", destination.display()),
+            )));
+        }
+        Err(e) => return Err(XionError::Io(e)),
+    }
+    for entry in fs::read_dir(source.as_ref())? {
         let entry = entry?;
         let path = entry.path();
         let target = destination.join(entry.file_name());
         let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            tracing::warn!("Copie: lien symbolique ignoré: {}", path.display());
+            continue;
+        }
         if file_type.is_dir() {
             copy_dir_recursive(&path, &target)?;
         } else {
@@ -164,7 +246,7 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), XionError
         }
     }
     // Set directory times after all children are processed.
-    copy_file_times(source, destination);
+    copy_file_times(source.as_ref(), destination.as_ref());
     Ok(())
 }
 
@@ -186,12 +268,19 @@ fn copy_file_times(source: &Path, destination: &Path) {
 }
 
 fn move_entry(source: &Path, destination: &Path) -> Result<(), XionError> {
-    ensure_destination_absent(destination)?;
-    match fs::rename(source, destination) {
+    let source = ensure_long_path(source);
+    let destination = ensure_long_path(destination);
+    ensure_destination_absent(&destination)?;
+    match fs::rename(source.as_ref(), destination.as_ref()) {
         Ok(()) => Ok(()),
         Err(error) if is_cross_device_error(&error) => {
-            copy_entry(source, destination)?;
-            delete_entry(source)?;
+            copy_entry(&source, &destination)?;
+            if let Err(del_err) = delete_entry(&source) {
+                // Rollback: copy succeeded but delete failed — remove the copy
+                tracing::warn!("Move cross-device: suppression source échouée, rollback copie: {del_err}");
+                let _ = delete_entry(&destination);
+                return Err(del_err);
+            }
             Ok(())
         }
         Err(error) => Err(XionError::Io(error)),
@@ -199,11 +288,13 @@ fn move_entry(source: &Path, destination: &Path) -> Result<(), XionError> {
 }
 
 fn delete_entry(path: &Path) -> Result<(), XionError> {
-    let metadata = fs::symlink_metadata(path)?;
-    if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() {
-        fs::remove_dir_all(path)?;
+    let path = ensure_long_path(path);
+    let metadata = fs::symlink_metadata(path.as_ref())?;
+    let ft = metadata.file_type();
+    if ft.is_dir() && !ft.is_symlink() {
+        fs::remove_dir_all(path.as_ref())?;
     } else {
-        fs::remove_file(path)?;
+        fs::remove_file(path.as_ref())?;
     }
     Ok(())
 }

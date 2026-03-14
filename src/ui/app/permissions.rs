@@ -14,11 +14,11 @@ pub(super) fn parse_icacls_output(text: &str) -> Vec<AclEntry> {
     for line in text.lines() {
         let line = line.trim();
         if let Some(colon_pos) = line.rfind(":(") {
-            let principal = line[..colon_pos].trim().to_string();
+            let principal = line.get(..colon_pos).unwrap_or("").trim().to_string();
             if principal.is_empty() || principal.starts_with("Successfully") {
                 continue;
             }
-            let perms_str = &line[colon_pos + 1..];
+            let perms_str = line.get(colon_pos + 1..).unwrap_or("");
             let allow = !perms_str.contains("(DENY)");
             let mut permissions = Vec::new();
             if perms_str.contains("(F)")  { permissions.push("Contrôle total".to_string()); }

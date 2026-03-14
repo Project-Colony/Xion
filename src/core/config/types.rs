@@ -65,18 +65,13 @@ pub enum ThemeConfig {
     HighContrast,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub enum ShellConfig {
+    #[default]
     Cmd,
     PowerShell,
     GitBash,
     Custom(String),
-}
-
-impl Default for ShellConfig {
-    fn default() -> Self {
-        ShellConfig::Cmd
-    }
 }
 
 // ── Per-subsystem config structs ──────────────────────────────────────────────
@@ -205,6 +200,8 @@ pub struct AppConfig {
     pub column_widths: std::collections::HashMap<String, f32>,
     /// Compact list rows (22 px) instead of normal (32 px).
     pub compact_mode: bool,
+    /// User-added sidebar favorites (persisted across sessions).
+    pub user_favorites: Vec<PathBuf>,
 }
 
 impl Default for AppConfig {
@@ -232,6 +229,7 @@ impl Default for AppConfig {
             labels: std::collections::HashMap::new(),
             column_widths,
             compact_mode: false,
+            user_favorites: Vec::new(),
         }
     }
 }

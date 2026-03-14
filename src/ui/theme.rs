@@ -168,6 +168,22 @@ pub struct UiColors {
     pub hover: Color,
     /// Background color for pressed items.
     pub pressed: Color,
+    /// Color for diff/rename "removed" (old) lines.
+    pub diff_removed: Color,
+    /// Color for diff/rename "added" (new) lines.
+    pub diff_added: Color,
+    /// Color for git staged files.
+    pub git_staged: Color,
+    /// Color for git conflict files.
+    pub git_conflict: Color,
+    /// Color for git deleted files.
+    pub git_deleted: Color,
+    /// Color for address bar "directory" validation badge.
+    pub address_directory: Color,
+    /// Color for address bar "file" validation badge.
+    pub address_file: Color,
+    /// Color for address bar "not found" validation badge.
+    pub address_not_found: Color,
 }
 
 impl Default for UiColors {
@@ -184,6 +200,14 @@ impl Default for UiColors {
             selection_border: Color::from_rgb8(178, 206, 236),
             hover: Color::from_rgb8(233, 239, 247),
             pressed: Color::from_rgb8(220, 230, 244),
+            diff_removed: Color::from_rgb(0.9, 0.4, 0.4),
+            diff_added: Color::from_rgb(0.4, 0.9, 0.4),
+            git_staged: Color::from_rgb8(80, 200, 80),
+            git_conflict: Color::from_rgb8(220, 50, 50),
+            git_deleted: Color::from_rgb8(200, 80, 80),
+            address_directory: Color::from_rgb8(55, 125, 60),
+            address_file: Color::from_rgb8(186, 120, 40),
+            address_not_found: Color::from_rgb8(176, 72, 72),
         }
     }
 }
@@ -273,6 +297,14 @@ impl UiColors {
             selection_border: Color::from_rgb8(60, 90, 130),
             hover: Color::from_rgb8(44, 44, 52),
             pressed: Color::from_rgb8(50, 50, 60),
+            diff_removed: Color::from_rgb(0.9, 0.4, 0.4),
+            diff_added: Color::from_rgb(0.4, 0.9, 0.4),
+            git_staged: Color::from_rgb8(80, 200, 80),
+            git_conflict: Color::from_rgb8(220, 50, 50),
+            git_deleted: Color::from_rgb8(200, 80, 80),
+            address_directory: Color::from_rgb8(86, 182, 94),
+            address_file: Color::from_rgb8(210, 160, 70),
+            address_not_found: Color::from_rgb8(200, 100, 100),
         }
     }
 
@@ -290,6 +322,14 @@ impl UiColors {
             selection_border: Color::from_rgb8(129, 161, 193),
             hover: Color::from_rgb8(67, 76, 94),
             pressed: Color::from_rgb8(76, 86, 106),
+            diff_removed: Color::from_rgb8(191, 97, 106),
+            diff_added: Color::from_rgb8(163, 190, 140),
+            git_staged: Color::from_rgb8(163, 190, 140),
+            git_conflict: Color::from_rgb8(191, 97, 106),
+            git_deleted: Color::from_rgb8(208, 135, 112),
+            address_directory: Color::from_rgb8(163, 190, 140),
+            address_file: Color::from_rgb8(235, 203, 139),
+            address_not_found: Color::from_rgb8(191, 97, 106),
         }
     }
 
@@ -307,6 +347,14 @@ impl UiColors {
             selection_border: Color::from_rgb8(42, 161, 152),
             hover: Color::from_rgb8(7, 54, 66),
             pressed: Color::from_rgb8(0, 43, 54),
+            diff_removed: Color::from_rgb8(220, 50, 47),
+            diff_added: Color::from_rgb8(133, 153, 0),
+            git_staged: Color::from_rgb8(133, 153, 0),
+            git_conflict: Color::from_rgb8(220, 50, 47),
+            git_deleted: Color::from_rgb8(203, 75, 22),
+            address_directory: Color::from_rgb8(133, 153, 0),
+            address_file: Color::from_rgb8(181, 137, 0),
+            address_not_found: Color::from_rgb8(220, 50, 47),
         }
     }
 
@@ -324,6 +372,14 @@ impl UiColors {
             selection_border: Color::from_rgb8(255, 255, 0),
             hover: Color::from_rgb8(32, 32, 32),
             pressed: Color::from_rgb8(64, 64, 64),
+            diff_removed: Color::from_rgb8(255, 80, 80),
+            diff_added: Color::from_rgb8(80, 255, 80),
+            git_staged: Color::from_rgb8(80, 255, 80),
+            git_conflict: Color::from_rgb8(255, 80, 80),
+            git_deleted: Color::from_rgb8(255, 128, 128),
+            address_directory: Color::from_rgb8(80, 255, 80),
+            address_file: Color::from_rgb8(255, 255, 80),
+            address_not_found: Color::from_rgb8(255, 80, 80),
         }
     }
 
@@ -356,15 +412,6 @@ impl UiTokens {
         Self {
             colors: UiColors::dark(),
             ..Default::default()
-        }
-    }
-
-    /// Returns tokens matching the dark_mode flag.
-    pub fn for_mode(dark_mode: bool) -> Self {
-        if dark_mode {
-            Self::dark()
-        } else {
-            Self::default()
         }
     }
 

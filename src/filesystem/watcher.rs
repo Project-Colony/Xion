@@ -60,6 +60,9 @@ impl NativeFileWatcher {
         for path in event.paths {
             if self.queued.len() < MAX_QUEUED_EVENTS {
                 self.queued.push_back(WatchEvent { path, kind });
+            } else {
+                tracing::warn!("FileWatcher: queue pleine ({MAX_QUEUED_EVENTS}), events ignorés");
+                break;
             }
         }
     }

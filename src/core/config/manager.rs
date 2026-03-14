@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 
 use super::shortcuts::{KeyChord, KeyKind, NamedKey, ShortcutBindings};
 use super::types::{
-    AppConfig, AppConfigLoad, CacheConfig, ConfigSource, ConfigWarning, EntryFilterConfig,
-    FilesystemConfig, ListConfig, PagingConfig, ShellConfig, SortKeyConfig, SortOrderConfig,
-    TabPersistConfig, ThemeConfig, ViewColumn, ViewConfig, ViewMode,
+    AppConfig, AppConfigLoad, ConfigSource, ConfigWarning, EntryFilterConfig,
+    ShellConfig, SortKeyConfig, SortOrderConfig,
+    TabPersistConfig, ThemeConfig, ViewColumn, ViewMode,
 };
 
 // ── Validation constants ──────────────────────────────────────────────────────
@@ -22,6 +22,7 @@ const MAX_THUMBNAIL_SIZE: u32 = 256;
 const MIN_CACHE_ENTRIES: usize = 32;
 const MAX_CACHE_ENTRIES: usize = 8192;
 const MIN_CACHE_TTL_SECONDS: u64 = 30;
+const MAX_CACHE_TTL_SECONDS: u64 = 86400; // 24h max
 const MIN_PAGE_SIZE: usize = 24;
 const MAX_PAGE_SIZE: usize = 2048;
 const MIN_ROW_HEIGHT: f32 = 20.0;
@@ -87,14 +88,23 @@ impl ConfigManager {
         }
     }
 
-    /// Saves the current config to disk. Errors are silently ignored.
+    /// Saves the current config to disk. Errors are logged via tracing.
     pub fn save(&self, config: &AppConfig) {
         let file = config_to_file(config);
-        if let Ok(contents) = toml::to_string_pretty(&file) {
-            if let Some(parent) = self.path.parent() {
-                let _ = fs::create_dir_all(parent);
+        match toml::to_string_pretty(&file) {
+            Ok(contents) => {
+                if let Some(parent) = self.path.parent() {
+                    if let Err(e) = fs::create_dir_all(parent) {
+                        tracing::warn!("Config: impossible de créer {}: {e}", parent.display());
+                    }
+                }
+                if let Err(e) = fs::write(&self.path, contents) {
+                    tracing::warn!("Config: impossible d'écrire {}: {e}", self.path.display());
+                }
             }
-            let _ = fs::write(&self.path, contents);
+            Err(e) => {
+                tracing::warn!("Config: erreur sérialisation TOML: {e}");
+            }
         }
     }
 }
@@ -135,6 +145,11 @@ struct AppConfigFileV1 {
     tabs: Option<Vec<TabPersistConfigFile>>,
     active_tab_index: Option<usize>,
     compact_mode: Option<bool>,
+    terminal_shell: Option<String>,
+    respect_gitignore: Option<bool>,
+    labels: Option<std::collections::HashMap<String, String>>,
+    column_widths: Option<std::collections::HashMap<String, f32>>,
+    user_favorites: Option<Vec<PathBuf>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -267,7 +282,10 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
         }
         other => {
             return Err(ConfigError {
-                message: format!("Version de config inconnue: {other}"),
+                message: format!(
+                    "Version de config {other} non supportée (max: {CURRENT_CONFIG_VERSION}). \
+                     Mettez à jour Xion ou supprimez le fichier de config pour le recréer."
+                ),
             });
         }
     };
@@ -321,7 +339,12 @@ fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarning>) -> Ap
             "Nord" => ThemeConfig::Nord,
             "Solarized" => ThemeConfig::Solarized,
             "HighContrast" => ThemeConfig::HighContrast,
-            _ => ThemeConfig::default(),
+            other => {
+                warnings.push(ConfigWarning {
+                    message: format!("Thème inconnu '{}', utilisation du thème par défaut", other),
+                });
+                ThemeConfig::default()
+            }
         };
     }
     if let Some(start_path) = file.start_path {
@@ -443,7 +466,9 @@ fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarning>) -> Ap
         }
     }
     if let Some(idx) = file.active_tab_index {
-        config.active_tab_index = idx;
+        if !config.tabs.is_empty() {
+            config.active_tab_index = idx.min(config.tabs.len() - 1);
+        }
     }
     if let Some(compact_mode) = file.compact_mode {
         config.compact_mode = compact_mode;
@@ -451,6 +476,50 @@ fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarning>) -> Ap
         if compact_mode {
             config.view.row_height = 22.0;
         }
+    }
+    if let Some(shell_str) = file.terminal_shell {
+        config.terminal_shell = match shell_str.as_str() {
+            "Cmd" => ShellConfig::Cmd,
+            "PowerShell" => ShellConfig::PowerShell,
+            "GitBash" => ShellConfig::GitBash,
+            other => ShellConfig::Custom(other.to_string()),
+        };
+    }
+    if let Some(respect_gitignore) = file.respect_gitignore {
+        config.respect_gitignore = respect_gitignore;
+    }
+    if let Some(labels_map) = file.labels {
+        use std::path::PathBuf as LabelPath;
+        for (path_str, label_str) in labels_map {
+            let label = match label_str.as_str() {
+                "Red" => crate::ui::FileLabel::Red,
+                "Orange" => crate::ui::FileLabel::Orange,
+                "Yellow" => crate::ui::FileLabel::Yellow,
+                "Green" => crate::ui::FileLabel::Green,
+                "Blue" => crate::ui::FileLabel::Blue,
+                "Purple" => crate::ui::FileLabel::Purple,
+                "Gray" => crate::ui::FileLabel::Gray,
+                _ => continue,
+            };
+            config.labels.insert(LabelPath::from(path_str), label);
+        }
+    }
+    if let Some(column_widths) = file.column_widths {
+        // Validate: only keep positive widths
+        let valid: std::collections::HashMap<String, f32> = column_widths
+            .into_iter()
+            .filter(|(_, w)| *w > 0.0 && w.is_finite())
+            .collect();
+        if !valid.is_empty() {
+            config.column_widths = valid;
+        }
+    }
+    if let Some(user_favorites) = file.user_favorites {
+        // Keep only paths that still exist on disk
+        config.user_favorites = user_favorites
+            .into_iter()
+            .filter(|p| p.exists())
+            .collect();
     }
     config
 }
@@ -484,9 +553,9 @@ fn validated_cache_entries(value: usize, fallback: usize, label: &str, warnings:
 }
 
 fn validated_cache_ttl(value: u64, fallback: u64, label: &str, warnings: &mut Vec<ConfigWarning>) -> u64 {
-    if value >= MIN_CACHE_TTL_SECONDS { return value; }
+    if (MIN_CACHE_TTL_SECONDS..=MAX_CACHE_TTL_SECONDS).contains(&value) { return value; }
     warnings.push(ConfigWarning {
-        message: format!("{label} trop bas (min {MIN_CACHE_TTL_SECONDS}), fallback sur {fallback}"),
+        message: format!("{label} hors limites ({MIN_CACHE_TTL_SECONDS}-{MAX_CACHE_TTL_SECONDS}s), fallback sur {fallback}"),
     });
     fallback
 }
@@ -540,9 +609,10 @@ fn validated_grid_row_height(value: f32, fallback: f32, warnings: &mut Vec<Confi
 }
 
 fn validated_overscan(value: usize, fallback: usize, warnings: &mut Vec<ConfigWarning>) -> usize {
-    if value <= MAX_OVERSCAN { return value; }
+    const MIN_OVERSCAN: usize = 1;
+    if (MIN_OVERSCAN..=MAX_OVERSCAN).contains(&value) { return value; }
     warnings.push(ConfigWarning {
-        message: format!("overscan hors limites (max {MAX_OVERSCAN}), fallback sur {fallback}"),
+        message: format!("overscan hors limites ({MIN_OVERSCAN}-{MAX_OVERSCAN}), fallback sur {fallback}"),
     });
     fallback
 }
@@ -628,7 +698,7 @@ fn chord_to_string(chord: &KeyChord) -> String {
     parts.join("+")
 }
 
-pub(super) fn config_to_file(config: &AppConfig) -> AppConfigFileV1 {
+fn config_to_file(config: &AppConfig) -> AppConfigFileV1 {
     let theme_str = match config.theme {
         ThemeConfig::Light        => "Light",
         ThemeConfig::Dark         => "Dark",
@@ -694,6 +764,42 @@ pub(super) fn config_to_file(config: &AppConfig) -> AppConfigFileV1 {
             .collect()),
         active_tab_index: Some(config.active_tab_index),
         compact_mode: Some(config.compact_mode),
+        terminal_shell: Some(match &config.terminal_shell {
+            ShellConfig::Cmd => "Cmd".to_string(),
+            ShellConfig::PowerShell => "PowerShell".to_string(),
+            ShellConfig::GitBash => "GitBash".to_string(),
+            ShellConfig::Custom(s) => s.clone(),
+        }),
+        respect_gitignore: Some(config.respect_gitignore),
+        labels: if config.labels.is_empty() {
+            None
+        } else {
+            let map: std::collections::HashMap<String, String> = config.labels.iter()
+                .map(|(path, label)| {
+                    let label_str = match label {
+                        crate::ui::FileLabel::Red => "Red",
+                        crate::ui::FileLabel::Orange => "Orange",
+                        crate::ui::FileLabel::Yellow => "Yellow",
+                        crate::ui::FileLabel::Green => "Green",
+                        crate::ui::FileLabel::Blue => "Blue",
+                        crate::ui::FileLabel::Purple => "Purple",
+                        crate::ui::FileLabel::Gray => "Gray",
+                    };
+                    (path.display().to_string(), label_str.to_string())
+                })
+                .collect();
+            Some(map)
+        },
+        column_widths: if config.column_widths.is_empty() {
+            None
+        } else {
+            Some(config.column_widths.clone())
+        },
+        user_favorites: if config.user_favorites.is_empty() {
+            None
+        } else {
+            Some(config.user_favorites.clone())
+        },
         shortcuts: Some(ShortcutBindingsFile {
             move_up:              Some(chord_to_string(&config.shortcuts.move_up)),
             move_down:            Some(chord_to_string(&config.shortcuts.move_down)),

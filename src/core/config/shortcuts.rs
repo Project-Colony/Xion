@@ -73,6 +73,7 @@ impl KeyChord {
             "space" => KeyKind::Named(NamedKey::Space),
             "f2" => KeyKind::Named(NamedKey::F2),
             "f3" => KeyKind::Named(NamedKey::F3),
+            "f5" => KeyKind::Named(NamedKey::F5),
             "delete" | "del" => KeyKind::Named(NamedKey::Delete),
             other => {
                 if other.chars().count() == 1 {
@@ -133,54 +134,54 @@ pub struct ShortcutBindings {
 impl Default for ShortcutBindings {
     fn default() -> Self {
         Self {
-            move_up: KeyChord::parse("ArrowUp").unwrap_or(KeyChord {
+            move_up: KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowUp),
                 ctrl: false, alt: false, shift: false,
-            }),
-            move_down: KeyChord::parse("ArrowDown").unwrap_or(KeyChord {
+            },
+            move_down: KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowDown),
                 ctrl: false, alt: false, shift: false,
-            }),
-            move_home: KeyChord::parse("Home").unwrap_or(KeyChord {
+            },
+            move_home: KeyChord {
                 key: KeyKind::Named(NamedKey::Home),
                 ctrl: false, alt: false, shift: false,
-            }),
-            move_end: KeyChord::parse("End").unwrap_or(KeyChord {
+            },
+            move_end: KeyChord {
                 key: KeyKind::Named(NamedKey::End),
                 ctrl: false, alt: false, shift: false,
-            }),
-            activate: KeyChord::parse("Enter").unwrap_or(KeyChord {
+            },
+            activate: KeyChord {
                 key: KeyKind::Named(NamedKey::Enter),
                 ctrl: false, alt: false, shift: false,
-            }),
-            clear_selection: KeyChord::parse("Escape").unwrap_or(KeyChord {
+            },
+            clear_selection: KeyChord {
                 key: KeyKind::Named(NamedKey::Escape),
                 ctrl: false, alt: false, shift: false,
-            }),
-            cycle_pane_focus: KeyChord::parse("Tab").unwrap_or(KeyChord {
+            },
+            cycle_pane_focus: KeyChord {
                 key: KeyKind::Named(NamedKey::Tab),
                 ctrl: false, alt: false, shift: false,
-            }),
-            back: KeyChord::parse("Alt+ArrowLeft").unwrap_or(KeyChord {
+            },
+            back: KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowLeft),
                 ctrl: false, alt: true, shift: false,
-            }),
-            forward: KeyChord::parse("Alt+ArrowRight").unwrap_or(KeyChord {
+            },
+            forward: KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowRight),
                 ctrl: false, alt: true, shift: false,
-            }),
-            refresh: KeyChord::parse("Ctrl+R").unwrap_or_else(|_| KeyChord {
+            },
+            refresh: KeyChord {
                 key: KeyKind::Character("r".to_string()),
                 ctrl: true, alt: false, shift: false,
-            }),
-            select_all: KeyChord::parse("Ctrl+A").unwrap_or_else(|_| KeyChord {
+            },
+            select_all: KeyChord {
                 key: KeyKind::Character("a".to_string()),
                 ctrl: true, alt: false, shift: false,
-            }),
-            toggle_context_menu: KeyChord::parse("Ctrl+M").unwrap_or_else(|_| KeyChord {
+            },
+            toggle_context_menu: KeyChord {
                 key: KeyKind::Character("m".to_string()),
                 ctrl: true, alt: false, shift: false,
-            }),
+            },
             rename: KeyChord {
                 key: KeyKind::Named(NamedKey::F2),
                 ctrl: false, alt: false, shift: false,
@@ -189,14 +190,14 @@ impl Default for ShortcutBindings {
                 key: KeyKind::Named(NamedKey::Delete),
                 ctrl: false, alt: false, shift: false,
             },
-            new_folder: KeyChord::parse("Ctrl+Shift+N").unwrap_or_else(|_| KeyChord {
+            new_folder: KeyChord {
                 key: KeyKind::Character("n".to_string()),
                 ctrl: true, alt: false, shift: true,
-            }),
-            focus_search: KeyChord::parse("Ctrl+E").unwrap_or_else(|_| KeyChord {
+            },
+            focus_search: KeyChord {
                 key: KeyKind::Character("e".to_string()),
                 ctrl: true, alt: false, shift: false,
-            }),
+            },
         }
     }
 }

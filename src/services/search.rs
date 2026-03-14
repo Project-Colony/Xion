@@ -6,6 +6,10 @@ use crate::filesystem::{
     EntryFilter, FileSystem, FsEntry, FsEntryType, ListOptions, Page, PageRequest, SortKey,
 };
 
+/// Maximum directory recursion depth to prevent stack overflow on deeply nested
+/// or circular filesystem structures.
+const MAX_SEARCH_DEPTH: usize = 32;
+
 #[derive(Debug, Default)]
 pub struct SearchService;
 
@@ -147,7 +151,7 @@ impl SearchService {
         list_options: ListOptions,
     ) -> AppResult<SearchIndex> {
         let mut entries = Vec::new();
-        self.index_dir_with_options(filesystem, root, &options, &list_options, &mut entries)?;
+        self.index_dir_with_options(filesystem, root, &options, &list_options, &mut entries, MAX_SEARCH_DEPTH)?;
         Ok(SearchIndex {
             root: root.to_path_buf(),
             entries,
@@ -240,7 +244,12 @@ impl SearchService {
         options: &SearchIndexOptions,
         list_options: &ListOptions,
         output: &mut Vec<SearchEntry>,
+        remaining_depth: usize,
     ) -> AppResult<()> {
+        if remaining_depth == 0 {
+            tracing::warn!("Recherche: profondeur max atteinte à {:?}, résultats incomplets", path);
+            return Ok(());
+        }
         if options.max_entries > 0 && output.len() >= options.max_entries {
             return Ok(());
         }
@@ -249,7 +258,13 @@ impl SearchService {
         resolved_options.show_hidden = options.include_hidden;
         resolved_options.name_query = None;
 
-        let entries = filesystem.list_dir(path, resolved_options.clone())?;
+        let entries = match filesystem.list_dir(path, resolved_options.clone()) {
+            Ok(entries) => entries,
+            Err(_) => {
+                // Skip directories we can't access (permission denied, etc.)
+                return Ok(());
+            }
+        };
         for entry in entries {
             if options.max_entries > 0 && output.len() >= options.max_entries {
                 break;
@@ -276,13 +291,16 @@ impl SearchService {
             });
 
             if let Some(dir_path) = dir_path {
-                self.index_dir_with_options(
+                if let Err(e) = self.index_dir_with_options(
                     filesystem,
                     &dir_path,
                     options,
                     &resolved_options,
                     output,
-                )?;
+                    remaining_depth - 1,
+                ) {
+                    tracing::debug!("Recherche: indexation {:?} échouée: {e}", dir_path);
+                }
             }
         }
 

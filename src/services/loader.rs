@@ -73,6 +73,11 @@ impl DirectoryLoader {
         self.metadata_cache.clear();
     }
 
+    /// Invalidate cached data for a specific directory path.
+    pub fn invalidate(&mut self, path: &Path) {
+        self.directory_cache.remove(path);
+    }
+
     pub fn prefetch_metadata(&mut self, filesystem: &dyn FileSystem, paths: &[PathBuf]) {
         match filesystem.metadata_batch(paths) {
             Ok(metadata) => {

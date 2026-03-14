@@ -12,18 +12,18 @@ use iced::widget::button::Status as ButtonStatus;
 use tracing::{debug, info, warn};
 use iced::widget::{
     button, column, container, image, mouse_area, opaque, progress_bar, row,
-    scrollable, stack, text, text_input,
+    scrollable, stack, text, text_input, tooltip,
 };
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
 use iced::{
     Alignment, Background, Border, Color, Element, Length, Point, Theme,
-    border,
+    border, mouse,
 };
 
 use crate::core::{SortOrderConfig, ViewColumn, ViewMode};
 use crate::filesystem::{FsEntry, FsEntryType};
 use crate::ui::{
-    ContextAction, NETWORK_ROUTE, ScrollViewport, UiMessage,
+    ContextAction, KeyboardCommand, NETWORK_ROUTE, ScrollViewport, UiMessage,
 };
 use crate::ui::theme::{UiTokens, icons};
 use crate::ui::theme::layout::{
@@ -36,12 +36,12 @@ use super::XionApp;
 use super::types::*;
 use super::helpers::{
     column_specs, entry_type_label,
-    format_entry_size, format_modified,
+    format_entry_size, format_modified, truncate_name,
 };
 
 impl XionApp {
     pub(super) fn view(&self) -> Element<'_, UiMessage> {
-        let tokens = UiTokens::for_mode(self.state.config.dark_mode);
+        let tokens = UiTokens::for_theme(&self.state.config.theme);
         let colors = tokens.colors;
         let spacing = tokens.spacing;
         let typography = tokens.typography;
@@ -171,27 +171,52 @@ impl XionApp {
                 })
         };
 
+        let tip_style = move |_: &Theme| iced::widget::container::Style {
+            background: Some(Background::Color(colors.chrome_background)),
+            border: border::rounded(4.0).color(colors.border).width(1.0),
+            ..Default::default()
+        };
+
         let back_button = if self.history.can_back() {
             toolbar_button(icons::BACK.to_string()).on_press(UiMessage::Back)
         } else {
             toolbar_button(icons::BACK.to_string())
         };
+        let back_button = tooltip(back_button, "Précédent (Alt+←)", tooltip::Position::Bottom)
+            .style(tip_style).padding(4);
 
         let forward_button = if self.history.can_forward() {
             toolbar_button(icons::FORWARD.to_string()).on_press(UiMessage::Forward)
         } else {
             toolbar_button(icons::FORWARD.to_string())
         };
+        let forward_button = tooltip(forward_button, "Suivant (Alt+→)", tooltip::Position::Bottom)
+            .style(tip_style).padding(4);
 
         let refresh_button = toolbar_button(icons::REFRESH.to_string()).on_press(UiMessage::Refresh);
+        let refresh_button = tooltip(refresh_button, "Actualiser (F5)", tooltip::Position::Bottom)
+            .style(tip_style).padding(4);
 
-        let navigation = row![back_button, forward_button, refresh_button].spacing(spacing.sm);
+        // Go Up button
+        let has_parent = self.state.route.local_path()
+            .and_then(|p| p.parent())
+            .is_some();
+        let go_up_btn = toolbar_button(format!("{} \u{2191}", icons::FOLDER));
+        let go_up_btn = if has_parent {
+            go_up_btn.on_press(UiMessage::KeyboardCommand(KeyboardCommand::GoToParent))
+        } else {
+            go_up_btn
+        };
+        let go_up_btn = tooltip(go_up_btn, "Dossier parent (Alt+↑)", tooltip::Position::Bottom)
+            .style(tip_style).padding(4);
+
+        let navigation = row![back_button, forward_button, refresh_button, go_up_btn].spacing(spacing.sm);
 
         let mut tabs = row![];
-        for (index, tab) in self.tabs.iter().enumerate() {
+        for (index, tab) in self.tab_manager.tabs.iter().enumerate() {
             let label = format!("{} {}", icons::PC, tab.title);
-            let mut button = tab_button(label, index == self.active_tab);
-            if index != self.active_tab {
+            let mut button = tab_button(label, index == self.tab_manager.active);
+            if index != self.tab_manager.active {
                 button = button.on_press(UiMessage::SwitchTab(index));
             }
             let mut tab_row = row![button].spacing(spacing.xs).align_y(Alignment::Center);
@@ -200,7 +225,12 @@ impl XionApp {
                     tab_button(icons::CLOSE.to_string(), false).on_press(UiMessage::CloseTab(index)),
                 );
             }
-            tabs = tabs.push(tab_row);
+            // #18: Tab drag reorder — wrap in mouse_area
+            let tab_element: Element<'_, UiMessage> = mouse_area(tab_row)
+                .on_press(UiMessage::TabDragStart(index))
+                .on_release(UiMessage::TabDragDrop)
+                .into();
+            tabs = tabs.push(tab_element);
         }
         tabs = tabs.push(tab_button(icons::NEW.to_string(), false).on_press(UiMessage::AddTab));
         let tabs = tabs.spacing(spacing.sm);
@@ -212,7 +242,8 @@ impl XionApp {
                 .on_submit(UiMessage::AddressInputSubmitted)
                 .size(typography.body)
                 .font(typography.body_font)
-                .padding([spacing.xs, spacing.md]);
+                .padding([spacing.xs, spacing.md])
+                .id(iced::widget::Id::new("address_input"));
 
             container(address_input)
                 .width(Length::Fill)
@@ -231,6 +262,7 @@ impl XionApp {
             let mut accumulated = String::new();
 
             for (i, segment) in segments.iter().enumerate() {
+                let parent_path = accumulated.clone();
                 if i == 0 && segment.ends_with(':') {
                     // Drive root, e.g. "C:"
                     accumulated = format!("{}\\", segment);
@@ -239,13 +271,30 @@ impl XionApp {
                 }
 
                 if i > 0 {
+                    // The separator lists siblings = subdirectories of parent_path
+                    let dropdown_target = PathBuf::from(&parent_path);
                     breadcrumb_row = breadcrumb_row.push(
-                        text(" ❯ ")
-                            .size(typography.caption)
-                            .font(typography.caption_font)
-                            .style(move |_| iced::widget::text::Style {
-                                color: Some(colors.text_muted),
-                            }),
+                        button(
+                            text("❯")
+                                .size(typography.caption)
+                                .font(typography.caption_font)
+                                .style(move |_| iced::widget::text::Style {
+                                    color: Some(colors.text_muted),
+                                }),
+                        )
+                        .padding([spacing.xs, 2.0])
+                        .style(move |_theme: &Theme, status: ButtonStatus| {
+                            let mut style = iced::widget::button::Style {
+                                text_color: colors.text_muted,
+                                ..Default::default()
+                            };
+                            if matches!(status, ButtonStatus::Hovered) {
+                                style.background = Some(Background::Color(colors.hover));
+                                style.border = border::rounded(4.0).color(colors.border).width(1.0);
+                            }
+                            style
+                        })
+                        .on_press(UiMessage::BreadcrumbDropdown(dropdown_target)),
                     );
                 }
 
@@ -254,10 +303,35 @@ impl XionApp {
                 let label = segment.to_string();
 
                 if is_last {
+                    // Also add a trailing separator for the last segment to list its children
                     breadcrumb_row = breadcrumb_row.push(
                         text(label)
                             .size(typography.body)
                             .font(typography.body_font),
+                    );
+                    let dropdown_target = PathBuf::from(&accumulated);
+                    breadcrumb_row = breadcrumb_row.push(
+                        button(
+                            text("❯")
+                                .size(typography.caption)
+                                .font(typography.caption_font)
+                                .style(move |_| iced::widget::text::Style {
+                                    color: Some(colors.text_muted),
+                                }),
+                        )
+                        .padding([spacing.xs, 2.0])
+                        .style(move |_theme: &Theme, status: ButtonStatus| {
+                            let mut style = iced::widget::button::Style {
+                                text_color: colors.text_muted,
+                                ..Default::default()
+                            };
+                            if matches!(status, ButtonStatus::Hovered) {
+                                style.background = Some(Background::Color(colors.hover));
+                                style.border = border::rounded(4.0).color(colors.border).width(1.0);
+                            }
+                            style
+                        })
+                        .on_press(UiMessage::BreadcrumbDropdown(dropdown_target)),
                     );
                 } else {
                     breadcrumb_row = breadcrumb_row.push(
@@ -304,9 +378,9 @@ impl XionApp {
                 self.address_validation_cache
                     .get(&self.address_input, || self.address_target_from_input())
                     .map(|v| match v {
-                        AddressValidation::Directory => ("Dossier".to_string(), Color::from_rgb8(55, 125, 60)),
-                        AddressValidation::File => ("Fichier".to_string(), Color::from_rgb8(186, 120, 40)),
-                        AddressValidation::NotFound => ("Introuvable".to_string(), Color::from_rgb8(176, 72, 72)),
+                        AddressValidation::Directory => ("Dossier".to_string(), colors.address_directory),
+                        AddressValidation::File => ("Fichier".to_string(), colors.address_file),
+                        AddressValidation::NotFound => ("Introuvable".to_string(), colors.address_not_found),
                     })
             } else {
                 None
@@ -367,10 +441,10 @@ impl XionApp {
 
         let address_suggestions = self.address_suggestions();
         let history_button = toolbar_button("▼".to_string())
-            .on_press(UiMessage::ToggleHistoryMenu(!self.history_menu_open));
+            .on_press(UiMessage::ToggleHistoryMenu(!self.menus.history_open));
 
         let history_menu: Option<Element<'_, UiMessage>> =
-            if self.history_menu_open && !address_suggestions.is_empty() {
+            if self.menus.history_open && !address_suggestions.is_empty() {
                 let mut suggestions_list = column![
                     text("Historique")
                         .size(typography.caption)
@@ -386,7 +460,7 @@ impl XionApp {
                         suggestion,
                     ));
                 }
-                let position = self.history_menu_position.unwrap_or(Point::ORIGIN);
+                let position = self.menus.history_position.unwrap_or(Point::ORIGIN);
                 let position_x = position.x.max(0.0);
                 let position_y = position.y.max(0.0);
                 let menu = container(suggestions_list)
@@ -427,8 +501,8 @@ impl XionApp {
             container(address_row).width(Length::Fill).into();
 
         let active_tab_title = self
-            .tabs
-            .get(self.active_tab)
+            .tab_manager.tabs
+            .get(self.tab_manager.active)
             .map(|tab| tab.title.as_str())
             .unwrap_or("Ce PC");
         let search_input = text_input(
@@ -502,28 +576,61 @@ impl XionApp {
         };
         let grep_label = format!("{} Chercher", icons::FILE);
         let compact_label = if self.state.config.compact_mode { "⊞ Normal" } else { "⊟ Compact" };
+        // #32: Accessibility — tooltip helper macro
+        macro_rules! tt {
+            ($widget:expr, $label:expr) => {
+                tooltip(
+                    $widget,
+                    text($label).size(typography.caption).font(typography.caption_font),
+                    tooltip::Position::Bottom,
+                )
+                .gap(4.0)
+                .style(move |_: &Theme| iced::widget::container::Style {
+                    background: Some(Background::Color(colors.panel_background)),
+                    border: border::rounded(4.0).color(colors.border).width(1.0),
+                    ..Default::default()
+                })
+            };
+        }
         let command_bar = row![
-            toolbar_button(format!("{} Nouveau", icons::NEW)).on_press(UiMessage::NewFolder),
-            cut_button,
-            copy_button,
-            paste_button,
-            toolbar_button(dark_mode_label).on_press(UiMessage::ToggleDarkMode),
-            toolbar_button(gitignore_label).on_press(UiMessage::ToggleGitignore),
-            toolbar_button(compact_label.to_string()).on_press(UiMessage::ToggleCompactMode),
-            toolbar_button(grep_label).on_press(UiMessage::OpenGrep),
-            toolbar_button(format!("{} Actions", icons::ACTIONS))
-                .on_press(UiMessage::ToggleContextMenu(!self.context_menu_open))
+            tt!(toolbar_button(format!("{} Nouveau", icons::NEW)).on_press(UiMessage::NewFolder), "Nouveau dossier (Ctrl+Shift+N)"),
+            tt!(cut_button, "Couper (Ctrl+X)"),
+            tt!(copy_button, "Copier (Ctrl+C)"),
+            tt!(paste_button, "Coller (Ctrl+V)"),
+            tt!(toolbar_button(dark_mode_label).on_press(UiMessage::ToggleDarkMode), "Basculer thème clair/sombre"),
+            tt!(toolbar_button(gitignore_label).on_press(UiMessage::ToggleGitignore), "Respecter .gitignore"),
+            tt!(toolbar_button(compact_label.to_string()).on_press(UiMessage::ToggleCompactMode), "Mode compact/normal"),
+            tt!(toolbar_button(grep_label).on_press(UiMessage::OpenGrep), "Chercher dans le contenu (Ctrl+Shift+F)"),
+            tt!(toolbar_button(format!("{} Actions", icons::ACTIONS))
+                .on_press(UiMessage::ToggleContextMenu(!self.menus.context_open)), "Menu contextuel (F10)")
         ]
         .spacing(spacing.sm);
 
-        let loading_badge: Element<'_, UiMessage> = if self.show_loading_indicator {
+        let loading_badge: Element<'_, UiMessage> = if self.show_loading_indicator || self.operation_progress.is_some() {
+            // #16: Enhanced progress bar with operation label
+            let (progress_label, ratio) = if let Some(op) = &self.operation_progress {
+                let done = op.counter.load(std::sync::atomic::Ordering::Relaxed);
+                let r = if op.total > 0 { done as f32 / op.total as f32 } else { 0.5 };
+                let kind_label = match op.kind {
+                    crate::filesystem::FileOperationKind::Copy => "Copie",
+                    crate::filesystem::FileOperationKind::Move => "Déplacement",
+                    crate::filesystem::FileOperationKind::Delete => "Suppression",
+                    crate::filesystem::FileOperationKind::Rename => "Renommage",
+                };
+                (format!("{} : {}/{}", kind_label, done, op.total), r)
+            } else if self.entries.total > 0 {
+                let loaded = self.entries.items.iter().filter(|e| e.is_some()).count();
+                ("Chargement…".to_string(), loaded as f32 / self.entries.total as f32)
+            } else {
+                ("Chargement…".to_string(), 0.5)
+            };
             let content: Element<'_, UiMessage> = row![
-                text("Chargement…")
+                text(progress_label)
                     .size(typography.caption)
                     .font(typography.caption_font),
-                progress_bar(0.0..=1.0, 0.5)
+                progress_bar(0.0..=1.0, ratio)
                     .girth(Length::Fixed(4.0))
-                    .length(Length::Fixed(64.0)),
+                    .length(Length::Fixed(80.0)),
             ]
             .spacing(spacing.xs)
             .align_y(Alignment::Center)
@@ -557,90 +664,274 @@ impl XionApp {
         let selected_is_file = self.state.navigation.selection.focused.as_ref()
             .map(|p| p.is_file())
             .unwrap_or(false);
-        let mut context_col = column![
-            toolbar_button(format!("{} Ouvrir", icons::OPEN))
-                .on_press(UiMessage::ContextAction(ContextAction::Open)),
-            toolbar_button(format!("{} Ouvrir avec…", icons::OPEN))
-                .on_press(UiMessage::ContextAction(ContextAction::OpenWith)),
-            toolbar_button(format!("{} Renommer", icons::RENAME))
-                .on_press(UiMessage::ContextAction(ContextAction::Rename)),
-            toolbar_button(format!("{} Déplacer vers la corbeille", icons::DELETE))
-                .on_press(UiMessage::ContextAction(ContextAction::MoveToTrash)),
-            toolbar_button(format!("{} Supprimer", icons::DELETE))
-                .on_press(UiMessage::ContextAction(ContextAction::Delete)),
-            toolbar_button(format!("{} Copier le chemin", icons::SYMLINK))
-                .on_press(UiMessage::ContextAction(ContextAction::CopyPath)),
-            toolbar_button(format!("{} Propriétés", icons::FILE))
-                .on_press(UiMessage::ContextAction(ContextAction::OpenProperties)),
-            toolbar_button(format!("{} Compresser en ZIP", icons::FILE_ARCHIVE))
-                .on_press(UiMessage::ContextAction(ContextAction::CompressToZip)),
-            toolbar_button(format!("{} Permissions", icons::FILE))
-                .on_press(UiMessage::ContextAction(ContextAction::OpenPermissions)),
-        ]
-        .spacing(spacing.sm);
-        if selection_count > 1 {
+        let selected_is_dir = self.state.navigation.selection.focused.as_ref()
+            .map(|p| p.is_dir())
+            .unwrap_or(false);
+        let has_clipboard = self.clipboard.kind.is_some() && !self.clipboard.items.is_empty();
+
+        // ── Context menu helpers ─────────────────────────────────────────────
+        let ctx_button = |icon: &str, label: &str, shortcut: &str, msg: UiMessage| -> Element<'_, UiMessage> {
+            let main_text = text(format!("{} {}", icon, label))
+                .size(typography.body)
+                .font(typography.body_font);
+            let content: Element<'_, UiMessage> = if shortcut.is_empty() {
+                main_text.into()
+            } else {
+                let shortcut_text = text(shortcut.to_string())
+                    .size(typography.caption)
+                    .font(typography.caption_font)
+                    .color(colors.text_muted);
+                row![main_text, horizontal_space(), shortcut_text]
+                    .spacing(spacing.lg)
+                    .align_y(Alignment::Center)
+                    .into()
+            };
+            button(content)
+                .padding([spacing.xs, spacing.sm])
+                .width(Length::Fill)
+                .style(move |_theme: &Theme, status: ButtonStatus| {
+                    let mut style = iced::widget::button::Style {
+                        text_color: colors.text_primary,
+                        ..Default::default()
+                    };
+                    match status {
+                        ButtonStatus::Hovered => {
+                            style.background = Some(Background::Color(colors.hover));
+                            style.border = border::rounded(6.0).color(colors.border).width(1.0);
+                        }
+                        ButtonStatus::Pressed => {
+                            style.background = Some(Background::Color(colors.pressed));
+                            style.border = border::rounded(6.0).color(colors.border).width(1.0);
+                        }
+                        _ => {}
+                    }
+                    style
+                })
+                .on_press(msg)
+                .into()
+        };
+        let ctx_separator = || -> Element<'_, UiMessage> {
+            container(row![])
+                .width(Length::Fill)
+                .height(Length::Fixed(1.0))
+                .style(move |_| iced::widget::container::Style {
+                    background: Some(Background::Color(colors.border)),
+                    ..Default::default()
+                })
+                .into()
+        };
+        let ctx_label_dot = |dot_color: Color, label_text: String, action: ContextAction| -> Element<'_, UiMessage> {
+            let dot = container(row![])
+                .width(Length::Fixed(10.0))
+                .height(Length::Fixed(10.0))
+                .style(move |_| iced::widget::container::Style {
+                    background: Some(Background::Color(dot_color)),
+                    border: border::rounded(5.0).width(0.0),
+                    ..Default::default()
+                });
+            button(
+                row![dot, text(label_text).size(typography.body).font(typography.body_font)]
+                    .spacing(spacing.sm)
+                    .align_y(Alignment::Center),
+            )
+            .padding([spacing.xs, spacing.sm])
+            .width(Length::Fill)
+            .style(move |_theme: &Theme, status: ButtonStatus| {
+                let mut style = iced::widget::button::Style {
+                    text_color: colors.text_primary,
+                    ..Default::default()
+                };
+                if matches!(status, ButtonStatus::Hovered | ButtonStatus::Pressed) {
+                    style.background = Some(Background::Color(colors.hover));
+                    style.border = border::rounded(6.0).color(colors.border).width(1.0);
+                }
+                style
+            })
+            .on_press(UiMessage::ContextAction(action))
+            .into()
+        };
+
+        // ── Entry context menu (right-click on a file/folder) ────────────────
+        let mut context_col: _ = column![].spacing(2);
+
+        // Group 1: Open
+        context_col = context_col
+            .push(ctx_button(icons::OPEN, "Ouvrir", "Entrée", UiMessage::ContextAction(ContextAction::Open)))
+            .push(ctx_button(icons::OPEN, "Ouvrir avec\u{2026}", "", UiMessage::ContextAction(ContextAction::OpenWith)));
+        if selected_is_dir {
             context_col = context_col.push(
-                toolbar_button(format!("{} Renommer plusieurs...", icons::RENAME))
-                    .on_press(UiMessage::ContextAction(ContextAction::OpenBulkRename)),
-            );
-        }
-        if selection_count == 2 {
-            context_col = context_col.push(
-                toolbar_button(format!("{} Comparer les fichiers", icons::FILE))
-                    .on_press(UiMessage::ContextAction(ContextAction::OpenDiff)),
+                ctx_button(icons::TERMINAL, "Ouvrir terminal ici", "", UiMessage::ToggleTerminal),
             );
         }
         if selected_is_archive {
             context_col = context_col.push(
-                toolbar_button(format!("{} Ouvrir l'archive", icons::FILE_ARCHIVE))
-                    .on_press(UiMessage::ActivateEntry(
-                        self.state.navigation.selection.focused.clone().unwrap_or_default()
-                    )),
+                ctx_button(icons::FILE_ARCHIVE, "Ouvrir l'archive", "", UiMessage::ActivateEntry(
+                    self.state.navigation.selection.focused.clone().unwrap_or_default()
+                )),
             );
         }
+
+        // Separator
+        context_col = context_col.push(ctx_separator());
+
+        // Group 2: Clipboard
+        context_col = context_col
+            .push(ctx_button(icons::CUT, "Couper", "Ctrl+X", UiMessage::ClipboardCut))
+            .push(ctx_button(icons::COPY, "Copier", "Ctrl+C", UiMessage::ClipboardCopy));
+        if has_clipboard {
+            context_col = context_col.push(
+                ctx_button(icons::PASTE, "Coller", "Ctrl+V", UiMessage::ClipboardPaste),
+            );
+        }
+
+        // Separator
+        context_col = context_col.push(ctx_separator());
+
+        // Group 3: Edit
+        context_col = context_col
+            .push(ctx_button(icons::RENAME, "Renommer", "F2", UiMessage::ContextAction(ContextAction::Rename)))
+            .push(ctx_button(icons::DELETE, "Supprimer", "Suppr", UiMessage::ContextAction(ContextAction::MoveToTrash)));
+        if selection_count > 1 {
+            context_col = context_col.push(
+                ctx_button(icons::RENAME, "Renommer plusieurs\u{2026}", "", UiMessage::ContextAction(ContextAction::OpenBulkRename)),
+            );
+        }
+        if selection_count == 2 {
+            context_col = context_col.push(
+                ctx_button(icons::FILE, "Comparer", "Ctrl+D", UiMessage::ContextAction(ContextAction::OpenDiff)),
+            );
+        }
+
+        // Separator
+        context_col = context_col.push(ctx_separator());
+
+        // Group 4: Compress submenu trigger (hover to open)
+        context_col = context_col.push(
+            mouse_area(ctx_button(icons::FILE_ARCHIVE, "Compresser  \u{276f}", "", UiMessage::ToggleContextSubmenu(0)))
+                .on_enter(UiMessage::ToggleContextSubmenu(0)),
+        );
+
+        // Group 5: Label submenu trigger (hover to open)
+        context_col = context_col.push(
+            mouse_area(ctx_button("", "\u{25cf} Étiquette  \u{276f}", "", UiMessage::ToggleContextSubmenu(1)))
+                .on_enter(UiMessage::ToggleContextSubmenu(1)),
+        );
+
+        // Separator
+        context_col = context_col.push(ctx_separator());
+
+        // Group 6: Info
+        context_col = context_col
+            .push(ctx_button(icons::SYMLINK, "Copier le chemin", "Ctrl+Shift+C", UiMessage::ContextAction(ContextAction::CopyPath)))
+            .push(ctx_button(icons::HOME, "Ajouter aux favoris", "", UiMessage::ContextAction(ContextAction::AddToFavorites)));
         if selected_is_file {
             context_col = context_col.push(
-                toolbar_button(format!("{} Voir en hexadécimal", icons::FILE))
-                    .on_press(UiMessage::ContextAction(ContextAction::OpenHexView)),
+                ctx_button(icons::FILE, "Voir en hexadécimal", "", UiMessage::ContextAction(ContextAction::OpenHexView)),
             );
         }
-        // Label submenu items
-        context_col = context_col.push(
-            toolbar_button("🔴 Étiquette rouge".to_string())
-                .on_press(UiMessage::ContextAction(ContextAction::SetLabelRed)),
-        );
-        context_col = context_col.push(
-            toolbar_button("🟢 Étiquette verte".to_string())
-                .on_press(UiMessage::ContextAction(ContextAction::SetLabelGreen)),
-        );
-        context_col = context_col.push(
-            toolbar_button("🔵 Étiquette bleue".to_string())
-                .on_press(UiMessage::ContextAction(ContextAction::SetLabelBlue)),
-        );
-        context_col = context_col.push(
-            toolbar_button("⬜ Supprimer étiquette".to_string())
-                .on_press(UiMessage::ContextAction(ContextAction::RemoveLabel)),
-        );
-        let context_actions = context_col;
+        context_col = context_col
+            .push(ctx_button(icons::FILE, "Propriétés", "Alt+Entrée", UiMessage::ContextAction(ContextAction::OpenProperties)));
 
-        let context_menu: Option<Element<'_, UiMessage>> =
-            if self.context_menu_open && !self.state.navigation.selection.selected.is_empty() {
-                let position = self.context_menu_position.unwrap_or(Point::ORIGIN);
-                let position_x = position.x.max(0.0);
-                let position_y = position.y.max(0.0);
-                let menu = container(context_actions)
+        // ── Background context menu (right-click on empty space) ─────────────
+        let mut bg_context_col: _ = column![].spacing(2);
+        if has_clipboard {
+            bg_context_col = bg_context_col
+                .push(ctx_button(icons::PASTE, "Coller", "Ctrl+V", UiMessage::ClipboardPaste))
+                .push(ctx_separator());
+        }
+        bg_context_col = bg_context_col
+            .push(ctx_button(icons::FOLDER, "Nouveau dossier", "Ctrl+Shift+N", UiMessage::ContextAction(ContextAction::NewFolder)))
+            .push(ctx_button(icons::FILE, "Nouveau fichier", "", UiMessage::ContextAction(ContextAction::NewFile)))
+            .push(ctx_separator())
+            .push(ctx_button(icons::TERMINAL, "Ouvrir terminal ici", "", UiMessage::ToggleTerminal))
+            .push(ctx_button(icons::REFRESH, "Rafraîchir", "Ctrl+R", UiMessage::Refresh))
+            .push(ctx_separator())
+            .push(ctx_button(icons::FILE, "Propriétés du dossier", "", UiMessage::ContextAction(ContextAction::OpenProperties)));
+
+        // ── Context submenu panels ───────────────────────────────────────────
+        use super::types::ContextSubmenu;
+        let submenu_panel: Option<Element<'_, UiMessage>> = match self.menus.context_submenu {
+            Some(ContextSubmenu::Compress) => {
+                let sub = column![
+                    ctx_button(icons::FILE_ARCHIVE, "ZIP", "", UiMessage::ContextAction(ContextAction::CompressToZip)),
+                    ctx_button(icons::FILE_ARCHIVE, "TAR.GZ", "", UiMessage::ContextAction(ContextAction::CompressToTarGz)),
+                    ctx_button(icons::FILE_ARCHIVE, "7Z", "", UiMessage::ContextAction(ContextAction::CompressTo7z)),
+                ].spacing(2);
+                Some(container(sub)
                     .padding([spacing.sm, spacing.md])
+                    .width(Length::Fixed(180.0))
                     .style(move |_| iced::widget::container::Style {
                         background: Some(Background::Color(colors.panel_background)),
                         border: border::rounded(8.0).color(colors.border).width(1.0),
                         ..Default::default()
-                    });
+                    })
+                    .into())
+            }
+            Some(ContextSubmenu::Label) => {
+                let sub = column![
+                    ctx_label_dot(Color::from_rgb8(220, 50, 50), "Rouge".into(), ContextAction::SetLabelRed),
+                    ctx_label_dot(Color::from_rgb8(255, 165, 0), "Orange".into(), ContextAction::SetLabelOrange),
+                    ctx_label_dot(Color::from_rgb8(220, 200, 50), "Jaune".into(), ContextAction::SetLabelYellow),
+                    ctx_label_dot(Color::from_rgb8(50, 180, 50), "Verte".into(), ContextAction::SetLabelGreen),
+                    ctx_label_dot(Color::from_rgb8(50, 100, 220), "Bleue".into(), ContextAction::SetLabelBlue),
+                    ctx_label_dot(Color::from_rgb8(150, 50, 200), "Violette".into(), ContextAction::SetLabelPurple),
+                    ctx_separator(),
+                    ctx_button("", "Supprimer", "", UiMessage::ContextAction(ContextAction::RemoveLabel)),
+                ].spacing(2);
+                Some(container(sub)
+                    .padding([spacing.sm, spacing.md])
+                    .width(Length::Fixed(180.0))
+                    .style(move |_| iced::widget::container::Style {
+                        background: Some(Background::Color(colors.panel_background)),
+                        border: border::rounded(8.0).color(colors.border).width(1.0),
+                        ..Default::default()
+                    })
+                    .into())
+            }
+            None => None,
+        };
+
+        // ── Context menu rendering ───────────────────────────────────────────
+        let show_entry_menu = self.menus.context_open && !self.state.navigation.selection.selected.is_empty();
+        let show_bg_menu = self.menus.background_context_open;
+
+        let context_menu: Option<Element<'_, UiMessage>> =
+            if show_entry_menu || show_bg_menu {
+                let main_menu: Element<'_, UiMessage> = if show_entry_menu {
+                    context_col.into()
+                } else {
+                    bg_context_col.into()
+                };
+                let position = self.menus.context_position.unwrap_or(Point::ORIGIN);
+                let position_x = position.x.max(0.0);
+                let position_y = position.y.max(0.0);
+
+                let menu_style = move |_: &Theme| iced::widget::container::Style {
+                    background: Some(Background::Color(colors.panel_background)),
+                    border: border::rounded(8.0).color(colors.border).width(1.0),
+                    ..Default::default()
+                };
+                let menu = container(main_menu)
+                    .padding([spacing.sm, spacing.md])
+                    .width(Length::Fixed(260.0))
+                    .style(menu_style);
+
+                // Combine main menu + optional submenu in a row
+                let menu_row: Element<'_, UiMessage> = if let Some(sub) = submenu_panel {
+                    let combined = row![opaque(menu), sub].spacing(2);
+                    mouse_area(combined)
+                        .on_exit(UiMessage::CloseContextSubmenu)
+                        .into()
+                } else {
+                    opaque(menu).into()
+                };
+
                 let menu_layer: Element<'_, UiMessage> = container(
                     column![
                         vertical_space().height(Length::Fixed(position_y)),
                         row![
                             horizontal_space().width(Length::Fixed(position_x)),
-                            opaque(menu)
+                            menu_row
                         ]
                     ]
                     .spacing(0),
@@ -703,25 +994,38 @@ impl XionApp {
                     .size(typography.body)
                     .font(typography.body_font)
                     .into(),
-                FsEntryType::File => self
-                    .media.thumbnail_handles
-                    .get(&entry.path)
-                    .map(|handle| {
-                        image(handle.clone())
-                            .width(Length::Fixed(self.state.config.view.thumbnail_size as f32))
-                            .height(Length::Fixed(self.state.config.view.thumbnail_size as f32))
-                            .into()
-                    })
-                    .unwrap_or_else(|| {
-                        let icon = entry.path.extension()
-                            .and_then(|ext| ext.to_str())
-                            .map(icons::icon_for_extension)
-                            .unwrap_or(icons::FILE);
-                        text(icon)
-                            .size(typography.body)
-                            .font(typography.body_font)
-                            .into()
-                    }),
+                FsEntryType::File if matches!(view_mode, ViewMode::Grid) => {
+                    // Grid mode: show thumbnail preview if available
+                    self.media.thumbnail_handles
+                        .get(&entry.path)
+                        .map(|handle| {
+                            image(handle.clone())
+                                .width(Length::Fixed(self.state.config.view.thumbnail_size as f32))
+                                .height(Length::Fixed(self.state.config.view.thumbnail_size as f32))
+                                .into()
+                        })
+                        .unwrap_or_else(|| {
+                            let icon = entry.path.extension()
+                                .and_then(|ext| ext.to_str())
+                                .map(icons::icon_for_extension)
+                                .unwrap_or(icons::FILE);
+                            text(icon)
+                                .size(typography.body)
+                                .font(typography.body_font)
+                                .into()
+                        })
+                },
+                FsEntryType::File => {
+                    // List mode: always use icon for uniform row height
+                    let icon = entry.path.extension()
+                        .and_then(|ext| ext.to_str())
+                        .map(icons::icon_for_extension)
+                        .unwrap_or(icons::FILE);
+                    text(icon)
+                        .size(typography.body)
+                        .font(typography.body_font)
+                        .into()
+                },
                 FsEntryType::Symlink => text(icons::SYMLINK)
                     .size(typography.body)
                     .font(typography.body_font)
@@ -756,9 +1060,9 @@ impl XionApp {
                             let (label, color) = match status {
                                 GitFileStatus::Modified => ("M", colors.accent),
                                 GitFileStatus::Untracked => ("?", colors.text_muted),
-                                GitFileStatus::Staged => ("S", Color::from_rgb8(80, 200, 80)),
-                                GitFileStatus::Conflict => ("!", Color::from_rgb8(220, 50, 50)),
-                                GitFileStatus::Deleted => ("D", Color::from_rgb8(200, 80, 80)),
+                                GitFileStatus::Staged => ("S", colors.git_staged),
+                                GitFileStatus::Conflict => ("!", colors.git_conflict),
+                                GitFileStatus::Deleted => ("D", colors.git_deleted),
                             };
                             text(label)
                                 .size(typography.caption)
@@ -766,17 +1070,24 @@ impl XionApp {
                                 .color(color)
                                 .into()
                         });
+                        let is_cut = matches!(self.clipboard.kind, Some(ClipboardKind::Cut))
+                            && self.clipboard.items.contains(&entry.path);
                         let mut name_row = row![entry_leading(entry)]
                             .spacing(spacing.sm)
                             .align_y(Alignment::Center);
                         if let Some(dot) = label_dot {
                             name_row = name_row.push(dot);
                         }
-                        name_row = name_row.push(
-                            text(entry.name.clone())
-                                .size(typography.body)
-                                .font(typography.body_font)
-                        );
+                        let display_name = truncate_name(&entry.name, 60);
+                        let name_text = text(display_name.into_owned())
+                            .size(typography.body)
+                            .font(typography.body_font);
+                        let name_text = if is_cut {
+                            name_text.color(colors.text_muted)
+                        } else {
+                            name_text
+                        };
+                        name_row = name_row.push(name_text);
                         if let Some(badge) = git_badge {
                             name_row = name_row.push(badge);
                         }
@@ -860,11 +1171,30 @@ impl XionApp {
                 .into()
         };
         let build_grid_tile = |entry: &FsEntry| -> Element<'_, UiMessage> {
-            let tile_content = column![
-                entry_leading(entry),
-                text(entry.name.clone())
+            let grid_name = truncate_name(&entry.name, 20);
+            let mut name_row = row![].spacing(spacing.xs).align_y(Alignment::Center);
+            // Label dot in grid view
+            if let Some(label) = self.state.config.labels.get(&entry.path) {
+                let dot_color = label.color();
+                name_row = name_row.push(
+                    container(row![])
+                        .width(Length::Fixed(6.0))
+                        .height(Length::Fixed(6.0))
+                        .style(move |_| iced::widget::container::Style {
+                            background: Some(Background::Color(dot_color)),
+                            border: border::rounded(3.0).width(0.0),
+                            ..Default::default()
+                        }),
+                );
+            }
+            name_row = name_row.push(
+                text(grid_name.into_owned())
                     .size(typography.caption)
                     .font(typography.caption_font),
+            );
+            let tile_content = column![
+                entry_leading(entry),
+                name_row,
             ]
             .spacing(spacing.xs)
             .align_x(Alignment::Center);
@@ -1178,6 +1508,7 @@ impl XionApp {
                     )
                     .on_press(UiMessage::ColumnResizeStart(col_name))
                     .on_release(UiMessage::ColumnResizeEnd)
+                    .interaction(mouse::Interaction::ResizingHorizontally)
                 );
             }
 
@@ -1232,17 +1563,38 @@ impl XionApp {
         }
         list_column = list_column.push(list_content);
 
+        // Add a clickable spacer below entries so rubber band selection can start
+        // from empty space.  Without this, clicks below the last entry land on the
+        // scrollable's dead zone and never reach the outer mouse_area.
+        let bg_spacer_height = if self.scroll.height > 1.0 {
+            self.scroll.height
+        } else {
+            500.0
+        };
+        list_column = list_column.push(
+            mouse_area(
+                container(row![])
+                    .width(Length::Fill)
+                    .height(Length::Fixed(bg_spacer_height)),
+            )
+            .on_press(UiMessage::ListBackgroundPressed)
+            .on_right_press(UiMessage::BackgroundContextMenu),
+        );
+
         let list = mouse_area(
-            scrollable(container(list_column).padding(spacing.md)).on_scroll(|viewport| {
-                UiMessage::Scroll(ScrollViewport {
-                    offset_y: viewport.absolute_offset().y,
-                    viewport_height: viewport.bounds().height,
-                    content_height: viewport.content_bounds().height,
-                    bounds: viewport.bounds(),
-                })
-            }),
+            scrollable(container(list_column).padding(spacing.md))
+                .id(iced::widget::Id::new(super::LIST_SCROLLABLE_ID))
+                .on_scroll(|viewport| {
+                    UiMessage::Scroll(ScrollViewport {
+                        offset_y: viewport.absolute_offset().y,
+                        viewport_height: viewport.bounds().height,
+                        content_height: viewport.content_bounds().height,
+                        bounds: viewport.bounds(),
+                    })
+                }),
         )
-        .on_press(UiMessage::ListBackgroundPressed);
+        .on_press(UiMessage::ListBackgroundPressed)
+        .on_right_press(UiMessage::BackgroundContextMenu);
 
         // Accordion collapsed state per section name
         let sec_tree      = self.sidebar_collapsed.contains("Arborescence");
@@ -1362,6 +1714,7 @@ impl XionApp {
             )
             .on_press(UiMessage::TreeResizeStart)
             .on_release(UiMessage::TreeResizeEnd)
+            .interaction(mouse::Interaction::ResizingVertically)
             .into()
         };
 
@@ -1422,11 +1775,29 @@ impl XionApp {
             } else {
                 for favorite in custom_favorites {
                     let label = format_sidebar_label(favorite);
-                    favorites_section = favorites_section.push(sidebar_button(
-                        icons::FOLDER,
-                        &label,
-                        Some(favorite.clone()),
-                    ));
+                    let fav_path = favorite.clone();
+                    let remove_btn = button(
+                        text(icons::CLOSE)
+                            .size(typography.caption)
+                            .font(typography.caption_font),
+                    )
+                    .padding(0)
+                    .style(move |_theme: &Theme, _status| iced::widget::button::Style {
+                        text_color: colors.text_muted,
+                        ..Default::default()
+                    })
+                    .on_press(UiMessage::RemoveFavorite(fav_path));
+                    favorites_section = favorites_section.push(
+                        row![
+                            sidebar_button(
+                                icons::FOLDER,
+                                &label,
+                                Some(favorite.clone()),
+                            ),
+                            remove_btn,
+                        ]
+                        .align_y(Alignment::Center),
+                    );
                 }
             }
         }
@@ -1506,6 +1877,31 @@ impl XionApp {
             "Récents",
             Some(PathBuf::from(crate::ui::RECENT_ROUTE)),
         ));
+        // #21: Trash in sidebar
+        drive_section = drive_section.push(
+            button(
+                row![
+                    text(icons::DELETE).size(typography.body).font(typography.body_font),
+                    text("Corbeille").size(typography.body).font(typography.body_font),
+                ]
+                .spacing(spacing.xs)
+                .align_y(Alignment::Center),
+            )
+            .padding([spacing.xs, spacing.sm])
+            .width(Length::Fill)
+            .style(move |_theme: &Theme, status: ButtonStatus| {
+                let mut style = iced::widget::button::Style {
+                    text_color: colors.text_primary,
+                    ..Default::default()
+                };
+                if matches!(status, ButtonStatus::Hovered) {
+                    style.background = Some(Background::Color(colors.hover));
+                    style.border = border::rounded(6.0).color(colors.border).width(1.0);
+                }
+                style
+            })
+            .on_press(UiMessage::NavigateToTrash),
+        );
         } // end if !sec_drives
 
         let sidebar = container(
@@ -1775,14 +2171,22 @@ impl XionApp {
                     let parent = entry.path.parent()
                         .map(|p| p.display().to_string())
                         .unwrap_or_default();
+                    let accessed_str = {
+                        let dt: chrono::DateTime<chrono::Local> = entry.accessed.into();
+                        dt.format("%d/%m/%Y %H:%M").to_string()
+                    };
                     let path = entry.path.clone();
                     button(
                         row![
                             text(icon).size(typography.body).font(typography.body_font),
                             column![
                                 text(name).size(typography.body).font(typography.body_font),
-                                text(parent).size(typography.caption).font(typography.caption_font)
-                                    .style(move |_| iced::widget::text::Style { color: Some(colors.text_muted) }),
+                                row![
+                                    text(parent).size(typography.caption).font(typography.caption_font)
+                                        .style(move |_| iced::widget::text::Style { color: Some(colors.text_muted) }),
+                                    text(accessed_str).size(typography.caption).font(typography.caption_font)
+                                        .style(move |_| iced::widget::text::Style { color: Some(colors.text_muted) }),
+                                ].spacing(spacing.md),
                             ].spacing(2),
                         ]
                         .spacing(spacing.sm)
@@ -1848,19 +2252,21 @@ impl XionApp {
             let archive_entries: Vec<Element<'_, UiMessage>> = archive.entries.iter()
                 .filter(|e| {
                     // Show only entries directly inside the current inner_path folder.
-                    let path = &e.inner_path;
+                    // Normalize backslashes to forward slashes for consistent handling.
+                    let path = e.inner_path.replace('\\', "/");
                     if archive.inner_path.is_empty() {
                         // Root level: no '/' (files) or exactly one trailing '/' (dirs)
-                        !path.contains('/') || path.ends_with('/') && path.matches('/').count() == 1
+                        !path.contains('/') || (path.ends_with('/') && path.matches('/').count() == 1)
                     } else {
+                        let inner = archive.inner_path.replace('\\', "/");
                         // Must start with "<inner_path>/" to avoid matching siblings
-                        let prefix = format!("{}/", archive.inner_path.trim_end_matches('/'));
+                        let prefix = format!("{}/", inner.trim_end_matches('/'));
                         path.starts_with(&prefix)
                     }
                 })
                 .map(|entry| {
                     let icon = if entry.is_dir { icons::FOLDER } else {
-                        entry.inner_path.split('.').last()
+                        entry.inner_path.rsplit('.').next()
                             .map(icons::icon_for_extension)
                             .unwrap_or(icons::FILE)
                     };
@@ -1927,7 +2333,11 @@ impl XionApp {
             }
             archive_header_row = archive_header_row
                 .push(
-                    text(format!("{} {}{}", icons::FILE_ARCHIVE, archive_path_str, inner_str))
+                    text(format!("{} {} [{}]{}", icons::FILE_ARCHIVE, archive_path_str, match archive.archive_type {
+                        super::types::ArchiveType::Zip => "ZIP",
+                        super::types::ArchiveType::TarGz => "TAR.GZ",
+                        super::types::ArchiveType::SevenZ => "7Z",
+                    }, inner_str))
                         .size(typography.body)
                         .font(typography.body_font),
                 )
@@ -2021,8 +2431,8 @@ impl XionApp {
                     })
                     .into()
             } else {
-                let combined = active_tab.lines.join("\n");
-                text(combined)
+                let combined = active_tab.cached_output.as_deref().unwrap_or("");
+                text(combined.to_owned())
                     .size(typography.caption)
                     .font(typography.caption_font)
                     .style(move |_: &Theme| iced::widget::text::Style {
@@ -2045,13 +2455,12 @@ impl XionApp {
             .height(Length::Fill)
             .into();
 
-            let fallback_path = std::path::PathBuf::from(".");
             let fallback_cwd = self
                 .state
                 .route
                 .local_path()
                 .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| fallback_path.clone());
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("C:\\")));
             let cwd_display = self
                 .terminal
                 .effective_cwd(&fallback_cwd)
@@ -2189,18 +2598,19 @@ impl XionApp {
             list_col = list_col.push(term_panel);
         }
 
-        let list_col = list_col.width(Length::Fill).height(Length::Fill).spacing(spacing.xs);
+        let list_col = list_col.width(Length::FillPortion(4)).height(Length::Fill).spacing(spacing.xs);
 
         let mut body = row![
-            sidebar.width(Length::Fixed(220.0)),
+            sidebar.width(Length::FillPortion(1)),
             list_col,
         ];
 
         // Feature 11: Dual pane
-        if self.dual_pane {
-            if let Some(pane_b) = &self.pane_b {
+        if self.dual_pane.enabled {
+            if let Some(pane_b) = &self.dual_pane.pane_b {
                 let pane_b_path = pane_b.path.display().to_string();
-                let pane_b_entries: Vec<Element<'_, UiMessage>> = pane_b.entries.iter().map(|entry| {
+                // Limit rendered entries to avoid lag with large directories (no virtual windowing in pane B)
+                let pane_b_entries: Vec<Element<'_, UiMessage>> = pane_b.entries.iter().take(200).map(|entry| {
                     let icon = match entry.entry_type {
                         FsEntryType::Directory => icons::FOLDER,
                         FsEntryType::File => entry.path.extension()
@@ -2313,14 +2723,21 @@ impl XionApp {
             )
             .on_press(UiMessage::PreviewResizeStart)
             .on_release(UiMessage::PreviewResizeEnd)
+            .interaction(mouse::Interaction::ResizingHorizontally)
             .into();
+
+            let preview_header = mouse_area(
+                text("Prévisualisation")
+                    .size(typography.caption)
+                    .font(typography.caption_font)
+                    .style(move |_| iced::widget::text::Style { color: Some(colors.text_muted) }),
+            )
+            .on_press(UiMessage::Noop) // absorb single click
+            .on_double_click(UiMessage::PreviewDoubleClick);
 
             let preview_panel = container(
                 column![
-                    text("Prévisualisation")
-                        .size(typography.caption)
-                        .font(typography.caption_font)
-                        .style(move |_| iced::widget::text::Style { color: Some(colors.text_muted) }),
+                    preview_header,
                     preview_body
                 ]
                 .spacing(spacing.md),
@@ -2337,72 +2754,6 @@ impl XionApp {
             body = body.push(preview_panel);
         }
 
-        // Feature 11: Dual pane mode
-        if self.dual_pane {
-            if let Some(pane_b) = &self.pane_b {
-                let pane_b_entries: Vec<Element<'_, UiMessage>> = pane_b.entries.iter().map(|entry| {
-                    let icon = match entry.entry_type {
-                        FsEntryType::Directory => icons::FOLDER,
-                        FsEntryType::File => entry.path.extension()
-                            .and_then(|e| e.to_str())
-                            .map(icons::icon_for_extension)
-                            .unwrap_or(icons::FILE),
-                        FsEntryType::Symlink => icons::SYMLINK,
-                        FsEntryType::Other => icons::UNKNOWN,
-                    };
-                    let activate_path = entry.path.clone();
-                    button(
-                        row![
-                            text(icon).size(typography.body).font(typography.body_font),
-                            text(entry.name.clone()).size(typography.body).font(typography.body_font),
-                        ]
-                        .spacing(spacing.sm)
-                        .align_y(Alignment::Center)
-                    )
-                    .padding([spacing.xs, spacing.sm])
-                    .width(Length::Fill)
-                    .style(move |_theme: &Theme, _status: ButtonStatus| {
-                        iced::widget::button::Style {
-                            text_color: colors.text_primary,
-                            ..Default::default()
-                        }
-                    })
-                    .on_press(UiMessage::PaneBActivate(activate_path))
-                    .into()
-                }).collect();
-
-                let pane_b_header = container(
-                    row![
-                        text(pane_b.path.display().to_string())
-                            .size(typography.caption)
-                            .font(typography.caption_font),
-                    ]
-                )
-                .padding([spacing.xs, spacing.sm])
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.chrome_background)),
-                    border: border::rounded(6.0).color(if self.active_pane == 1 { colors.accent } else { colors.border }).width(if self.active_pane == 1 { 2.0 } else { 1.0 }),
-                    ..Default::default()
-                });
-
-                let pane_b_content = scrollable(
-                    column(pane_b_entries).spacing(0)
-                ).height(Length::Fill);
-
-                let pane_b_panel = container(
-                    column![pane_b_header, pane_b_content].spacing(spacing.xs)
-                )
-                .padding(spacing.xs)
-                .width(Length::Fill)
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.panel_background)),
-                    border: border::rounded(10.0).color(colors.border).width(1.0),
-                    ..Default::default()
-                });
-
-                body = body.push(pane_b_panel);
-            }
-        }
 
         let body = body.height(Length::Fill).spacing(spacing.xs);
 
@@ -2425,14 +2776,21 @@ impl XionApp {
             }
             (dirs, files)
         };
-        let entry_count_label = match (dir_count, file_count) {
-            (0, 0) => "aucun élément".to_string(),
-            (d, 0) => if d == 1 { "1 dossier".to_string() } else { format!("{d} dossiers") },
-            (0, f) => if f == 1 { "1 fichier".to_string() } else { format!("{f} fichiers") },
-            (d, f) => {
-                let d_label = if d == 1 { "1 dossier".to_string() } else { format!("{d} dossiers") };
-                let f_label = if f == 1 { "1 fichier".to_string() } else { format!("{f} fichiers") };
-                format!("{d_label}, {f_label}")
+        let entry_count_label = {
+            let base = match (dir_count, file_count) {
+                (0, 0) => "aucun élément".to_string(),
+                (d, 0) => if d == 1 { "1 dossier".to_string() } else { format!("{d} dossiers") },
+                (0, f) => if f == 1 { "1 fichier".to_string() } else { format!("{f} fichiers") },
+                (d, f) => {
+                    let d_label = if d == 1 { "1 dossier".to_string() } else { format!("{d} dossiers") };
+                    let f_label = if f == 1 { "1 fichier".to_string() } else { format!("{f} fichiers") };
+                    format!("{d_label}, {f_label}")
+                }
+            };
+            if self.quick_filter_active && !self.quick_filter.is_empty() {
+                format!("{base} (filtre: \"{}\")", self.quick_filter)
+            } else {
+                base
             }
         };
 
@@ -2678,6 +3036,86 @@ impl XionApp {
         let context_layer: Element<'_, UiMessage> =
             context_menu.unwrap_or_else(|| container(row![]).into());
 
+        // Feature R: Breadcrumb dropdown
+        let breadcrumb_dropdown_layer: Element<'_, UiMessage> =
+            if self.breadcrumb_dropdown.is_some() {
+                let subdirs = &self.breadcrumb_dropdown_items;
+                if subdirs.is_empty() {
+                    container(row![]).into()
+                } else {
+                    let mut items_col = column![].spacing(spacing.xs);
+                    for dir in subdirs {
+                        let label = dir
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
+                        let dir_clone = dir.clone();
+                        items_col = items_col.push(
+                            button(
+                                text(label)
+                                    .size(typography.body)
+                                    .font(typography.body_font),
+                            )
+                            .width(Length::Fill)
+                            .padding([spacing.xs, spacing.sm])
+                            .style(move |_theme: &Theme, status: ButtonStatus| {
+                                let mut style = iced::widget::button::Style {
+                                    text_color: colors.text_primary,
+                                    ..Default::default()
+                                };
+                                if matches!(status, ButtonStatus::Hovered) {
+                                    style.background =
+                                        Some(Background::Color(colors.hover));
+                                }
+                                style
+                            })
+                            .on_press(UiMessage::NavigateTo(dir_clone)),
+                        );
+                    }
+                    if self.breadcrumb_dropdown_has_more {
+                        items_col = items_col.push(
+                            text("\u{2026}")  // "…"
+                                .size(typography.caption)
+                                .font(typography.caption_font)
+                                .color(colors.text_muted),
+                        );
+                    }
+                    let menu = container(
+                        scrollable(items_col).height(Length::Shrink),
+                    )
+                    .padding([spacing.xs, spacing.sm])
+                    .width(Length::Fixed(280.0))
+                    .max_height(400.0)
+                    .style(move |_| iced::widget::container::Style {
+                        background: Some(Background::Color(colors.panel_background)),
+                        border: border::rounded(8.0).color(colors.border).width(1.0),
+                        ..Default::default()
+                    });
+                    // Position below the header area
+                    let menu_layer: Element<'_, UiMessage> = container(
+                        column![
+                            vertical_space().height(Length::Fixed(90.0)),
+                            row![
+                                horizontal_space().width(Length::Fixed(120.0)),
+                                opaque(menu)
+                            ]
+                        ]
+                        .spacing(0),
+                    )
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into();
+                    let dismiss_layer: Element<'_, UiMessage> =
+                        mouse_area(container(row![]).width(Length::Fill).height(Length::Fill))
+                            .on_press(UiMessage::CloseBreadcrumbDropdown)
+                            .into();
+                    stack![dismiss_layer, menu_layer].into()
+                }
+            } else {
+                container(row![]).into()
+            };
+
         // Feature 3, 5, C, K, O, P: overlay modals (see view/overlays.rs)
         let properties_layer  = self.render_properties_layer(colors, spacing, typography);
         let bulk_rename_layer = self.render_bulk_rename_layer(colors, spacing, typography);
@@ -2686,6 +3124,6 @@ impl XionApp {
         let grep_layer        = self.render_grep_layer(colors, spacing, typography);
         let permissions_layer = self.render_permissions_layer(colors, spacing, typography);
 
-        stack![base, selection_layer, drag_layer, history_layer, context_layer, properties_layer, bulk_rename_layer, diff_layer, hex_layer, grep_layer, permissions_layer].into()
+        stack![base, selection_layer, drag_layer, breadcrumb_dropdown_layer, history_layer, context_layer, properties_layer, bulk_rename_layer, diff_layer, hex_layer, grep_layer, permissions_layer].into()
     }
 }

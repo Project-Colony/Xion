@@ -41,17 +41,24 @@ fn main() -> iced::Result {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // If a path argument is provided, use it as the start directory.
-    let start_path = args.first().map(|arg| {
-        let path = PathBuf::from(arg);
-        if path.is_absolute() {
-            path
-        } else {
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join(path)
-        }
-    });
+    // If a path argument is provided (not a flag), use it as the start directory.
+    let start_path = args.first()
+        .filter(|arg| !arg.starts_with("--"))
+        .map(|arg| {
+            let path = PathBuf::from(arg);
+            let resolved = if path.is_absolute() {
+                path
+            } else {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join(path)
+            };
+            // Validate that the path exists; fall back to None if not
+            if resolved.exists() { resolved } else {
+                tracing::warn!("Chemin de démarrage invalide: {}", resolved.display());
+                resolved
+            }
+        });
 
     tracing::info!("Starting Xion file explorer");
 

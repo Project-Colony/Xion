@@ -15,7 +15,7 @@ use tracing::warn;
 use crate::core::{AppResult, FilesystemConfig, XionError};
 use crate::filesystem::metadata::FsMetadata;
 use crate::filesystem::paging::{Page, PageRequest};
-use crate::filesystem::sorting;
+use crate::filesystem::sorting::natural_cmp;
 
 #[derive(Debug, Clone)]
 pub struct FsEntry {
@@ -61,6 +61,7 @@ pub struct ListOptions {
     pub directories_first: bool,
     pub filter: EntryFilter,
     pub name_query: Option<String>,
+    pub respect_gitignore: bool,
 }
 
 impl Default for ListOptions {
@@ -72,6 +73,7 @@ impl Default for ListOptions {
             directories_first: true,
             filter: EntryFilter::All,
             name_query: None,
+            respect_gitignore: false,
         }
     }
 }
@@ -162,7 +164,7 @@ impl LocalFileSystem {
         }
 
         let ordering = match options.sort_by {
-            SortKey::Name => left.name.to_lowercase().cmp(&right.name.to_lowercase()),
+            SortKey::Name => natural_cmp(&left.name, &right.name),
             SortKey::Modified => left
                 .metadata
                 .as_ref()
@@ -184,74 +186,8 @@ impl LocalFileSystem {
 
 impl FileSystem for LocalFileSystem {
     fn list_dir(&self, path: &Path, options: ListOptions) -> AppResult<Vec<FsEntry>> {
-        if !path.exists() {
-            return Err(XionError::NotFound(path.to_path_buf()));
-        }
-
-        let mut entries = Vec::new();
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
-            let file_name = entry.file_name();
-            let name = file_name.to_string_lossy().to_string();
-
-            if !options.show_hidden {
-                #[cfg(target_os = "windows")]
-                let hidden = Self::is_hidden(&name) || Self::is_hidden_windows(&entry.path());
-                #[cfg(not(target_os = "windows"))]
-                let hidden = Self::is_hidden(&name);
-                if hidden { continue; }
-            }
-
-            let file_type = entry.file_type()?;
-            let entry_type = if file_type.is_dir() {
-                FsEntryType::Directory
-            } else if file_type.is_file() {
-                FsEntryType::File
-            } else if file_type.is_symlink() {
-                FsEntryType::Symlink
-            } else {
-                FsEntryType::Other
-            };
-
-            if !Self::matches_filter(entry_type, options.filter) {
-                continue;
-            }
-
-            if !Self::matches_query(&name, &options.name_query) {
-                continue;
-            }
-
-            entries.push(EntryStub {
-                path: entry.path(),
-                name,
-                entry_type,
-                metadata: None,
-            });
-        }
-
-        let metadata = if entries.is_empty() {
-            Vec::new()
-        } else {
-            let paths = entries
-                .iter()
-                .map(|entry| entry.path.clone())
-                .collect::<Vec<_>>();
-            self.metadata_batch(&paths)?
-        };
-
-        let mut entries = entries
-            .into_iter()
-            .zip(metadata)
-            .map(|(entry, metadata)| FsEntry {
-                path: entry.path,
-                name: entry.name,
-                entry_type: entry.entry_type,
-                metadata,
-            })
-            .collect::<Vec<_>>();
-
-        entries.sort_by(|left, right| sorting::compare_entries(left, right, &options));
-        Ok(entries)
+        let page = self.list_dir_paged(path, options, PageRequest::new(0, usize::MAX))?;
+        Ok(page.items)
     }
 
     fn metadata(&self, path: &Path) -> AppResult<FsMetadata> {
@@ -271,10 +207,34 @@ impl FileSystem for LocalFileSystem {
 
         let needs_full_metadata = matches!(options.sort_by, SortKey::Modified | SortKey::Size);
         let mut entries = Vec::new();
+        let long_path = ensure_long_path(path);
 
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
+        // Build gitignore matcher if enabled
+        let gitignore = if options.respect_gitignore {
+            let mut builder = ignore::gitignore::GitignoreBuilder::new(path);
+            let gitignore_path = path.join(".gitignore");
+            if gitignore_path.exists() {
+                let _ = builder.add(&gitignore_path);
+            }
+            match builder.build() {
+                Ok(gi) => Some(gi),
+                Err(e) => {
+                    tracing::warn!("Gitignore: erreur de parsing: {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        for entry in fs::read_dir(long_path.as_ref())? {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue, // skip inaccessible entries (system files, broken symlinks)
+            };
             let file_name = entry.file_name();
+            // to_string_lossy is intentional: on Windows, filenames are almost always valid
+            // Unicode. The rare U+FFFD replacement is visible and preferable to failing.
             let name = file_name.to_string_lossy().to_string();
 
             if !options.show_hidden {
@@ -285,7 +245,18 @@ impl FileSystem for LocalFileSystem {
                 if hidden { continue; }
             }
 
-            let file_type = entry.file_type()?;
+            // Filter gitignored entries
+            if let Some(gi) = &gitignore {
+                let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+                if gi.matched_path_or_any_parents(&entry.path(), is_dir).is_ignore() {
+                    continue;
+                }
+            }
+
+            let file_type = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue, // skip entries whose type cannot be determined
+            };
             let entry_type = if file_type.is_dir() {
                 FsEntryType::Directory
             } else if file_type.is_file() {
@@ -431,22 +402,57 @@ impl LocalFileSystem {
             }
         });
 
+        // Safety: thread::scope guarantees all spawned threads have joined at this point,
+        // so the Arc should have exactly one strong reference remaining.
         let results = Arc::try_unwrap(results)
-            .map_err(|_| XionError::InvalidPath(PathBuf::from("<batch>")))?
+            .map_err(|_| XionError::Io(std::io::Error::other(
+                "batch metadata operation failed: arc still has multiple owners (should not happen after thread::scope)",
+            )))?
             .into_inner()
-            .map_err(|_| XionError::InvalidPath(PathBuf::from("<batch>")))?;
+            .map_err(|_| XionError::Io(std::io::Error::other(
+                "batch metadata operation failed: mutex poisoned",
+            )))?;
 
         let mut metadata = Vec::with_capacity(paths.len());
-        for result in results {
+        for (i, result) in results.into_iter().enumerate() {
             match result {
                 Some(Ok(value)) => metadata.push(value),
-                Some(Err(error)) => return Err(error),
-                None => return Err(XionError::InvalidPath(PathBuf::from("<batch>"))),
+                Some(Err(_)) => {
+                    // Inaccessible file (system file, locked, etc.) — use fallback metadata
+                    metadata.push(FsMetadata::default());
+                }
+                None => return Err(XionError::Io(std::io::Error::other(
+                    format!("batch metadata operation failed: missing result slot at index {i}"),
+                ))),
             }
         }
 
         Ok(metadata)
     }
+}
+
+#[cfg(windows)]
+fn ensure_long_path(path: &std::path::Path) -> std::borrow::Cow<'_, std::path::Path> {
+    let s = path.to_string_lossy();
+    if s.len() > 240 && !s.starts_with("\\\\?\\") && path.is_absolute() {
+        if s.starts_with("\\\\") {
+            // UNC path: \\server\share -> \\?\UNC\server\share
+            std::borrow::Cow::Owned(std::path::PathBuf::from(
+                format!("\\\\?\\UNC\\{}", s.strip_prefix("\\\\").unwrap_or(&s))
+            ))
+        } else {
+            std::borrow::Cow::Owned(std::path::PathBuf::from(
+                format!("\\\\?\\{}", s)
+            ))
+        }
+    } else {
+        std::borrow::Cow::Borrowed(path)
+    }
+}
+
+#[cfg(not(windows))]
+fn ensure_long_path(path: &std::path::Path) -> std::borrow::Cow<'_, std::path::Path> {
+    std::borrow::Cow::Borrowed(path)
 }
 
 #[derive(Debug)]

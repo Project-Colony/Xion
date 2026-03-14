@@ -679,7 +679,7 @@ mod ui_update {
         use xion::services::NetworkResource;
         let mut app = XionApp::new_for_test();
         let resources = vec![
-            NetworkResource { name: "NAS".to_string(), path: "smb://NAS".to_string() },
+            NetworkResource { name: "NAS".to_string(), path: "smb://NAS".to_string(), status: xion::services::network::NetworkStatus::Online },
         ];
         app.update_for_test(UiMessage::NetworkScanCompleted(resources));
         // Cache is no longer stale after update

@@ -279,6 +279,8 @@ pub enum UiMessage {
     OperationProgressTick,
     NewFolder,
     NewFolderCreated(Result<PathBuf, String>),
+    NewFile,
+    NewFileCreated(Result<PathBuf, String>),
     AddressEditStart,
     AddressEditCancel,
     ToggleDarkMode,
@@ -289,6 +291,7 @@ pub enum UiMessage {
     TextPreviewLoaded {
         path: PathBuf,
         content: String,
+        encoding: Option<String>,
     },
     PreviewAnimTick,
     ToggleTerminal,
@@ -331,8 +334,10 @@ pub enum UiMessage {
     PaneBLoaded { path: PathBuf, entries: Vec<crate::filesystem::FsEntry> },
     PaneBActivate(PathBuf),
     SwitchActivePane,
-    // Feature A: Compress to ZIP
+    // Feature A: Compress to ZIP / TAR.GZ / 7Z
     CompressToZip,
+    CompressToTarGz,
+    CompressTo7z,
     CompressCompleted(Result<std::path::PathBuf, String>),
     // Feature B: Open With
     OpenWith(std::path::PathBuf),
@@ -379,8 +384,47 @@ pub enum UiMessage {
     CloseGrep,
     // Feature P: NTFS Permissions
     OpenPermissions(std::path::PathBuf),
-    PermissionsLoaded { path: std::path::PathBuf, entries: Vec<AclEntry> },
+    PermissionsLoaded { path: std::path::PathBuf, entries: Vec<AclEntry>, error: Option<String> },
     ClosePermissions,
+    // Feature Q: Undo
+    Undo,
+    UndoCompleted(Result<String, String>),
+    // Feature R: Breadcrumb dropdown
+    BreadcrumbDropdown(std::path::PathBuf),
+    CloseBreadcrumbDropdown,
+    // Sidebar: remove a user-added favorite
+    RemoveFavorite(std::path::PathBuf),
+    // Preview double-click auto-resize
+    PreviewDoubleClick,
+    // #18: Tab drag reorder
+    TabDragStart(usize),
+    TabDragOver(usize),
+    TabDragDrop,
+    // Terminal autocomplete (Tab key)
+    TerminalAutoComplete,
+    // Trash browsing
+    NavigateToTrash,
+    TrashListLoaded(Vec<(String, std::path::PathBuf)>),
+    // Full-text content search
+    FullTextSearchSubmit,
+    FullTextSearchResults(Vec<crate::ui::GrepResult>),
+    // Folder comparison
+    FolderCompare,
+    FolderCompareResults {
+        only_a: Vec<String>,
+        only_b: Vec<String>,
+        different: Vec<String>,
+        common: usize,
+    },
+    // #12: External drag & drop from Windows Explorer
+    ExternalFileHovered(std::path::PathBuf),
+    ExternalFileDropped(std::path::PathBuf),
+    ExternalFileCancelled,
+    // Background context menu (right-click on empty space)
+    BackgroundContextMenu,
+    // Context submenu toggle (Compress / Label)
+    ToggleContextSubmenu(u8), // 0=Compress, 1=Label
+    CloseContextSubmenu,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -420,6 +464,12 @@ pub enum KeyboardCommand {
     QuickFilterChanged(String),
     QuickFilterClear,
     OpenGrep,
+    Undo,
+    FocusAddress,
+    GoToParent,
+    CopyPath,
+    /// Jump to a numbered bookmark (0-indexed: Ctrl+1 = bookmark 0)
+    GoToBookmark(usize),
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -439,6 +489,8 @@ pub enum ContextAction {
     OpenProperties,
     OpenBulkRename,
     CompressToZip,
+    CompressToTarGz,
+    CompressTo7z,
     OpenWith,
     OpenDiff,
     OpenHexView,
@@ -450,6 +502,9 @@ pub enum ContextAction {
     SetLabelBlue,
     SetLabelPurple,
     RemoveLabel,
+    NewFile,
+    NewFolder,
+    AddToFavorites,
 }
 
 #[derive(Debug, Clone, Copy)]

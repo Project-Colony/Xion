@@ -86,9 +86,38 @@ pub(super) struct TabState {
     pub(super) path: PathBuf,
 }
 
+#[derive(Debug)]
+pub(super) struct TabManager {
+    pub(super) tabs: Vec<TabState>,
+    pub(super) active: usize,
+}
+
+impl TabManager {
+    pub(super) fn new(tabs: Vec<TabState>, active: usize) -> Self {
+        Self {
+            active: active.min(tabs.len().saturating_sub(1)),
+            tabs,
+        }
+    }
+
+    pub(super) fn active_path(&self) -> Option<&PathBuf> {
+        self.tabs.get(self.active).map(|t| &t.path)
+    }
+
+    pub(super) fn set_active_path(&mut self, path: PathBuf) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.path = path;
+        }
+    }
+
+    pub(super) fn count(&self) -> usize {
+        self.tabs.len()
+    }
+}
+
 // ── Disk info ─────────────────────────────────────────────────────────────────
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(super) struct DiskUsage {
     pub(super) total: u64,
     pub(super) available: u64,
@@ -106,7 +135,7 @@ thread_local! {
 
 fn refresh_disk_list() -> Vec<(PathBuf, DiskUsage)> {
     let disks = Disks::new_with_refreshed_list();
-    disks
+    let mut list: Vec<(PathBuf, DiskUsage)> = disks
         .iter()
         .map(|disk| {
             (
@@ -117,7 +146,9 @@ fn refresh_disk_list() -> Vec<(PathBuf, DiskUsage)> {
                 },
             )
         })
-        .collect()
+        .collect();
+    list.sort_by(|(a, _), (b, _)| a.cmp(b));
+    list
 }
 
 pub(super) fn format_gigabytes(bytes: u64) -> u64 {
@@ -354,6 +385,8 @@ pub(super) struct TerminalTab {
     pub(super) lines: Vec<String>,
     pub(super) process: Option<crate::terminal::TerminalProcess>,
     pub(super) cwd: Option<std::path::PathBuf>,
+    /// Cached join of `lines` — rebuilt only when lines change.
+    pub(super) cached_output: Option<String>,
 }
 
 impl TerminalTab {
@@ -363,10 +396,16 @@ impl TerminalTab {
             let excess = self.lines.len() - TERMINAL_MAX_LINES;
             self.lines.drain(..excess);
         }
+        self.rebuild_cached_output();
     }
 
     pub(super) fn push_prompt(&mut self, cwd: &std::path::Path, cmd: &str) {
         self.lines.push(format!("{}> {}", cwd.display(), cmd));
+        self.rebuild_cached_output();
+    }
+
+    fn rebuild_cached_output(&mut self) {
+        self.cached_output = Some(self.lines.join("\n"));
     }
 
     pub(super) fn effective_cwd<'a>(&'a self, fallback: &'a std::path::Path) -> &'a std::path::Path {
@@ -375,9 +414,12 @@ impl TerminalTab {
 
     pub(super) fn apply_cd(&mut self, cmd: &str, fallback: &std::path::Path) {
         let trimmed = cmd.trim();
-        let rest = if let Some(r) = trimmed.strip_prefix("cd ").or_else(|| trimmed.strip_prefix("CD ")).or_else(|| trimmed.strip_prefix("chdir ")).or_else(|| trimmed.strip_prefix("CHDIR ")) {
-            r.trim()
-        } else if trimmed.eq_ignore_ascii_case("cd") || trimmed.eq_ignore_ascii_case("chdir") {
+        let lower = trimmed.to_ascii_lowercase();
+        let rest = if let Some(r) = lower.strip_prefix("cd ").or_else(|| lower.strip_prefix("chdir ")) {
+            // Use the original trimmed string at the same offset to preserve path casing
+            let offset = trimmed.len() - r.len();
+            trimmed[offset..].trim()
+        } else if lower == "cd" || lower == "chdir" {
             return;
         } else {
             return;
@@ -397,35 +439,45 @@ impl TerminalTab {
 pub(super) struct TerminalState {
     pub(super) tabs: Vec<TerminalTab>,
     pub(super) active_tab: usize,
-    #[allow(dead_code)]
-    pub(super) visible: bool,
-    #[allow(dead_code)]
-    pub(super) anim_progress: f32,
 }
 
 impl Default for TerminalState {
     fn default() -> Self {
-        let mut default_tab = TerminalTab::default();
-        default_tab.title = "Terminal 1".to_string();
+        let default_tab = TerminalTab { title: "Terminal 1".to_string(), ..Default::default() };
         Self {
             tabs: vec![default_tab],
             active_tab: 0,
-            visible: false,
-            anim_progress: 0.0,
         }
     }
 }
 
 impl TerminalState {
-    /// Get a mutable reference to the active tab.
-    pub(super) fn active(&mut self) -> &mut TerminalTab {
-        let idx = self.active_tab;
-        &mut self.tabs[idx]
+    /// Ensure active_tab is within bounds.
+    fn clamp_active(&mut self) {
+        if self.active_tab >= self.tabs.len() {
+            self.active_tab = self.tabs.len().saturating_sub(1);
+        }
     }
 
-    /// Get an immutable reference to the active tab.
+    /// Get a mutable reference to the active tab, inserting a default tab if empty.
+    pub(super) fn active(&mut self) -> &mut TerminalTab {
+        if self.tabs.is_empty() {
+            self.tabs.push(TerminalTab::default());
+            self.active_tab = 0;
+        }
+        self.clamp_active();
+        &mut self.tabs[self.active_tab]
+    }
+
+    /// Get an immutable reference to the active tab, or a static default if empty.
     pub(super) fn active_ref(&self) -> &TerminalTab {
-        &self.tabs[self.active_tab]
+        if self.tabs.is_empty() {
+            static DEFAULT_TAB: std::sync::LazyLock<TerminalTab> =
+                std::sync::LazyLock::new(TerminalTab::default);
+            return &DEFAULT_TAB;
+        }
+        let idx = self.active_tab.min(self.tabs.len() - 1);
+        &self.tabs[idx]
     }
 
     // Delegate helpers to active tab for backward compat
@@ -442,8 +494,8 @@ impl TerminalState {
     }
 
     pub(super) fn apply_cd(&mut self, cmd: &str, fallback: &std::path::Path) {
-        let idx = self.active_tab;
-        self.tabs[idx].apply_cd(cmd, fallback);
+        self.clamp_active();
+        self.tabs[self.active_tab].apply_cd(cmd, fallback);
     }
 }
 
@@ -487,7 +539,6 @@ pub(super) struct ArchiveBrowserState {
     pub(super) archive_path: PathBuf,
     pub(super) inner_path: String,       // current folder within archive
     pub(super) entries: Vec<crate::ui::ArchiveEntry>,
-    #[allow(dead_code)]
     pub(super) archive_type: ArchiveType,
 }
 
@@ -527,6 +578,7 @@ pub(super) struct PermissionsViewState {
     pub(super) path: PathBuf,
     pub(super) entries: Vec<AclEntry>,
     pub(super) loading: bool,
+    pub(super) error: Option<String>,
 }
 
 // ── Recents service ───────────────────────────────────────────────────────────
@@ -534,7 +586,6 @@ pub(super) struct PermissionsViewState {
 #[derive(Debug, Clone)]
 pub(super) struct RecentEntry {
     pub(super) path: PathBuf,
-    #[allow(dead_code)]
     pub(super) accessed: std::time::SystemTime,
 }
 
@@ -578,8 +629,6 @@ pub(super) struct ColumnResizeState {
 pub(super) struct PaneB {
     pub(super) path: PathBuf,
     pub(super) entries: Vec<crate::filesystem::FsEntry>,
-    #[allow(dead_code)]
-    pub(super) selection: std::collections::HashSet<std::path::PathBuf>,
     pub(super) is_loading: bool,
 }
 
@@ -594,9 +643,55 @@ pub(super) struct ScrollState {
     pub(super) tree_height: f32,
 }
 
+// ── Undo stack ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub(super) enum UndoAction {
+    /// Files were copied to destination (undo = delete created copies)
+    Copy { created: Vec<PathBuf> },
+    /// Files were moved
+    Move { original_paths: Vec<(PathBuf, PathBuf)> }, // (source, destination) pairs
+    /// A file was created
+    FileCreated { path: PathBuf },
+    /// A folder was created
+    FolderCreated { path: PathBuf },
+    /// A rename was done
+    Renamed { old_path: PathBuf, new_path: PathBuf },
+}
+
+#[derive(Debug, Default)]
+pub(super) struct UndoStack {
+    pub(super) actions: Vec<UndoAction>,
+}
+
+impl UndoStack {
+    pub(super) fn push(&mut self, action: UndoAction) {
+        if self.actions.len() >= 20 {
+            self.actions.remove(0);
+        }
+        self.actions.push(action);
+    }
+
+    pub(super) fn pop(&mut self) -> Option<UndoAction> {
+        self.actions.pop()
+    }
+
+}
+
+/// Context stashed before an async file operation, to build undo actions on completion.
+#[derive(Debug, Clone)]
+pub(super) enum PendingUndoContext {
+    /// Clipboard copy: sources and destination directory
+    Copy { sources: Vec<PathBuf>, destination: PathBuf },
+    /// Clipboard move or cut: sources and destination directory
+    Move { sources: Vec<PathBuf>, destination: PathBuf },
+    /// Rename: old path (new path comes from the report)
+    Rename { old_path: PathBuf },
+}
+
 // ── Routing helpers ───────────────────────────────────────────────────────────
 
-pub(super) fn build_default_favorites() -> FavoritesService {
+pub(super) fn build_default_favorites(persisted: &[PathBuf]) -> FavoritesService {
     let mut favorites = FavoritesService::default();
     if let Some(user_dirs) = UserDirs::new() {
         let candidates = [
@@ -613,6 +708,12 @@ pub(super) fn build_default_favorites() -> FavoritesService {
             if candidate.exists() {
                 favorites.add(candidate);
             }
+        }
+    }
+    // Restore user-added favorites from config
+    for path in persisted {
+        if path.exists() {
+            favorites.add(path.clone());
         }
     }
     favorites
@@ -643,5 +744,57 @@ pub(super) fn route_kind_from_path(path: &Path) -> RouteKind {
         RouteKind::Recent
     } else {
         RouteKind::Local(path.to_path_buf())
+    }
+}
+
+// ── Menu state ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ContextSubmenu {
+    Compress,
+    Label,
+}
+
+#[derive(Debug)]
+pub(super) struct MenuState {
+    pub(super) context_open: bool,
+    pub(super) context_position: Option<iced::Point>,
+    /// Background context menu (right-click on empty space, no selection)
+    pub(super) background_context_open: bool,
+    /// Currently open submenu (Compress / Label)
+    pub(super) context_submenu: Option<ContextSubmenu>,
+    pub(super) history_open: bool,
+    pub(super) history_position: Option<iced::Point>,
+}
+
+impl Default for MenuState {
+    fn default() -> Self {
+        Self {
+            context_open: false,
+            context_position: None,
+            background_context_open: false,
+            context_submenu: None,
+            history_open: false,
+            history_position: None,
+        }
+    }
+}
+
+// ── Dual-pane state ──────────────────────────────────────────────────────────
+
+#[derive(Debug)]
+pub(super) struct DualPaneState {
+    pub(super) enabled: bool,
+    pub(super) pane_b: Option<PaneB>,
+    pub(super) active: usize,
+}
+
+impl Default for DualPaneState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            pane_b: None,
+            active: 0,
+        }
     }
 }

@@ -1,7 +1,7 @@
 use std::fs::Metadata;
 use std::time::SystemTime;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FsMetadata {
     pub size: u64,
     pub modified: Option<SystemTime>,

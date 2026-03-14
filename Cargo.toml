@@ -14,7 +14,7 @@ categories = ["gui", "filesystem"]
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 directories = "5.0"
 iced = { version = "0.14", features = ["image", "wgpu", "tokio"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt", "time", "sync", "process", "io-util"] }
 image = { version = "0.25", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
 notify = "6.1"
 serde = { version = "1.0", features = ["derive"] }
@@ -34,6 +34,11 @@ flate2 = "1"
 sevenz-rust = "0.6"
 ignore = "0.4"
 encoding_rs = "0.8"
+suppaftp = { version = "6", features = ["native-tls"] }
+mdns-sd = "0.11"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_NetworkManagement_WNet", "Win32_Foundation"] }
 
 [build-dependencies]
 embed-resource = "3"

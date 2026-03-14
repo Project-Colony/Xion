@@ -15,9 +15,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, ChildStdin};
 use tokio::sync::Mutex as AsyncMutex;
 
-#[cfg(windows)]
-#[allow(unused_imports)]
-use std::os::windows::process::CommandExt;
+// Note: tokio::process::Command provides creation_flags() natively on Windows,
+// so no std::os::windows::process::CommandExt import is needed.
 
 /// Maximum lines buffered before oldest lines are dropped.
 const OUTPUT_BUF_MAX: usize = 500;
@@ -43,6 +42,8 @@ impl Drop for Inner {
                 // Force-kill cmd.exe. start_kill() is synchronous and does not
                 // block — it just sends the termination signal.
                 let _ = child.start_kill();
+                // Try to reap the process to avoid zombie. try_wait is non-blocking.
+                let _ = child.try_wait();
             }
         }
     }
@@ -74,6 +75,18 @@ fn push_chunk(
     ready: &Arc<AtomicBool>,
 ) {
     partial.extend_from_slice(chunk);
+    // Safety cap: if no newline arrives for a very long time, truncate to avoid unbounded growth.
+    // Truncate at a valid UTF-8 char boundary to avoid corrupting multi-byte sequences.
+    const PARTIAL_MAX: usize = 64 * 1024;
+    if partial.len() > PARTIAL_MAX {
+        let drain_to = partial.len() - PARTIAL_MAX;
+        // Find the next valid UTF-8 boundary after drain_to
+        let safe_drain = (drain_to..partial.len())
+            .find(|&i| std::str::from_utf8(&partial[i..]).is_ok()
+                || partial.get(i).map_or(true, |b| (*b & 0b1100_0000) != 0b1000_0000))
+            .unwrap_or(drain_to);
+        partial.drain(..safe_drain);
+    }
     while let Some(pos) = partial.iter().position(|&b| b == b'\n') {
         let line_bytes = &partial[..pos];
         let line_bytes = if line_bytes.last() == Some(&b'\r') {
@@ -84,15 +97,16 @@ fn push_chunk(
         let line = String::from_utf8_lossy(line_bytes).into_owned();
 
         if line == READY_SENTINEL {
-            ready.store(true, Ordering::Relaxed);
-        } else if ready.load(Ordering::Relaxed) {
-            let mut locked = buf.lock().unwrap();
-            locked.push_back(line);
-            if locked.len() > OUTPUT_BUF_MAX {
-                locked.pop_front();
+            ready.store(true, Ordering::Release);
+        } else if ready.load(Ordering::Acquire) {
+            if let Ok(mut locked) = buf.lock() {
+                locked.push_back(line);
+                if locked.len() > OUTPUT_BUF_MAX {
+                    locked.pop_front();
+                }
             }
         }
-        *partial = partial[pos + 1..].to_vec();
+        partial.drain(..=pos);
     }
 }
 
@@ -109,10 +123,10 @@ impl TerminalProcess {
         cmd.creation_flags(0x0800_0000);
 
         let mut child = cmd.spawn()?;
-        let stdin = child.stdin.take().expect("stdin was piped");
-        let stdout = child.stdout.take().expect("stdout was piped");
-        let stderr = child.stderr.take().expect("stderr was piped");
-        Ok(Self::build_process(child, stdin, stdout, stderr, b"echo ---XION_READY---\r\n").await)
+        let stdin = child.stdin.take().ok_or_else(|| std::io::Error::other("stdin not available"))?;
+        let stdout = child.stdout.take().ok_or_else(|| std::io::Error::other("stdout not available"))?;
+        let stderr = child.stderr.take().ok_or_else(|| std::io::Error::other("stderr not available"))?;
+        Ok(Self::build_process(child, stdin, stdout, stderr, b"echo ---XION_READY---\r\n".to_vec()).await)
     }
 
     /// Spawn a PowerShell session.
@@ -128,10 +142,10 @@ impl TerminalProcess {
         cmd.creation_flags(0x0800_0000);
 
         let mut child = cmd.spawn()?;
-        let stdin = child.stdin.take().expect("stdin was piped");
-        let stdout = child.stdout.take().expect("stdout was piped");
-        let stderr = child.stderr.take().expect("stderr was piped");
-        let init = b"$env:TERM = 'xterm'\r\nfunction prompt { \"`n\" }\r\nWrite-Output \"---XION_READY---\"\r\n";
+        let stdin = child.stdin.take().ok_or_else(|| std::io::Error::other("stdin not available"))?;
+        let stdout = child.stdout.take().ok_or_else(|| std::io::Error::other("stdout not available"))?;
+        let stderr = child.stderr.take().ok_or_else(|| std::io::Error::other("stderr not available"))?;
+        let init = b"$env:TERM = 'xterm'\r\nfunction prompt { \"`n\" }\r\nWrite-Output \"---XION_READY---\"\r\n".to_vec();
         Ok(Self::build_process(child, stdin, stdout, stderr, init).await)
     }
 
@@ -140,10 +154,13 @@ impl TerminalProcess {
         stdin: tokio::process::ChildStdin,
         mut stdout: tokio::process::ChildStdout,
         mut stderr: tokio::process::ChildStderr,
-        init_bytes: &'static [u8],
+        init_bytes: Vec<u8>,
     ) -> Self {
         let output_buf: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
+        // Shared ready gate: both stdout and stderr wait for READY_SENTINEL.
+        // stderr uses the same gate so it doesn't output before stdout is ready.
         let stdout_ready = Arc::new(AtomicBool::new(false));
+
         let buf_out = Arc::clone(&output_buf);
         let ready_out = Arc::clone(&stdout_ready);
         tokio::spawn(async move {
@@ -156,9 +173,9 @@ impl TerminalProcess {
                 }
             }
         });
-        let stderr_ready = Arc::new(AtomicBool::new(true));
+
         let buf_err = Arc::clone(&output_buf);
-        let ready_err = Arc::clone(&stderr_ready);
+        let ready_err = Arc::clone(&stdout_ready); // Same gate as stdout
         tokio::spawn(async move {
             let mut tmp = vec![0u8; 4096];
             let mut partial: Vec<u8> = Vec::new();
@@ -169,17 +186,26 @@ impl TerminalProcess {
                 }
             }
         });
+
         let inner = Arc::new(Inner {
             stdin: AsyncMutex::new(stdin),
             output_buf,
             child: Mutex::new(Some(child)),
         });
-        let init_inner = Arc::clone(&inner);
-        tokio::spawn(async move {
-            let mut s = init_inner.stdin.lock().await;
-            let _ = s.write_all(init_bytes).await;
-            let _ = s.flush().await;
-        });
+
+        // Write init bytes synchronously (awaited) to ensure the shell is
+        // initialized before returning. This prevents race conditions where
+        // the caller sends commands before the init sequence completes.
+        {
+            let mut s = inner.stdin.lock().await;
+            if let Err(e) = s.write_all(&init_bytes).await {
+                tracing::warn!("Terminal init write échoué: {e}");
+            }
+            if let Err(e) = s.flush().await {
+                tracing::warn!("Terminal init flush échoué: {e}");
+            }
+        }
+
         Self { inner }
     }
 
@@ -196,80 +222,43 @@ impl TerminalProcess {
 
         let mut child = cmd.spawn()?;
 
-        let stdin = child.stdin.take().expect("stdin was piped");
-        let mut stdout = child.stdout.take().expect("stdout was piped");
-        let mut stderr = child.stderr.take().expect("stderr was piped");
-
-        let output_buf: Arc<Mutex<VecDeque<String>>> =
-            Arc::new(Mutex::new(VecDeque::new()));
-
-        // Stdout is gated: all output before READY_SENTINEL is discarded.
-        let stdout_ready = Arc::new(AtomicBool::new(false));
-        let buf_out = Arc::clone(&output_buf);
-        let ready_out = Arc::clone(&stdout_ready);
-        tokio::spawn(async move {
-            let mut tmp = vec![0u8; 4096];
-            let mut partial: Vec<u8> = Vec::new();
-            loop {
-                match stdout.read(&mut tmp).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => push_chunk(&tmp[..n], &mut partial, &buf_out, &ready_out),
-                }
-            }
-        });
-
-        // Stderr is always forwarded (errors must always be visible).
-        let stderr_ready = Arc::new(AtomicBool::new(true));
-        let buf_err = Arc::clone(&output_buf);
-        let ready_err = Arc::clone(&stderr_ready);
-        tokio::spawn(async move {
-            let mut tmp = vec![0u8; 4096];
-            let mut partial: Vec<u8> = Vec::new();
-            loop {
-                match stderr.read(&mut tmp).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => push_chunk(&tmp[..n], &mut partial, &buf_err, &ready_err),
-                }
-            }
-        });
-
-        let inner = Arc::new(Inner {
-            stdin: AsyncMutex::new(stdin),
-            output_buf,
-            child: Mutex::new(Some(child)),
-        });
+        let stdin = child.stdin.take().ok_or_else(|| std::io::Error::other("stdin not available"))?;
+        let stdout = child.stdout.take().ok_or_else(|| std::io::Error::other("stdout not available"))?;
+        let stderr = child.stderr.take().ok_or_else(|| std::io::Error::other("stderr not available"))?;
 
         // Init sequence:
         //  chcp 65001     → force UTF-8 output
         //  @echo off      → suppress cmd.exe echoing our commands back
         //  PROMPT $_      → prompt emits "\r\n", preventing partial-line merging
         //  echo SENTINEL  → marks end of init; stdout reader unmutes after this
-        let init = Arc::clone(&inner);
-        tokio::spawn(async move {
-            let mut s = init.stdin.lock().await;
-            let _ = s.write_all(b"chcp 65001 > nul\r\n").await;
-            let _ = s.write_all(b"@echo off\r\n").await;
-            let _ = s.write_all(b"PROMPT $_\r\n").await;
-            let ready_line = format!("echo {}\r\n", READY_SENTINEL);
-            let _ = s.write_all(ready_line.as_bytes()).await;
-            let _ = s.flush().await;
-        });
+        let ready_line = format!("echo {}\r\n", READY_SENTINEL);
+        let mut init_bytes = Vec::new();
+        init_bytes.extend_from_slice(b"chcp 65001 > nul\r\n");
+        init_bytes.extend_from_slice(b"@echo off\r\n");
+        init_bytes.extend_from_slice(b"PROMPT $_\r\n");
+        init_bytes.extend_from_slice(ready_line.as_bytes());
 
-        Ok(Self { inner })
+        Ok(Self::build_process(child, stdin, stdout, stderr, init_bytes).await)
     }
 
     /// Write a command line to stdin (appends `\r\n` automatically).
     pub async fn write_line(&self, line: &str) {
         let mut s = self.inner.stdin.lock().await;
         let bytes = format!("{}\r\n", line);
-        let _ = s.write_all(bytes.as_bytes()).await;
-        let _ = s.flush().await;
+        if let Err(e) = s.write_all(bytes.as_bytes()).await {
+            tracing::warn!("Terminal stdin write échoué: {e}");
+        }
+        if let Err(e) = s.flush().await {
+            tracing::warn!("Terminal stdin flush échoué: {e}");
+        }
     }
 
     /// Drain all pending output lines from the buffer.
     /// Returns an empty Vec if no new output is available.
     pub fn poll(&self) -> Vec<String> {
-        let mut buf = self.inner.output_buf.lock().unwrap();
-        buf.drain(..).collect()
+        match self.inner.output_buf.lock() {
+            Ok(mut buf) => buf.drain(..).collect(),
+            Err(_) => vec![],
+        }
     }
 }

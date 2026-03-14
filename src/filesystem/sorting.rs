@@ -7,6 +7,62 @@ use std::cmp::Ordering;
 
 use crate::filesystem::{EntryFilter, FsEntry, FsEntryType, ListOptions, SortKey, SortOrder};
 
+/// Compare two strings using natural ordering: numeric segments
+/// are compared by value so "file2" sorts before "file10".
+pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let mut a_chars = a.chars().peekable();
+    let mut b_chars = b.chars().peekable();
+
+    loop {
+        match (a_chars.peek(), b_chars.peek()) {
+            (None, None) => return std::cmp::Ordering::Equal,
+            (None, Some(_)) => return std::cmp::Ordering::Less,
+            (Some(_), None) => return std::cmp::Ordering::Greater,
+            (Some(&ac), Some(&bc)) if ac.is_ascii_digit() && bc.is_ascii_digit() => {
+                let mut a_num: u64 = 0;
+                while let Some(&c) = a_chars.peek() {
+                    if c.is_ascii_digit() {
+                        a_num = a_num.saturating_mul(10).saturating_add(c.to_digit(10).unwrap_or(0) as u64);
+                        a_chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                let mut b_num: u64 = 0;
+                while let Some(&c) = b_chars.peek() {
+                    if c.is_ascii_digit() {
+                        b_num = b_num.saturating_mul(10).saturating_add(c.to_digit(10).unwrap_or(0) as u64);
+                        b_chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                match a_num.cmp(&b_num) {
+                    std::cmp::Ordering::Equal => continue,
+                    ord => return ord,
+                }
+            }
+            _ => {
+                let ac = match a_chars.next() {
+                    Some(c) => c,
+                    None => return std::cmp::Ordering::Less,
+                };
+                let bc = match b_chars.next() {
+                    Some(c) => c,
+                    None => return std::cmp::Ordering::Greater,
+                };
+                // Compare lowercase chars without allocating a Vec
+                let mut a_lower = ac.to_lowercase();
+                let mut b_lower = bc.to_lowercase();
+                match a_lower.by_ref().cmp(b_lower.by_ref()) {
+                    std::cmp::Ordering::Equal => continue,
+                    ord => return ord,
+                }
+            }
+        }
+    }
+}
+
 /// Compares two filesystem entries according to the specified options.
 ///
 /// # Ordering Rules
@@ -33,7 +89,7 @@ pub fn compare_entries(left: &FsEntry, right: &FsEntry, options: &ListOptions) -
 
     // Sort by the specified key
     let ordering = match options.sort_by {
-        SortKey::Name => left.name.to_lowercase().cmp(&right.name.to_lowercase()),
+        SortKey::Name => natural_cmp(&left.name, &right.name),
         SortKey::Modified => left.metadata.modified.cmp(&right.metadata.modified),
         SortKey::Size => left.metadata.size.cmp(&right.metadata.size),
     };
@@ -82,12 +138,10 @@ pub fn matches_filter(entry: &FsEntry, options: &ListOptions) -> bool {
 /// * `options` - Sorting options.
 pub fn sort_entries(entries: &mut [FsEntry], options: &ListOptions) {
     if matches!(options.sort_by, SortKey::Name) {
-        // Pre-compute lowercase names to avoid O(2n log n) transient String allocations
-        let lowercase: Vec<String> = entries.iter().map(|e| e.name.to_lowercase()).collect();
         let dirs_first = options.directories_first;
         let desc = matches!(options.sort_order, SortOrder::Desc);
 
-        // Sort using indices to reference the cached lowercase names
+        // Sort using indices with natural ordering (numeric-aware)
         let mut indices: Vec<usize> = (0..entries.len()).collect();
         indices.sort_by(|&a, &b| {
             if dirs_first && entries[a].entry_type != entries[b].entry_type {
@@ -97,7 +151,7 @@ pub fn sort_entries(entries: &mut [FsEntry], options: &ListOptions) {
                     _ => Ordering::Equal,
                 };
             }
-            let ord = lowercase[a].cmp(&lowercase[b]);
+            let ord = natural_cmp(&entries[a].name, &entries[b].name);
             if desc { ord.reverse() } else { ord }
         });
 
@@ -113,6 +167,10 @@ fn apply_permutation<T>(data: &mut [T], indices: &mut [usize]) {
     for i in 0..indices.len() {
         while indices[i] != i {
             let target = indices[i];
+            if target >= data.len() {
+                tracing::warn!("apply_permutation: index corrompu {target} >= {}", data.len());
+                break;
+            }
             data.swap(i, target);
             indices.swap(i, target);
         }

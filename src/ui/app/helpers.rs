@@ -23,6 +23,28 @@ use super::{AnimatedFrame, AnimatedPreview, ColumnSpec};
 
 // ── Formatting ────────────────────────────────────────────────────────────────
 
+/// Truncate a filename for display, preserving the extension.
+/// Returns the original name if it fits within `max_chars`.
+pub fn truncate_name(name: &str, max_chars: usize) -> std::borrow::Cow<'_, str> {
+    if name.chars().count() <= max_chars {
+        return std::borrow::Cow::Borrowed(name);
+    }
+    if max_chars < 2 {
+        return std::borrow::Cow::Borrowed(name);
+    }
+    // Preserve extension: "very_long_name.txt" -> "very_lon...txt"
+    if let Some(dot_pos) = name.rfind('.') {
+        let ext = &name[dot_pos..]; // includes the dot
+        let available = max_chars.saturating_sub(ext.len()).saturating_sub(1); // 1 for ellipsis
+        if available > 0 {
+            let stem: String = name.chars().take(available).collect();
+            return std::borrow::Cow::Owned(format!("{stem}\u{2026}{ext}"));
+        }
+    }
+    let truncated: String = name.chars().take(max_chars - 1).collect();
+    std::borrow::Cow::Owned(format!("{truncated}\u{2026}"))
+}
+
 pub fn entry_type_label(entry_type: FsEntryType) -> &'static str {
     match entry_type {
         FsEntryType::Directory => "Dossier",
@@ -79,7 +101,7 @@ pub fn rectangles_intersect(a: Rectangle, b: Rectangle) -> bool {
 
 // ── Config mapping ────────────────────────────────────────────────────────────
 
-pub fn list_options_from_config(list_config: crate::core::ListConfig) -> ListOptions {
+pub fn list_options_from_config(list_config: crate::core::ListConfig, respect_gitignore: bool) -> ListOptions {
     ListOptions {
         show_hidden: list_config.show_hidden,
         sort_by: match list_config.sort_key {
@@ -98,6 +120,7 @@ pub fn list_options_from_config(list_config: crate::core::ListConfig) -> ListOpt
             EntryFilterConfig::OnlyFiles => EntryFilter::OnlyFiles,
         },
         name_query: None,
+        respect_gitignore,
     }
 }
 
@@ -167,11 +190,11 @@ pub fn gif_frame_delay(frame: &::image::Frame) -> Duration {
     let delay = frame.delay();
     let (numer, denom) = delay.numer_denom_ms();
     let ms = if denom == 0 {
-        0
+        0.0_f64
     } else {
-        (numer as u64) / (denom as u64)
+        (numer as f64) / (denom as f64)
     };
-    Duration::from_millis(ms.max(20))
+    Duration::from_millis(ms.round().max(20.0) as u64)
 }
 
 // ── Tree view ─────────────────────────────────────────────────────────────────
@@ -266,54 +289,29 @@ pub fn command_from_key_press_with_shortcuts(
     let input = key_input_from_event(key, modifiers)?;
     let extend = modifiers.shift();
 
-    if shortcuts.move_up.matches(&input, true) {
-        return Some(KeyboardCommand::MoveUp { extend });
+    macro_rules! check_shortcut {
+        ($binding:expr, $command:expr, $ignore_shift:expr) => {
+            if $binding.matches(&input, $ignore_shift) {
+                return Some($command);
+            }
+        };
     }
-    if shortcuts.move_down.matches(&input, true) {
-        return Some(KeyboardCommand::MoveDown { extend });
-    }
-    if shortcuts.move_home.matches(&input, true) {
-        return Some(KeyboardCommand::MoveHome { extend });
-    }
-    if shortcuts.move_end.matches(&input, true) {
-        return Some(KeyboardCommand::MoveEnd { extend });
-    }
-    if shortcuts.activate.matches(&input, false) {
-        return Some(KeyboardCommand::Activate);
-    }
-    if shortcuts.clear_selection.matches(&input, false) {
-        return Some(KeyboardCommand::ClearSelection);
-    }
-    if shortcuts.cycle_pane_focus.matches(&input, false) {
-        return Some(KeyboardCommand::CyclePaneFocus);
-    }
-    if shortcuts.back.matches(&input, false) {
-        return Some(KeyboardCommand::Back);
-    }
-    if shortcuts.forward.matches(&input, false) {
-        return Some(KeyboardCommand::Forward);
-    }
-    if shortcuts.refresh.matches(&input, false) {
-        return Some(KeyboardCommand::Refresh);
-    }
-    if shortcuts.select_all.matches(&input, false) {
-        return Some(KeyboardCommand::SelectAll);
-    }
-    if shortcuts.toggle_context_menu.matches(&input, false) {
-        return Some(KeyboardCommand::ToggleContextMenu);
-    }
-    if shortcuts.rename.matches(&input, false) {
-        return Some(KeyboardCommand::Rename);
-    }
-    if shortcuts.delete.matches(&input, false) {
-        return Some(KeyboardCommand::Delete);
-    }
-    if shortcuts.new_folder.matches(&input, false) {
-        return Some(KeyboardCommand::NewFolder);
-    }
-    if shortcuts.focus_search.matches(&input, false) {
-        return Some(KeyboardCommand::FocusSearch);
-    }
+    check_shortcut!(shortcuts.move_up, KeyboardCommand::MoveUp { extend }, true);
+    check_shortcut!(shortcuts.move_down, KeyboardCommand::MoveDown { extend }, true);
+    check_shortcut!(shortcuts.move_home, KeyboardCommand::MoveHome { extend }, true);
+    check_shortcut!(shortcuts.move_end, KeyboardCommand::MoveEnd { extend }, true);
+    check_shortcut!(shortcuts.activate, KeyboardCommand::Activate, false);
+    check_shortcut!(shortcuts.clear_selection, KeyboardCommand::ClearSelection, false);
+    check_shortcut!(shortcuts.cycle_pane_focus, KeyboardCommand::CyclePaneFocus, false);
+    check_shortcut!(shortcuts.back, KeyboardCommand::Back, false);
+    check_shortcut!(shortcuts.forward, KeyboardCommand::Forward, false);
+    check_shortcut!(shortcuts.refresh, KeyboardCommand::Refresh, false);
+    check_shortcut!(shortcuts.select_all, KeyboardCommand::SelectAll, false);
+    check_shortcut!(shortcuts.toggle_context_menu, KeyboardCommand::ToggleContextMenu, false);
+    check_shortcut!(shortcuts.rename, KeyboardCommand::Rename, false);
+    check_shortcut!(shortcuts.delete, KeyboardCommand::Delete, false);
+    check_shortcut!(shortcuts.new_folder, KeyboardCommand::NewFolder, false);
+    check_shortcut!(shortcuts.focus_search, KeyboardCommand::FocusSearch, false);
     // F5 as alternate refresh (standard Windows shortcut)
     if matches!(input.key, KeyKind::Named(NamedKey::F5)) && !input.ctrl && !input.alt {
         return Some(KeyboardCommand::Refresh);
@@ -332,6 +330,29 @@ pub fn command_from_key_press_with_shortcuts(
     // F3 → ToggleDualPane
     if matches!(&input.key, KeyKind::Named(NamedKey::F3)) && !input.ctrl && !input.alt && !input.shift {
         return Some(KeyboardCommand::ToggleDualPane);
+    }
+
+    // Ctrl+L → FocusAddress
+    if input.ctrl && !input.alt && !input.shift {
+        if let KeyKind::Character(c) = &input.key {
+            if c == "l" {
+                return Some(KeyboardCommand::FocusAddress);
+            }
+        }
+    }
+
+    // Alt+↑ → GoToParent
+    if !input.ctrl && input.alt && !input.shift && matches!(&input.key, KeyKind::Named(NamedKey::ArrowUp)) {
+        return Some(KeyboardCommand::GoToParent);
+    }
+
+    // Ctrl+Z → Undo
+    if input.ctrl && !input.alt && !input.shift {
+        if let KeyKind::Character(c) = &input.key {
+            if c == "z" {
+                return Some(KeyboardCommand::Undo);
+            }
+        }
     }
 
     // Tab management shortcuts (hardcoded, not user-configurable)
@@ -379,10 +400,30 @@ pub fn command_from_key_press_with_shortcuts(
         }
     }
 
+    // Ctrl+Shift+C → CopyPath
+    if input.ctrl && !input.alt && input.shift {
+        if let KeyKind::Character(c) = &input.key {
+            if c == "c" {
+                return Some(KeyboardCommand::CopyPath);
+            }
+        }
+    }
+
+    // Ctrl+1..9 → GoToBookmark (jump to numbered favorite)
+    if input.ctrl && !input.alt && !input.shift {
+        if let KeyKind::Character(c) = &input.key {
+            if let Some(digit) = c.chars().next().and_then(|ch| ch.to_digit(10)) {
+                if (1..=9).contains(&digit) {
+                    return Some(KeyboardCommand::GoToBookmark(digit as usize - 1));
+                }
+            }
+        }
+    }
+
     // Quick filter: printable single character, no modifiers
     if !input.ctrl && !input.alt && !input.shift {
         if let KeyKind::Character(c) = &input.key {
-            if c.len() == 1 && c.chars().next().map_or(false, |ch| ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '.') {
+            if c.len() == 1 && c.chars().next().is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '.') {
                 return Some(KeyboardCommand::QuickFilterChanged(c.clone()));
             }
         }
@@ -428,4 +469,112 @@ pub fn key_input_from_event(key: keyboard::Key, modifiers: keyboard::Modifiers) 
         alt: modifiers.alt(),
         shift: modifiers.shift(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_short_name_unchanged() {
+        assert_eq!(truncate_name("hello.txt", 20), "hello.txt");
+    }
+
+    #[test]
+    fn truncate_exact_length() {
+        assert_eq!(truncate_name("abc.txt", 7), "abc.txt");
+    }
+
+    #[test]
+    fn truncate_long_name_preserves_extension() {
+        let result = truncate_name("very_long_filename.txt", 12);
+        assert!(result.ends_with(".txt"), "Should preserve .txt: {result}");
+        assert!(result.chars().count() <= 12, "Should be <= 12 chars: {result}");
+        assert!(result.contains('\u{2026}'), "Should contain ellipsis: {result}");
+    }
+
+    #[test]
+    fn truncate_tiny_max() {
+        assert_eq!(truncate_name("hello.txt", 1), "hello.txt");
+    }
+
+    #[test]
+    fn truncate_no_extension() {
+        let result = truncate_name("a_very_long_name_without_extension", 10);
+        assert!(result.chars().count() <= 10);
+        assert!(result.contains('\u{2026}'));
+    }
+
+    #[test]
+    fn format_bytes_zero() {
+        assert_eq!(format_bytes(0), "0 o");
+    }
+
+    #[test]
+    fn format_bytes_small() {
+        assert_eq!(format_bytes(512), "512 o");
+    }
+
+    #[test]
+    fn format_bytes_kilobytes() {
+        assert_eq!(format_bytes(1024), "1.0 Ko");
+    }
+
+    #[test]
+    fn format_bytes_megabytes() {
+        assert_eq!(format_bytes(1_048_576), "1.0 Mo");
+    }
+
+    #[test]
+    fn format_bytes_gigabytes() {
+        assert_eq!(format_bytes(1_073_741_824), "1.0 Go");
+    }
+
+    #[test]
+    fn format_modified_none() {
+        assert_eq!(format_modified(None), "—");
+    }
+
+    #[test]
+    fn format_modified_some() {
+        let result = format_modified(Some(std::time::SystemTime::now()));
+        assert!(result.contains('/'));
+        assert!(result.contains(':'));
+    }
+
+    #[test]
+    fn rect_intersect_overlapping() {
+        let a = Rectangle { x: 0.0, y: 0.0, width: 10.0, height: 10.0 };
+        let b = Rectangle { x: 5.0, y: 5.0, width: 10.0, height: 10.0 };
+        assert!(rectangles_intersect(a, b));
+    }
+
+    #[test]
+    fn rect_no_intersect() {
+        let a = Rectangle { x: 0.0, y: 0.0, width: 10.0, height: 10.0 };
+        let b = Rectangle { x: 20.0, y: 20.0, width: 10.0, height: 10.0 };
+        assert!(!rectangles_intersect(a, b));
+    }
+
+    #[test]
+    fn entry_type_labels() {
+        assert_eq!(entry_type_label(FsEntryType::Directory), "Dossier");
+        assert_eq!(entry_type_label(FsEntryType::File), "Fichier");
+    }
+
+    #[test]
+    fn tree_label_normal() {
+        assert_eq!(tree_label_for_path(Path::new("/home/user/docs")), "docs");
+    }
+
+    #[test]
+    fn column_specs_ensures_fill() {
+        let specs = column_specs(&[ViewColumn::Name, ViewColumn::Size]);
+        assert!(matches!(specs[0].width, Length::Fill | Length::FillPortion(_)));
+    }
+
+    #[test]
+    fn column_specs_empty() {
+        assert!(column_specs(&[]).is_empty());
+    }
 }

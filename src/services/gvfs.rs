@@ -15,6 +15,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::core::uri::percent_decode;
+
 /// One mounted gvfs location.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GvfsMount {
@@ -201,33 +203,6 @@ impl MountSpec {
     }
 }
 
-/// Decodes the `%XX` escapes gvfs puts in mount directory names.
-///
-/// Deliberately not a dependency: this is the whole of what is needed, and an
-/// invalid escape is left as written rather than dropped, so a name that does
-/// not follow the convention still comes back readable.
-fn percent_decode(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-
-    while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            let high = (bytes[index + 1] as char).to_digit(16);
-            let low = (bytes[index + 2] as char).to_digit(16);
-            if let (Some(high), Some(low)) = (high, low) {
-                out.push((high * 16 + low) as u8);
-                index += 3;
-                continue;
-            }
-        }
-        out.push(bytes[index]);
-        index += 1;
-    }
-
-    String::from_utf8_lossy(&out).into_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,27 +273,6 @@ mod tests {
     fn a_name_that_is_not_a_mount_spec_is_refused() {
         assert!(MountSpec::parse("pas-un-montage").is_none());
         assert!(MountSpec::parse(":sans-schema").is_none());
-    }
-
-    #[test]
-    fn percent_decoding_handles_the_ordinary_cases() {
-        assert_eq!(percent_decode("a%20b"), "a b");
-        assert_eq!(percent_decode("%2F%2F"), "//");
-        assert_eq!(percent_decode("rien"), "rien");
-    }
-
-    /// Une séquence tronquée ou invalide est laissée telle quelle : mieux vaut
-    /// un nom légèrement bizarre qu'un caractère avalé en silence.
-    #[test]
-    fn a_broken_escape_is_left_alone() {
-        assert_eq!(percent_decode("100%"), "100%");
-        assert_eq!(percent_decode("%zz"), "%zz");
-        assert_eq!(percent_decode("fin%2"), "fin%2");
-    }
-
-    #[test]
-    fn utf8_survives_decoding() {
-        assert_eq!(percent_decode("caf%C3%A9"), "café");
     }
 
     #[test]

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!--
+    La même icône à 16, 22 et 24 pixels : l'orbite y devient une bouillie de
+    deux pixels. Elle tombe, la particule reste. C'est ce que fait Adwaita —
+    un dessin par taille, pas une réduction mécanique du grand.
+  -->
+  <defs>
+    <mask id="barsS">
+      <rect width="128" height="128" fill="#fff"/>
+      <g fill="#000">
+        <rect x="26" y="62" width="62" height="10" rx="5"/>
+        <rect x="26" y="78" width="40" height="10" rx="5"/>
+        <rect x="26" y="94" width="52" height="10" rx="5"/>
+      </g>
+    </mask>
+    <mask id="holeS">
+      <rect width="128" height="128" fill="#fff"/>
+      <circle cx="101" cy="30" r="19" fill="#000"/>
+    </mask>
+  </defs>
+  <g mask="url(#holeS)">
+    <path d="M12 48a9 9 0 0 1 9-9h21a7 7 0 0 1 5.7 2.9L52 48h39a9 9 0 0 1 9 9v42a9 9 0 0 1-9 9H21a9 9 0 0 1-9-9Z"
+          fill="#E8A33D" mask="url(#barsS)"/>
+  </g>
+  <circle cx="101" cy="30" r="12" fill="#E8A33D"/>
+</svg>

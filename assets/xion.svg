@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!--
+    Xion — un dossier, et l'ion qui lui tourne autour.
+
+    Deux contraintes ont dicté la construction :
+
+    - Le dossier est un aplat, ses trois barres sont des trous. Une version
+      « dossier encre sur barres ambre » disparaissait dans un dock sombre :
+      il ne restait que les barres flottant dans le vide. Un aplat se lit sur
+      n'importe quel fond.
+    - L'orbite passe derrière le dossier, avec un jour d'un pixel et demi tout
+      autour (le masque « gap »). Sans ce jour, l'ambre de l'orbite et l'ambre
+      du dossier fusionnaient en une seule tache.
+
+    Les trois barres sont aussi la lettre Ξ, qui commence le nom.
+  -->
+  <defs>
+    <mask id="gap">
+      <rect width="128" height="128" fill="#fff"/>
+      <path d="M20 54a8 8 0 0 1 8-8h18a6 6 0 0 1 5 2.7L54 54h34a8 8 0 0 1 8 8v36a8 8 0 0 1-8 8H28a8 8 0 0 1-8-8Z"
+            fill="#000" stroke="#000" stroke-width="11"/>
+    </mask>
+    <mask id="bars">
+      <rect width="128" height="128" fill="#fff"/>
+      <g fill="#000">
+        <rect x="31" y="66" width="54" height="8" rx="4"/>
+        <rect x="31" y="79" width="35" height="8" rx="4"/>
+        <rect x="31" y="92" width="45" height="8" rx="4"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#gap)">
+    <ellipse cx="60" cy="72" rx="60" ry="27" fill="none" stroke="#E8A33D" stroke-width="8"
+             transform="rotate(-30 60 72)"/>
+  </g>
+  <path d="M20 54a8 8 0 0 1 8-8h18a6 6 0 0 1 5 2.7L54 54h34a8 8 0 0 1 8 8v36a8 8 0 0 1-8 8H28a8 8 0 0 1-8-8Z"
+        fill="#E8A33D" mask="url(#bars)"/>
+  <circle cx="108" cy="30" r="10" fill="#E8A33D"/>
+</svg>

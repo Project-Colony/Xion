@@ -55,7 +55,12 @@ fn main() -> iced::Result {
 /// Returns `None` when the path does not exist so the caller falls back to the
 /// configured start directory instead of opening a dead location.
 fn resolve_start_path(arg: &str) -> Option<PathBuf> {
-    let path = PathBuf::from(arg);
+    // Not `PathBuf::from(arg)`: a `.desktop` entry's `%U` hands over a URI, so
+    // opening a folder from a dock or `xdg-open` arrives as
+    // `file:///home/alice/Mes%20documents`. Read as a path, that names a
+    // directory called `file:` which does not exist, and the launcher appears
+    // to do nothing at all.
+    let path = xion::core::uri::path_from_argument(arg);
     let resolved = if path.is_absolute() {
         path
     } else {

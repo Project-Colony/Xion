@@ -11,6 +11,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 pub mod config;
+pub mod uri;
 pub use config::{
     AppConfig, AppConfigLoad, CacheConfig, ConfigManager, ConfigSource, ConfigWarning,
     EntryFilterConfig, FilesystemConfig, KeyChord, KeyInput, KeyKind, ListConfig, NamedKey,

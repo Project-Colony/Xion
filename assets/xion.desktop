@@ -1,0 +1,27 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Xion
+GenericName=File Manager
+GenericName[fr]=Gestionnaire de fichiers
+Comment=Browse and manage your files
+Comment[fr]=Parcourir et gérer vos fichiers
+# %U et non %f : un lanceur transmet une URI. `resolve_start_path` la décode.
+Exec=xion %U
+Icon=xion
+Terminal=false
+StartupNotify=true
+# Doit correspondre à l'`application_id` déclaré dans `ui::app::run`, sinon la
+# fenêtre n'est pas rattachée à ce lanceur : pas d'icône groupée dans la barre
+# des tâches, pas de retour visuel au démarrage.
+StartupWMClass=xion
+# Une seule catégorie principale (`System`) : en cumuler deux fait apparaître
+# l'entrée deux fois dans certains menus. `FileTools` et `FileManager` sont des
+# catégories additionnelles, qui ont justement besoin d'une principale.
+Categories=System;FileTools;FileManager;
+# Ce qui rend Xion éligible comme gestionnaire de fichiers par défaut.
+# L'ancien alias `x-directory/normal` est délibérément absent : il est obsolète
+# et `desktop-file-validate` le signale.
+MimeType=inode/directory;
+Keywords=files;folders;explorer;manager;browser;
+Keywords[fr]=fichiers;dossiers;explorateur;gestionnaire;navigateur;

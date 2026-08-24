@@ -418,6 +418,19 @@ impl XionApp {
     /// names the tab after the folder rather than "Ce PC N": the user asked for
     /// somewhere in particular, so the tab strip should say where.
     pub(super) fn open_in_new_tab(&mut self, path: PathBuf) -> Task<UiMessage> {
+        // Already open: go to it. Xion is the default file manager now, so a
+        // folder gets opened from the desktop over and over; without this, the
+        // tab strip filled with duplicates of the same directory — observed,
+        // twice for Téléchargements.
+        if let Some(index) = self
+            .tab_manager
+            .tabs
+            .iter()
+            .position(|tab| tab.path == path)
+        {
+            return self.switch_tab(index);
+        }
+
         self.tab_manager.tabs.push(TabState {
             title: crate::ui::app::helpers::tree_label_for_path(&path),
             path: path.clone(),

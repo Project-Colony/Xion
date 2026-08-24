@@ -260,6 +260,26 @@ mod tests {
         assert_eq!(app.dir_sizes[&path].bytes, 30);
     }
 
+    /// Xion étant devenu gestionnaire par défaut, un dossier est ouvert depuis
+    /// le bureau encore et encore. Sans ce test, la barre d'onglets se
+    /// remplissait de doublons du même dossier — constaté deux fois pour
+    /// Téléchargements dans la configuration réelle.
+    #[test]
+    fn opening_a_folder_already_open_goes_to_its_tab() {
+        let mut app = XionApp::new_for_test();
+        let a = PathBuf::from("/tmp/alpha");
+        let b = PathBuf::from("/tmp/beta");
+
+        let _ = app.open_in_new_tab(a.clone());
+        let _ = app.open_in_new_tab(b.clone());
+        let before = app.tab_manager.count();
+
+        let _ = app.open_in_new_tab(a.clone());
+
+        assert_eq!(app.tab_manager.count(), before, "aucun onglet ajouté");
+        assert_eq!(app.tab_manager.active_path(), Some(&a), "on y est allé");
+    }
+
     fn selected_names(app: &XionApp) -> Vec<String> {
         let mut names: Vec<String> = app
             .state

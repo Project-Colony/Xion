@@ -73,16 +73,19 @@ impl XionApp {
     pub(in crate::ui::app) fn new() -> (Self, Task<UiMessage>) {
         let config_manager = ConfigManager::new();
         let config_load = config_manager.load();
-        let mut config = config_load.config;
+        let config = config_load.config;
 
         // Override start_path if a CLI path was provided
         let cli_path = super::CLI_START_PATH
             .lock()
             .ok()
             .and_then(|mut guard| guard.take());
-        if let Some(path) = cli_path.clone() {
-            config.start_path = path;
-        }
+        // `config.start_path` is deliberately left alone. Overwriting it here
+        // looked harmless — `AppState::new` reads it to pick the route — but the
+        // same object is what gets written back to disk, so a single
+        // `xion /un/dossier` permanently replaced the user's configured start
+        // directory. A one-off argument must not rewrite a preference. The route
+        // is set from `cli_path` after the app is built instead.
 
         let state = AppState::new(config);
         let mut history = HistoryService::default();
@@ -215,19 +218,16 @@ impl XionApp {
             tab_drag_source: None,
             single_instance: super::PRIMARY_CLAIM.lock().ok().and_then(|mut c| c.take()),
         };
-        // If we restored tabs, set the active route to the active tab's path.
-        // Skipped when an argument asked for a directory: the route already
-        // points there and the active tab is the one that was just appended.
-        if cli_path.is_none() && !app.state.config.tabs.is_empty() {
-            if let Some(path) = app
-                .tab_manager
-                .tabs
-                .get(active_tab_init)
-                .map(|t| t.path.clone())
-            {
-                app.update_active_tab_path(path.clone());
-                app.history.record(path);
-            }
+        // The route follows whichever tab `initial_tabs` made active — the one
+        // the argument asked for, or the one the saved session had.
+        if let Some(path) = app
+            .tab_manager
+            .tabs
+            .get(active_tab_init)
+            .map(|tab| tab.path.clone())
+        {
+            app.update_active_tab_path(path.clone());
+            app.history.record(path);
         }
         if !config_load.warnings.is_empty() {
             app.last_action = Some(format!(

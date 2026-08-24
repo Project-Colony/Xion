@@ -366,6 +366,8 @@ pub enum UiMessage {
     PaneBLoaded {
         path: PathBuf,
         entries: Vec<crate::filesystem::FsEntry>,
+        /// Entries the directory holds beyond the ones loaded.
+        truncated: usize,
     },
     PaneBActivate(PathBuf),
     SwitchActivePane,

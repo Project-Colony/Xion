@@ -42,11 +42,11 @@ impl XionApp {
         let pane_b = self.dual_pane.pane_b.as_ref()?;
 
         let pane_b_path = pane_b.path.display().to_string();
-        // Limit rendered entries to avoid lag with large directories (no virtual windowing in pane B)
+        // The loader already stopped at `PANE_B_LIMIT`; this pane has no virtual
+        // windowing, so that limit is what it can draw.
         let pane_b_entries: Vec<Element<'_, UiMessage>> = pane_b
             .entries
             .iter()
-            .take(200)
             .map(|entry| {
                 let icon = match entry.entry_type {
                     FsEntryType::Directory => icons::FOLDER,
@@ -113,9 +113,18 @@ impl XionApp {
                 .height(Length::Fill)
                 .into()
         } else {
-            scrollable(column(pane_b_entries).spacing(0))
-                .height(Length::Fill)
-                .into()
+            let mut body = column(pane_b_entries).spacing(0);
+            if pane_b.truncated > 0 {
+                // Silently dropping them made a truncated listing look complete.
+                body = body.push(
+                    container(caption_text(
+                        typography,
+                        format!("… et {} autres", pane_b.truncated),
+                    ))
+                    .padding([spacing.xs, spacing.sm]),
+                );
+            }
+            scrollable(body).height(Length::Fill).into()
         };
         let pane_b_panel = container(column![pane_b_header, pane_b_list].spacing(spacing.xs))
             .width(Length::FillPortion(1))

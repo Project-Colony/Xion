@@ -654,8 +654,17 @@ pub(super) struct ColumnResizeState {
 pub(super) struct PaneB {
     pub(super) path: PathBuf,
     pub(super) entries: Vec<crate::filesystem::FsEntry>,
+    /// Entries the directory holds beyond the ones loaded, or 0.
+    pub(super) truncated: usize,
     pub(super) is_loading: bool,
 }
+
+/// How many rows the second pane loads and draws.
+///
+/// It has no virtual windowing, so the view drew only the first 200 entries —
+/// while the loader read the whole directory into memory, however large, and
+/// said nothing about the ones it then dropped on the floor.
+pub(super) const PANE_B_LIMIT: usize = 200;
 
 // ── Scroll state ──────────────────────────────────────────────────────────────
 

@@ -138,10 +138,15 @@ impl XionApp {
             UiMessage::PaneBNavigate(path) => {
                 tasks.push(self.pane_b_navigate(path));
             }
-            UiMessage::PaneBLoaded { path, entries } => {
+            UiMessage::PaneBLoaded {
+                path,
+                entries,
+                truncated,
+            } => {
                 if let Some(pane) = &mut self.dual_pane.pane_b {
                     if pane.path == path {
                         pane.entries = entries;
+                        pane.truncated = truncated;
                         pane.is_loading = false;
                     }
                 }

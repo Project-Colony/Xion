@@ -154,9 +154,6 @@ pub struct XionApp {
     breadcrumb_dropdown: Option<PathBuf>,
     breadcrumb_dropdown_items: Vec<PathBuf>,
     breadcrumb_dropdown_has_more: bool,
-    // #10: Search index LRU cache (max 8 entries)
-    search_index_cache:
-        std::collections::VecDeque<(PathBuf, std::sync::Arc<crate::services::SearchIndex>)>,
     // #18: Tab drag reorder
     tab_drag_source: Option<usize>,
 }

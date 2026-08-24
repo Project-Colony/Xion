@@ -95,6 +95,8 @@ impl XionApp {
         Task::batch(vec![
             self.request_page(0),
             self.schedule_loading_indicator(self.loading_generation),
+            // No-op unless a query survived the navigation — a refresh keeps
+            // the query, and its match count has to be rebuilt with it.
             self.start_search_indexing(),
             self.load_git_status(),
             self.start_network_scan_if_needed(),
@@ -154,7 +156,25 @@ impl XionApp {
         }
     }
 
+    /// Builds the search index for the current directory, if a query needs it.
+    ///
+    /// This used to run on every navigation, whether or not the user ever
+    /// searched. The index is a second copy of the directory — 12,4 Mo for
+    /// 50 000 entries, measured, more than the listing itself — and up to eight
+    /// of them are kept in the LRU cache, so simply walking through eight large
+    /// folders cost a hundred megabytes for a count nobody had asked for.
+    ///
+    /// It now runs on the first query, and only then. What it buys, once the
+    /// listing itself is capped at `MAX_SEARCH_ENTRIES`, is a match count over
+    /// the whole directory rather than over the part that fits.
     pub(super) fn start_search_indexing(&mut self) -> Task<UiMessage> {
+        if !self.has_search_query() {
+            self.search.index = None;
+            self.search.matches = None;
+            self.search.index_path = None;
+            self.search.indexing = false;
+            return Task::none();
+        }
         let Some(path) = self.state.route.local_path().cloned() else {
             self.search.index = None;
             self.search.matches = None;
@@ -163,20 +183,12 @@ impl XionApp {
             return Task::none();
         };
 
-        // #10: Check LRU cache first
-        if let Some(pos) = self.search_index_cache.iter().position(|(p, _)| p == &path) {
-            // `position` just proved the index is in range, but expressing that
-            // with `if let` costs nothing and leaves no panic in the binary.
-            let Some((_, cached_index)) = self.search_index_cache.remove(pos) else {
-                return Task::none();
-            };
-            // Move to back (most recently used)
-            self.search_index_cache
-                .push_back((path.clone(), std::sync::Arc::clone(&cached_index)));
-            self.search.index = Some(cached_index);
-            self.search.matches = None;
-            self.search.index_path = Some(path);
-            self.search.indexing = false;
+        // Now that this is driven by the query rather than by navigation, it is
+        // reached on every keystroke: without this guard, typing "rapport"
+        // would launch seven concurrent walks of the same directory.
+        if self.search.index_path.as_ref() == Some(&path)
+            && (self.search.indexing || self.search.index.is_some())
+        {
             return Task::none();
         }
 
@@ -217,6 +229,8 @@ impl XionApp {
         };
 
         let Some(index) = self.search.index.as_ref() else {
+            // The index is built on demand; until it lands, the status bar falls
+            // back to counting the rows it can see.
             self.search.matches = None;
             return;
         };

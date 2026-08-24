@@ -183,7 +183,6 @@ impl XionApp {
             breadcrumb_dropdown: None,
             breadcrumb_dropdown_items: Vec::new(),
             breadcrumb_dropdown_has_more: false,
-            search_index_cache: std::collections::VecDeque::new(),
             tab_drag_source: None,
         };
         // If we restored tabs, set the active route to the active tab's path.
@@ -337,7 +336,6 @@ impl XionApp {
             breadcrumb_dropdown: None,
             breadcrumb_dropdown_items: Vec::new(),
             breadcrumb_dropdown_has_more: false,
-            search_index_cache: std::collections::VecDeque::new(),
             tab_drag_source: None,
         };
         app.rebuild_tree_cache();

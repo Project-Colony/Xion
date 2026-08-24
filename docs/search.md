@@ -124,13 +124,21 @@ précédente de ce document.
 
 `XionApp::start_search_indexing` (`src/ui/app/state.rs`) :
 
-1. cherche d'abord la racine dans un cache LRU de 8 index
-   (`search_index_cache`, éviction dans `src/ui/app/update.rs`,
-   `MAX_SEARCH_CACHE = 8`) ; en cas de succès, aucun travail n'est fait ;
-2. sinon, lance un `Task::perform` qui appelle `build_index_with_options` hors
+1. ne fait rien s'il n'y a pas de requête. L'index est une seconde copie du
+   dossier — 12,4 Mo pour 50 000 entrées, mesuré, plus que le listage — et il
+   était auparavant construit à chaque navigation, qu'on cherche ou non ;
+2. ne fait rien non plus si un index du même dossier est déjà présent ou en
+   cours de construction : l'indexation est déclenchée par la frappe, donc
+   sans ce garde-fou taper « rapport » lançait sept parcours concurrents ;
+3. sinon, lance un `Task::perform` qui appelle `build_index_with_options` hors
    de la boucle de rendu, et signale l'état via le drapeau `search.indexing` ;
-3. le résultat revient par `UiMessage::SearchIndexBuilt { path, result }`, qui
+4. le résultat revient par `UiMessage::SearchIndexBuilt { path, result }`, qui
    n'est appliqué que si la route n'a pas changé entre-temps.
+
+Il n'y a plus de cache LRU. Il en gardait huit, soit huit copies complètes de
+dossier, pour un cas d'usage étroit — chercher dans A, partir, revenir,
+rechercher — et il pouvait servir un index périmé quand les fichiers avaient
+changé entre-temps.
 
 Deux points à connaître :
 
@@ -156,7 +164,7 @@ filtres.
 - [x] Index réutilisable en mémoire — `build_index_with_options`.
 - [x] Filtres composables — `SearchQuery`.
 - [x] Indexation asynchrone côté UI — `XionApp::start_search_indexing`.
-- [x] Cache LRU des index — `MAX_SEARCH_CACHE = 8`.
+- [x] Indexation paresseuse : construite à la première requête, pas à chaque navigation.
 - [x] Recherche plein texte récursive — `UiMessage::FullTextSearchSubmit`.
 - [ ] Tests unitaires de `SearchService`.
 - [ ] Compilation de l'exemple ci-dessus par `cargo test --doc`.

@@ -291,9 +291,7 @@ impl FileWatcherHandle {
 #[derive(Debug, Default)]
 pub(super) struct SearchState {
     pub(super) input: String,
-    /// Shared: the LRU below holds the same allocation, so promoting a cached
-    /// index is a refcount bump instead of a full copy of every entry.
-    pub(super) index: Option<std::sync::Arc<SearchIndex>>,
+    pub(super) index: Option<SearchIndex>,
     pub(super) index_path: Option<PathBuf>,
     pub(super) indexing: bool,
     pub(super) matches: Option<usize>,

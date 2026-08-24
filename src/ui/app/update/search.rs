@@ -30,8 +30,12 @@ impl XionApp {
                 self.clear_selection();
                 self.update_search_index_matches();
                 if self.has_search_query() {
+                    tasks.push(self.start_search_indexing());
                     tasks.push(self.request_all_pages());
                 } else {
+                    self.search.index = None;
+                    self.search.index_path = None;
+                    self.search.indexing = false;
                     tasks.push(self.ensure_visible_pages());
                 }
             }
@@ -42,6 +46,7 @@ impl XionApp {
                 } else {
                     self.update_search_index_matches();
                     if self.has_search_query() {
+                        tasks.push(self.start_search_indexing());
                         tasks.push(self.request_all_pages());
                     }
                 }
@@ -50,18 +55,6 @@ impl XionApp {
                 if self.search.index_path.as_ref() == Some(&path) {
                     match result {
                         Ok(index) => {
-                            // #10: Cache the search index for LRU reuse
-                            const MAX_SEARCH_CACHE: usize = 8;
-                            self.search_index_cache.retain(|(p, _)| p != &path);
-                            if self.search_index_cache.len() >= MAX_SEARCH_CACHE {
-                                self.search_index_cache.pop_front();
-                            }
-                            // One allocation, two owners: the LRU entry and the
-                            // live index used to be two full copies of every
-                            // indexed entry.
-                            let index = std::sync::Arc::new(index);
-                            self.search_index_cache
-                                .push_back((path.clone(), std::sync::Arc::clone(&index)));
                             self.search.index = Some(index);
                             self.search.indexing = false;
                             self.update_search_index_matches();

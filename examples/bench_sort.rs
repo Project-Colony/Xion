@@ -4,13 +4,19 @@ use std::time::Instant;
 use xion::filesystem::{FileSystem, ListOptions, LocalFileSystem, SortKey};
 
 fn main() -> std::io::Result<()> {
-    let count: usize = std::env::args().nth(1).and_then(|a| a.parse().ok()).unwrap_or(50_000);
+    let count: usize = std::env::args()
+        .nth(1)
+        .and_then(|a| a.parse().ok())
+        .unwrap_or(50_000);
     let dir = tempfile::tempdir()?;
     for index in 0..count {
         std::fs::write(dir.path().join(format!("fichier-{index:06}.txt")), b"x")?;
     }
     let filesystem = LocalFileSystem::default();
-    let options = ListOptions { sort_by: SortKey::Size, ..ListOptions::default() };
+    let options = ListOptions {
+        sort_by: SortKey::Size,
+        ..ListOptions::default()
+    };
 
     // chauffe le cache du système de fichiers
     let _ = filesystem.list_dir(dir.path(), options.clone()).unwrap();

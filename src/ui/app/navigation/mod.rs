@@ -183,9 +183,41 @@ mod tests {
     fn app_with(names: &[&str]) -> XionApp {
         let mut app = XionApp::new_for_test();
         let items: Vec<Option<FsEntry>> = names.iter().map(|name| Some(entry(name))).collect();
-        app.entries.total = items.len();
-        app.entries.items = items;
+        let entries = std::sync::Arc::make_mut(&mut app.entries);
+        entries.total = items.len();
+        entries.items = items;
         app
+    }
+
+    #[test]
+    fn a_gesture_pins_the_list_without_copying_it() {
+        let mut app = app_with(&["a.txt", "b.txt", "c.txt"]);
+        let before = std::sync::Arc::as_ptr(&app.entries);
+
+        app.begin_user_selection();
+
+        // Pinning the list is a refcount bump: both handles still address the
+        // one allocation. This used to be a deep copy of every loaded entry.
+        assert_eq!(std::sync::Arc::strong_count(&app.entries), 2);
+        let snapshot = app.selection_snapshot.as_ref().expect("instantané");
+        assert!(std::ptr::eq(std::sync::Arc::as_ptr(snapshot), before));
+    }
+
+    #[test]
+    fn a_page_landing_mid_gesture_leaves_the_pinned_list_alone() {
+        let mut app = app_with(&["a.txt", "b.txt"]);
+        app.begin_user_selection();
+
+        // The copy happens here, and only here: writing while a gesture holds
+        // the previous state.
+        std::sync::Arc::make_mut(&mut app.entries)
+            .items
+            .push(Some(entry("c.txt")));
+
+        let snapshot = app.selection_snapshot.as_ref().expect("instantané");
+        assert_eq!(snapshot.items.len(), 2, "l'instantané ne bouge pas");
+        assert_eq!(app.entries.items.len(), 3);
+        assert_eq!(std::sync::Arc::strong_count(&app.entries), 1);
     }
 
     fn selected_names(app: &XionApp) -> Vec<String> {

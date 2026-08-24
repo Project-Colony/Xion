@@ -48,10 +48,10 @@ impl XionApp {
         if self.entries.total > 0 {
             self.stale_entries = Some(std::mem::replace(
                 &mut self.entries,
-                PagedEntries::new(0, page_size),
+                Arc::new(PagedEntries::new(0, page_size)),
             ));
         } else {
-            self.entries.reset();
+            Arc::make_mut(&mut self.entries).reset();
             self.stale_entries = None;
         }
         self.error = None;

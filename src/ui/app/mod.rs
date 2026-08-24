@@ -53,9 +53,16 @@ pub struct XionApp {
     directory_loader: Arc<Mutex<DirectoryLoader>>,
     network_discovery: NetworkDiscoveryService,
     media: MediaState,
-    entries: PagedEntries,
-    stale_entries: Option<PagedEntries>,
-    selection_snapshot: Option<PagedEntries>,
+    /// Shared so that pinning the list for the duration of a mouse gesture is a
+    /// refcount bump. `begin_user_selection` used to deep-copy every loaded
+    /// entry — up to 20 000 `FsEntry`, each with two heap allocations — on the
+    /// UI thread, at mouse-press.
+    ///
+    /// Writes go through `Arc::make_mut`, so the copy only ever happens if a
+    /// page lands while a gesture holds the previous state.
+    entries: Arc<PagedEntries>,
+    stale_entries: Option<Arc<PagedEntries>>,
+    selection_snapshot: Option<Arc<PagedEntries>>,
     pending_pages: HashSet<usize>,
     is_loading: bool,
     is_refreshing: bool,

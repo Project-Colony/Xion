@@ -15,12 +15,18 @@ use std::time::Duration;
 use std::time::Instant;
 
 impl XionApp {
-    pub(in crate::ui::app) fn base_display_entries(&self) -> &PagedEntries {
+    /// The shared handle, so callers that only want to pin the list can clone
+    /// the `Arc` instead of the entries.
+    pub(in crate::ui::app) fn base_display_entries_shared(&self) -> &Arc<PagedEntries> {
         if self.is_refreshing {
             self.stale_entries.as_ref().unwrap_or(&self.entries)
         } else {
             &self.entries
         }
+    }
+
+    pub(in crate::ui::app) fn base_display_entries(&self) -> &PagedEntries {
+        self.base_display_entries_shared()
     }
 
     pub(in crate::ui::app) fn display_entries(&self) -> &PagedEntries {
@@ -54,7 +60,7 @@ impl XionApp {
                 Duration::from_secs(new_config.cache.directory_ttl_seconds),
                 new_config.paging.page_size,
             )));
-            self.entries = PagedEntries::new(0, new_config.paging.page_size);
+            self.entries = Arc::new(PagedEntries::new(0, new_config.paging.page_size));
             self.pending_pages.clear();
         }
 

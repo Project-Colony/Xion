@@ -14,6 +14,7 @@ use crate::ui::app::types::*;
 
 use super::Flow;
 use crate::ui::app::XionApp;
+use std::sync::Arc;
 
 impl XionApp {
     /// Returns `Err(message)` when the message belongs to another domain,
@@ -175,7 +176,7 @@ impl XionApp {
                 self.pending_pages.remove(&page_index);
                 match result {
                     Ok(page) => {
-                        self.entries.apply_page(page_index, page);
+                        Arc::make_mut(&mut self.entries).apply_page(page_index, page);
                         self.error = None;
                         if self.is_refreshing {
                             self.stale_entries = None;

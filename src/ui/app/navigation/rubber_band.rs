@@ -11,6 +11,7 @@ use crate::ui::app::types::PagedEntries;
 use crate::ui::theme::UiTokens;
 use iced::{Point, Rectangle};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 impl XionApp {
     pub(in crate::ui::app) fn selection_kind_from_modifiers(&self) -> SelectionKind {
@@ -26,7 +27,7 @@ impl XionApp {
     pub(in crate::ui::app) fn begin_user_selection(&mut self) {
         self.is_user_selecting = true;
         if self.selection_snapshot.is_none() {
-            self.selection_snapshot = Some(self.base_display_entries().clone());
+            self.selection_snapshot = Some(Arc::clone(self.base_display_entries_shared()));
         }
     }
 

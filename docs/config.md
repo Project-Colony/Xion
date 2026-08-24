@@ -129,6 +129,13 @@ path = "/home/utilisateur"
 "/home/utilisateur/projets" = "Blue"
 
 # Largeur des colonnes de la vue Détails, en points.
+#
+# Les clés sont les identifiants stables des colonnes, indépendants de la
+# langue de l'interface — pas les libellés affichés. Xion écrivait autrefois
+# ces largeurs sous les libellés français (« Nom », « Taille », « Modifié »),
+# si bien que trois des quatre valeurs par défaut ci-dessous n'étaient jamais
+# relues, et que les largeurs enregistrées n'étaient de toute façon jamais
+# appliquées au rendu.
 [column_widths]
 Name = 300.0
 Type = 80.0

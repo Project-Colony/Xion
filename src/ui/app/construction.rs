@@ -17,6 +17,58 @@ use std::time::Duration;
 
 use super::XionApp;
 
+/// The tabs to open with, and which one is active.
+///
+/// `cli_path` is the directory named on the command line. It has to win: it
+/// used to be parsed, resolved and validated, then silently dropped, because
+/// the restored session overwrote the route further down `new()`. `xion
+/// /un/dossier` opened whichever tab happened to be active last time, which
+/// also broke every desktop entry point, `xdg-open` included.
+///
+/// It is appended and activated rather than replacing a tab: asking for a
+/// folder should not cost the user their saved session. Startup does not
+/// persist the tab list, so repeated launches do not accumulate tabs.
+fn initial_tabs(
+    persisted: &[crate::core::TabPersistConfig],
+    active_index: usize,
+    fallback: std::path::PathBuf,
+    cli_path: Option<&std::path::Path>,
+) -> (Vec<TabState>, usize) {
+    let mut tabs: Vec<TabState> = if persisted.is_empty() {
+        vec![TabState {
+            title: "Ce PC".to_string(),
+            path: fallback,
+        }]
+    } else {
+        persisted
+            .iter()
+            .enumerate()
+            .map(|(index, tab)| TabState {
+                title: if index == 0 {
+                    "Ce PC".to_string()
+                } else {
+                    format!("Ce PC {}", index + 1)
+                },
+                path: tab.path.clone(),
+            })
+            .collect()
+    };
+
+    let active = active_index.min(tabs.len().saturating_sub(1));
+
+    match cli_path {
+        Some(path) => {
+            tabs.push(TabState {
+                title: crate::ui::app::helpers::tree_label_for_path(path),
+                path: path.to_path_buf(),
+            });
+            let last = tabs.len() - 1;
+            (tabs, last)
+        }
+        None => (tabs, active),
+    }
+}
+
 impl XionApp {
     pub(in crate::ui::app) fn new() -> (Self, Task<UiMessage>) {
         let config_manager = ConfigManager::new();
@@ -24,47 +76,24 @@ impl XionApp {
         let mut config = config_load.config;
 
         // Override start_path if a CLI path was provided
-        if let Some(cli_path) = super::CLI_START_PATH
+        let cli_path = super::CLI_START_PATH
             .lock()
             .ok()
-            .and_then(|mut guard| guard.take())
-        {
-            config.start_path = cli_path;
+            .and_then(|mut guard| guard.take());
+        if let Some(path) = cli_path.clone() {
+            config.start_path = path;
         }
 
         let state = AppState::new(config);
         let mut history = HistoryService::default();
         history.record(state.route.key());
 
-        // Restore tabs from persisted config; fall back to a single default tab.
-        let persisted_tabs = &state.config.tabs;
-        let (tabs, active_tab_init) = if persisted_tabs.is_empty() {
-            (
-                vec![TabState {
-                    title: "Ce PC".to_string(),
-                    path: state.route.key(),
-                }],
-                0usize,
-            )
-        } else {
-            let restored: Vec<TabState> = persisted_tabs
-                .iter()
-                .enumerate()
-                .map(|(i, t)| TabState {
-                    title: if i == 0 {
-                        "Ce PC".to_string()
-                    } else {
-                        format!("Ce PC {}", i + 1)
-                    },
-                    path: t.path.clone(),
-                })
-                .collect();
-            let idx = state
-                .config
-                .active_tab_index
-                .min(restored.len().saturating_sub(1));
-            (restored, idx)
-        };
+        let (tabs, active_tab_init) = initial_tabs(
+            &state.config.tabs,
+            state.config.active_tab_index,
+            state.route.key(),
+            cli_path.as_deref(),
+        );
 
         let directory_loader = Arc::new(Mutex::new(DirectoryLoader::new(
             state.config.cache.directory_entries,
@@ -186,7 +215,9 @@ impl XionApp {
             tab_drag_source: None,
         };
         // If we restored tabs, set the active route to the active tab's path.
-        if !app.state.config.tabs.is_empty() {
+        // Skipped when an argument asked for a directory: the route already
+        // points there and the active tab is the one that was just appended.
+        if cli_path.is_none() && !app.state.config.tabs.is_empty() {
             if let Some(path) = app
                 .tab_manager
                 .tabs
@@ -340,5 +371,78 @@ impl XionApp {
         };
         app.rebuild_tree_cache();
         app
+    }
+}
+
+#[cfg(test)]
+mod initial_tabs_tests {
+    use super::initial_tabs;
+    use crate::core::TabPersistConfig;
+    use std::path::{Path, PathBuf};
+
+    fn persisted(paths: &[&str]) -> Vec<TabPersistConfig> {
+        paths
+            .iter()
+            .map(|path| TabPersistConfig {
+                path: PathBuf::from(path),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn without_an_argument_the_saved_session_decides() {
+        let (tabs, active) = initial_tabs(
+            &persisted(&["/a", "/b", "/c"]),
+            1,
+            PathBuf::from("/repli"),
+            None,
+        );
+        assert_eq!(tabs.len(), 3);
+        assert_eq!(active, 1);
+        assert_eq!(tabs[1].path, Path::new("/b"));
+    }
+
+    /// La régression : `xion /un/dossier` ouvrait l'onglet actif de la session
+    /// précédente et jetait l'argument.
+    #[test]
+    fn an_argument_opens_that_directory() {
+        let (tabs, active) = initial_tabs(
+            &persisted(&["/images"]),
+            0,
+            PathBuf::from("/repli"),
+            Some(Path::new("/tmp/demande")),
+        );
+        assert_eq!(tabs[active].path, Path::new("/tmp/demande"));
+    }
+
+    #[test]
+    fn an_argument_does_not_cost_the_saved_session() {
+        let (tabs, _) = initial_tabs(
+            &persisted(&["/images", "/musique"]),
+            0,
+            PathBuf::from("/repli"),
+            Some(Path::new("/tmp/demande")),
+        );
+        assert_eq!(tabs.len(), 3, "les onglets enregistrés restent");
+        assert_eq!(tabs[0].path, Path::new("/images"));
+        assert_eq!(tabs[1].path, Path::new("/musique"));
+    }
+
+    #[test]
+    fn an_argument_works_from_an_empty_session_too() {
+        let (tabs, active) = initial_tabs(
+            &[],
+            0,
+            PathBuf::from("/repli"),
+            Some(Path::new("/tmp/demande")),
+        );
+        assert_eq!(tabs[active].path, Path::new("/tmp/demande"));
+    }
+
+    /// `active_tab_index` vient d'un fichier que l'utilisateur peut éditer.
+    #[test]
+    fn an_out_of_range_active_index_does_not_panic() {
+        let (tabs, active) = initial_tabs(&persisted(&["/a"]), 99, PathBuf::from("/repli"), None);
+        assert!(active < tabs.len());
     }
 }

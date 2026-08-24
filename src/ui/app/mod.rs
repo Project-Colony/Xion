@@ -291,6 +291,14 @@ pub fn run(start_path: Option<PathBuf>) -> iced::Result {
             decorations: true,
             maximized: false,
             fullscreen: false,
+            // Without this the window carries no `app_id` at all on Wayland
+            // (nor WM_CLASS on X11): no icon, no taskbar grouping, and no way
+            // to write a window rule for it. It matches the basename of the
+            // `.desktop` file, as the platform expects.
+            platform_specific: iced::window::settings::PlatformSpecific {
+                application_id: "xion".to_string(),
+                ..Default::default()
+            },
             ..iced::window::Settings::default()
         })
         // Follows the configured theme. This was hard-coded to `Light`, so

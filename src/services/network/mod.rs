@@ -267,6 +267,18 @@ impl NetworkDiscoveryService {
     }
 }
 
+/// Placeholder metadata for entries that have no local file behind them
+/// (network shares, remote listings).
+fn synthetic_metadata() -> FsMetadata {
+    FsMetadata {
+        size: 0,
+        modified: Some(std::time::SystemTime::now()),
+        accessed: None,
+        created: None,
+        readonly: false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -456,17 +468,5 @@ The command completed successfully.
         record_scan_error(Some("panne de scan".to_string()));
         assert_eq!(svc.last_error(), Some("panne de scan".to_string()));
         record_scan_error(None);
-    }
-}
-
-/// Placeholder metadata for entries that have no local file behind them
-/// (network shares, remote listings).
-fn synthetic_metadata() -> FsMetadata {
-    FsMetadata {
-        size: 0,
-        modified: Some(std::time::SystemTime::now()),
-        accessed: None,
-        created: None,
-        readonly: false,
     }
 }

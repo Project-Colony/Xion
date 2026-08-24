@@ -82,6 +82,24 @@ pub mod icons {
     pub const FILE_EXE: &str = "\u{f0214}"; // 󰈔 nf-md-file (kept same as default)
     pub const FILE_DB: &str = "\u{f01bc}"; // 󰆼 nf-md-database
 
+    /// The icon for an entry: its type, or its extension when it is a file.
+    ///
+    /// Five call sites across three modules wrote this same match by hand.
+    pub fn icon_for_entry(entry: &crate::filesystem::FsEntry) -> &'static str {
+        use crate::filesystem::FsEntryType;
+        match entry.entry_type {
+            FsEntryType::Directory => FOLDER,
+            FsEntryType::File => entry
+                .path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(icon_for_extension)
+                .unwrap_or(FILE),
+            FsEntryType::Symlink => SYMLINK,
+            FsEntryType::Other => UNKNOWN,
+        }
+    }
+
     /// Returns the Nerd Font icon for a file based on its extension.
     ///
     /// The lowercase copy this used to allocate was made once per visible row,

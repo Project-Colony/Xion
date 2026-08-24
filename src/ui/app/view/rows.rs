@@ -65,28 +65,12 @@ impl XionApp {
                             .height(Length::Fixed(self.state.config.view.thumbnail_size as f32))
                             .into()
                     })
-                    .unwrap_or_else(|| {
-                        let icon = entry
-                            .path
-                            .extension()
-                            .and_then(|ext| ext.to_str())
-                            .map(icons::icon_for_extension)
-                            .unwrap_or(icons::FILE);
-                        body_text(typography, icon).into()
-                    })
+                    .unwrap_or_else(|| body_text(typography, icons::icon_for_entry(entry)).into())
             }
-            FsEntryType::File => {
-                // List mode: always use icon for uniform row height
-                let icon = entry
-                    .path
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    .map(icons::icon_for_extension)
-                    .unwrap_or(icons::FILE);
-                body_text(typography, icon).into()
+            // List mode: always an icon, so every row is the same height.
+            FsEntryType::File | FsEntryType::Symlink | FsEntryType::Other => {
+                body_text(typography, icons::icon_for_entry(entry)).into()
             }
-            FsEntryType::Symlink => body_text(typography, icons::SYMLINK).into(),
-            FsEntryType::Other => body_text(typography, icons::UNKNOWN).into(),
         }
     }
 

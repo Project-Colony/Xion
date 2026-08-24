@@ -10,7 +10,6 @@ use iced::{Alignment, Background, Element, Length, Theme};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
-use crate::filesystem::FsEntryType;
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
@@ -48,17 +47,7 @@ impl XionApp {
             .entries
             .iter()
             .map(|entry| {
-                let icon = match entry.entry_type {
-                    FsEntryType::Directory => icons::FOLDER,
-                    FsEntryType::File => entry
-                        .path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .map(icons::icon_for_extension)
-                        .unwrap_or(icons::FILE),
-                    FsEntryType::Symlink => icons::SYMLINK,
-                    FsEntryType::Other => icons::UNKNOWN,
-                };
+                let icon = icons::icon_for_entry(entry);
                 let activate_path = entry.path.clone();
                 button(
                     row![

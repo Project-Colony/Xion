@@ -57,17 +57,7 @@ impl XionApp {
         let preview_entry = self.selected_entry(display_entries);
         let preview_body: Element<'_, UiMessage> = match preview_entry {
             Some(entry) => {
-                let icon = match entry.entry_type {
-                    FsEntryType::Directory => icons::FOLDER,
-                    FsEntryType::File => entry
-                        .path
-                        .extension()
-                        .and_then(|ext| ext.to_str())
-                        .map(icons::icon_for_extension)
-                        .unwrap_or(icons::FILE),
-                    FsEntryType::Symlink => icons::SYMLINK,
-                    FsEntryType::Other => icons::UNKNOWN,
-                };
+                let icon = icons::icon_for_entry(entry);
                 let preview_media_size =
                     (self.state.config.view.thumbnail_size as f32 * 3.0).clamp(120.0, 220.0);
                 let preview_media: Element<'_, UiMessage> = match entry.entry_type {

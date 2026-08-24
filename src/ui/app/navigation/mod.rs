@@ -220,6 +220,46 @@ mod tests {
         assert_eq!(std::sync::Arc::strong_count(&app.entries), 1);
     }
 
+    #[test]
+    fn remembered_folder_sizes_stay_bounded() {
+        use crate::ui::app::types::DirSize;
+        let mut app = XionApp::new_for_test();
+        // Bien au-delà du plafond : la carte survit maintenant à la navigation,
+        // donc sans bornage elle retiendrait chaque dossier vu de la session.
+        for index in 0..5000 {
+            app.remember_dir_size(
+                PathBuf::from(format!("/tmp/dossier-{index}")),
+                DirSize {
+                    bytes: index as u64,
+                    truncated: false,
+                },
+            );
+        }
+        assert!(
+            app.dir_sizes.len() <= 4096,
+            "carte non bornée : {}",
+            app.dir_sizes.len()
+        );
+    }
+
+    #[test]
+    fn remembering_the_same_folder_twice_replaces_it() {
+        use crate::ui::app::types::DirSize;
+        let mut app = XionApp::new_for_test();
+        let path = PathBuf::from("/tmp/dossier");
+        for bytes in [10u64, 20, 30] {
+            app.remember_dir_size(
+                path.clone(),
+                DirSize {
+                    bytes,
+                    truncated: false,
+                },
+            );
+        }
+        assert_eq!(app.dir_sizes.len(), 1);
+        assert_eq!(app.dir_sizes[&path].bytes, 30);
+    }
+
     fn selected_names(app: &XionApp) -> Vec<String> {
         let mut names: Vec<String> = app
             .state

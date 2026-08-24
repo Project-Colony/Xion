@@ -123,7 +123,12 @@ pub struct XionApp {
     // Feature 7: Git status
     git_statuses: std::collections::HashMap<PathBuf, crate::ui::GitFileStatus>,
     // Feature 8: Disk usage
-    dir_sizes: std::collections::HashMap<PathBuf, u64>,
+    /// Recursive folder sizes, and whether each walk ran to completion.
+    ///
+    /// Kept across navigation on purpose: it used to be emptied on every move,
+    /// so stepping into a folder and back re-walked the disk and the user
+    /// watched the same dashes turn into the same numbers again.
+    dir_sizes: std::collections::HashMap<PathBuf, DirSize>,
     dir_sizes_loading: std::collections::HashSet<PathBuf>,
     // Feature 10: Archive browser
     archive_browser: Option<ArchiveBrowserState>,

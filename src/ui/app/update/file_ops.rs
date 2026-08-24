@@ -207,9 +207,13 @@ impl XionApp {
                 }
             }
             // ── Feature E: Quick Filter ──────────────────────────────────────
-            UiMessage::DirSizeLoaded { path, bytes } => {
+            UiMessage::DirSizeLoaded {
+                path,
+                bytes,
+                truncated,
+            } => {
                 self.dir_sizes_loading.remove(&path);
-                self.dir_sizes.insert(path, bytes);
+                self.remember_dir_size(path, DirSize { bytes, truncated });
             }
             // Feature 10: Archive browser
             UiMessage::GitStatusLoaded { statuses, .. } => {

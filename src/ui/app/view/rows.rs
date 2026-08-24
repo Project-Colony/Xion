@@ -152,12 +152,25 @@ impl XionApp {
                 ViewColumn::Size => {
                     // Feature 8: Show dir sizes
                     let size_str = if entry.entry_type == FsEntryType::Directory {
-                        if let Some(&bytes) = self.dir_sizes.get(&entry.path) {
-                            crate::ui::app::helpers::format_bytes(bytes)
-                        } else if self.dir_sizes_loading.contains(&entry.path) {
-                            "…".to_string()
+                        if let Some(&size) = self.dir_sizes.get(&entry.path) {
+                            let formatted = crate::ui::app::helpers::format_bytes(size.bytes);
+                            // The walk stops at six levels and 50 000 files, so
+                            // a big tree used to report an exact-looking number
+                            // that was simply too small. A floor says so.
+                            if size.truncated {
+                                format!("≥ {formatted}")
+                            } else {
+                                formatted
+                            }
                         } else {
-                            "—".to_string()
+                            // Un seul changement à l'écran, pas deux. La taille
+                            // d'un dossier n'est pas lisible sur son inode : il
+                            // faut le parcourir. Afficher « — » puis « … » puis
+                            // le nombre montrait à l'utilisateur une étape qui
+                            // ne le renseignait pas — le tiret voulait dire
+                            // « pas encore demandé », ce qui n'est pas son
+                            // affaire.
+                            "…".to_string()
                         }
                     } else {
                         format_entry_size(entry)

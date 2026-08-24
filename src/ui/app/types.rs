@@ -212,6 +212,14 @@ pub(super) fn drive_label(root_path: &Path) -> String {
     }
 }
 
+/// The result of a recursive directory-size walk.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct DirSize {
+    pub(super) bytes: u64,
+    /// The walk stopped on a depth or file-count limit: `bytes` is a floor.
+    pub(super) truncated: bool,
+}
+
 // ── Clipboard ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

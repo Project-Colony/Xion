@@ -105,6 +105,10 @@ impl XionApp {
             UiMessage::Refresh => {
                 self.menus.history_open = false;
                 self.menus.history_position = None;
+                // Folder sizes survive navigation now, so an explicit refresh
+                // is the moment to drop them: it is the one action that means
+                // "re-read everything, I think it changed".
+                self.dir_sizes.clear();
                 tasks.push(self.reload_config());
                 tasks.push(self.refresh_entries());
             }

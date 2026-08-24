@@ -19,7 +19,18 @@ use crate::ui::{GitFileStatus, UiMessage};
 
 use super::XionApp;
 use super::helpers::{build_tree_nodes, list_options_from_config};
-use super::types::{PagedEntries, TabState, root_path_for, route_kind_from_path};
+use super::types::{DirSize, PagedEntries, TabState, root_path_for, route_kind_from_path};
+
+/// How deep a directory-size walk goes.
+///
+/// A folder is not a number you can read off an inode: it has to be walked.
+/// Both limits below exist so that pointing at `/` does not start an unbounded
+/// traversal — but a result that hit one of them is a floor, and the UI is told
+/// so rather than showing a total that is quietly wrong.
+const MAX_DIR_SIZE_DEPTH: usize = 6;
+
+/// How many files a directory-size walk counts before giving up.
+const MAX_DIR_SIZE_FILES: usize = 50_000;
 
 /// Concurrency cap on recursive directory-size walks.
 static DIR_SIZE_LIMIT: std::sync::LazyLock<tokio::sync::Semaphore> =
@@ -82,8 +93,15 @@ impl XionApp {
         }
         // Clear stale git/dir-size data immediately so old indicators don't persist
         self.git_statuses.clear();
-        self.dir_sizes.clear();
         self.dir_sizes_loading.clear();
+        // `dir_sizes` deliberately survives: walking a folder costs real disk
+        // I/O, and this ran on every navigation, so going into a folder and
+        // back re-walked everything the user had just waited for. It is dropped
+        // only when something is known to have changed — see the `reset_query`
+        // path below, which is the after-a-file-operation refresh.
+        if !reset_query {
+            self.dir_sizes.clear();
+        }
         // Thumbnail maps used to be cleared only when the config changed, so
         // they grew monotonically for the whole session: every decoded handle
         // of every directory ever visited stayed resident.
@@ -519,6 +537,24 @@ impl XionApp {
         )
     }
 
+    /// Records a folder's size, keeping the map bounded.
+    ///
+    /// Now that it survives navigation, an unbounded map would hold an entry
+    /// for every folder seen in a session. The cap is generous — the entries
+    /// are a path and sixteen bytes — and eviction is arbitrary rather than
+    /// least-recently-used, because at this size the difference is not worth a
+    /// second data structure to maintain.
+    pub(super) fn remember_dir_size(&mut self, path: PathBuf, size: DirSize) {
+        const MAX_REMEMBERED: usize = 4096;
+
+        if self.dir_sizes.len() >= MAX_REMEMBERED && !self.dir_sizes.contains_key(&path) {
+            if let Some(victim) = self.dir_sizes.keys().next().cloned() {
+                self.dir_sizes.remove(&victim);
+            }
+        }
+        self.dir_sizes.insert(path, size);
+    }
+
     pub(super) fn request_dir_sizes(&mut self) -> Task<UiMessage> {
         let mut tasks = Vec::new();
         // Only the rows on screen. Walking every loaded directory spawned one
@@ -544,32 +580,53 @@ impl XionApp {
                     // thumbnail and preview tasks that the user is waiting on.
                     // RAII — the permit is held until this future completes.
                     let _permit = DIR_SIZE_LIMIT.acquire().await;
-                    let bytes = tokio::task::spawn_blocking(move || {
+                    let (bytes, truncated) = tokio::task::spawn_blocking(move || {
                         let mut total: u64 = 0;
                         let mut count = 0usize;
-                        for e in walkdir::WalkDir::new(&task_path).min_depth(1).max_depth(6) {
-                            if count >= 50_000 {
+                        let mut truncated = false;
+                        let walker = walkdir::WalkDir::new(&task_path)
+                            .min_depth(1)
+                            .max_depth(MAX_DIR_SIZE_DEPTH);
+                        for entry in walker {
+                            if count >= MAX_DIR_SIZE_FILES {
+                                truncated = true;
                                 break;
                             }
-                            if let Ok(e) = e {
-                                if let Ok(m) = e.metadata() {
-                                    if m.is_file() {
-                                        total += m.len();
-                                        count += 1;
-                                    }
-                                }
+                            let Ok(entry) = entry else { continue };
+                            // A directory sitting exactly on the depth limit has
+                            // children this walk will never see, so the total is
+                            // a floor. Saying so is the difference between an
+                            // approximation and a wrong number.
+                            if entry.depth() >= MAX_DIR_SIZE_DEPTH && entry.file_type().is_dir() {
+                                truncated = true;
+                                continue;
+                            }
+                            // `file_type` vient de `readdir`, `metadata` est un
+                            // appel système par entrée. Tester le type d'abord
+                            // évite d'en payer un pour chaque sous-dossier, qui
+                            // ne contribue rien au total.
+                            if !entry.file_type().is_file() {
+                                continue;
+                            }
+                            if let Ok(metadata) = entry.metadata() {
+                                total += metadata.len();
+                                count += 1;
                             }
                         }
-                        total
+                        (total, truncated)
                     })
                     .await
                     .unwrap_or_else(|e| {
                         tracing::warn!("Taille dossier: tâche paniquée: {e}");
-                        0
+                        (0, false)
                     });
-                    (path, bytes)
+                    (path, bytes, truncated)
                 },
-                |(path, bytes)| UiMessage::DirSizeLoaded { path, bytes },
+                |(path, bytes, truncated)| UiMessage::DirSizeLoaded {
+                    path,
+                    bytes,
+                    truncated,
+                },
             ));
         }
         Task::batch(tasks)

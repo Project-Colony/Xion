@@ -343,6 +343,10 @@ pub enum UiMessage {
     DirSizeLoaded {
         path: PathBuf,
         bytes: u64,
+        /// `true` quand le parcours s'est arrêté sur une de ses limites, de
+        /// profondeur ou de nombre de fichiers : `bytes` est alors un plancher,
+        /// pas un total.
+        truncated: bool,
     },
     // Feature 10: Archive browser
     ArchiveListLoaded {

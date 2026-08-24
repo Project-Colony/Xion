@@ -66,6 +66,14 @@ impl XionApp {
                     tasks.push(self.open_in_new_tab(path));
                 }
             }
+            UiMessage::ToggleOverflowMenu(open) => {
+                self.menus.overflow_open = open;
+                // Two menus open at once would overlap; the address history is
+                // the only other one anchored to this bar.
+                if open {
+                    self.menus.history_open = false;
+                }
+            }
             UiMessage::AddTab => {
                 self.menus.history_open = false;
                 self.menus.history_position = None;

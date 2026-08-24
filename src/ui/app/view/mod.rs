@@ -13,6 +13,7 @@ mod list;
 mod list_body;
 mod main_area;
 mod menu_items;
+mod overflow_menu;
 mod overlays;
 mod preview;
 mod rows;
@@ -167,7 +168,11 @@ impl XionApp {
 
         let status_bar = self.render_status_bar(ctx, display_entries, &filtered_indices);
 
-        let content = column![header, body, status_bar]
+        // No gap between the header and the body: the active tab has to reach
+        // the list it belongs to. A uniform `spacing` on the whole column would
+        // put twelve pixels there and leave the tab floating, which is what made
+        // the strip read as a row of unrelated buttons.
+        let content = column![column![header, body].spacing(0), status_bar]
             .spacing(spacing.md)
             .padding(spacing.lg)
             .align_x(Alignment::Start)
@@ -263,6 +268,9 @@ impl XionApp {
             history_menu.unwrap_or_else(|| container(row![]).into());
         let context_layer: Element<'_, UiMessage> =
             context_menu.unwrap_or_else(|| container(row![]).into());
+        let overflow_layer: Element<'_, UiMessage> = self
+            .render_overflow_menu(ctx)
+            .unwrap_or_else(|| container(row![]).into());
 
         // Feature R: Breadcrumb dropdown
         let breadcrumb_dropdown_layer: Element<'_, UiMessage> =
@@ -336,6 +344,7 @@ impl XionApp {
             breadcrumb_dropdown_layer,
             history_layer,
             context_layer,
+            overflow_layer,
             properties_layer,
             bulk_rename_layer,
             diff_layer,

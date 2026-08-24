@@ -403,6 +403,8 @@ pub enum UiMessage {
     // Feature H: Column Resizing
     /// Drains paths handed over by a later launch of the binary.
     OpenRequestTick,
+    /// Opens or closes the `⋯` menu at the end of the header bar.
+    ToggleOverflowMenu(bool),
     ColumnResizeStart(&'static str),
     ColumnResizeEnd,
     ColumnResized(&'static str, f32),

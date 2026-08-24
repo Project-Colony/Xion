@@ -63,6 +63,28 @@ pub(super) fn filled_style(
     }
 }
 
+/// The header band: filled, rounded at the top only, and with no outline.
+///
+/// Two reasons it has no border. The tab strip sits flush against the bottom of
+/// this container, and the active tab is painted in the list's own background —
+/// so a line drawn under the tabs would cut the join that makes a row of
+/// buttons read as tabs at all. And the window already had a border around the
+/// header, one around the sidebar, one around the list and one around the
+/// status bar, which is what made the screen read as a stack of panels rather
+/// than an application.
+pub(super) fn header_style(colors: UiColors) -> impl Fn(&Theme) -> container::Style + Copy {
+    move |_: &Theme| container::Style {
+        background: Some(Background::Color(colors.chrome_background)),
+        border: iced::Border {
+            radius: iced::border::Radius::default()
+                .top_left(RADIUS.xl)
+                .top_right(RADIUS.xl),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
 /// Container style for a floating surface: menus, dropdowns, dialogs.
 pub(super) fn surface_style(
     colors: UiColors,
@@ -254,18 +276,16 @@ pub(super) fn toolbar_button<'a>(ctx: ViewCtx, label: String) -> Button<'a, UiMe
     .style(raised_button_style(ctx.colors, true))
 }
 
-/// Which of the two historical tooltip looks a call site wants.
+/// Which tooltip look a call site wants.
 ///
-/// The navigation arrows and the command bar grew their own tooltip code and
-/// ended up with different surfaces, text sizes and offsets.  Both now go
-/// through [`tip`]; the variant only carries the pixels that differ, so nothing
-/// moves on screen.
+/// There were two, because the navigation arrows and the command bar had each
+/// grown their own tooltip code. The command bar is gone — its contents moved
+/// into the `⋯` menu, where entries carry their shortcut inline and need no
+/// tooltip — so only one look is left.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum TipVariant {
     /// Navigation arrows: chrome surface, default text, 4px inner padding.
     Nav,
-    /// Command bar: panel surface, caption text, 4px gap to the anchor.
-    Command,
 }
 
 /// The single tooltip constructor.
@@ -281,15 +301,5 @@ pub(super) fn tip<'a>(
             .style(chrome_style(colors, RADIUS.sm))
             .padding(4)
             .into(),
-        TipVariant::Command => tooltip(
-            content,
-            text(label)
-                .size(ctx.typography.caption)
-                .font(ctx.typography.caption_font),
-            tooltip::Position::Bottom,
-        )
-        .gap(4.0)
-        .style(surface_style(colors, RADIUS.sm))
-        .into(),
     }
 }

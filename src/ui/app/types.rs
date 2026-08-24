@@ -862,6 +862,13 @@ pub(super) struct MenuState {
     pub(super) context_submenu: Option<ContextSubmenu>,
     pub(super) history_open: bool,
     pub(super) history_position: Option<iced::Point>,
+    /// The `⋯` menu at the end of the single header bar.
+    ///
+    /// Everything the old command bar showed as a permanent third row lives
+    /// here: the clipboard verbs, the view toggles, the theme, the content
+    /// search. Six kinds of thing had the same visual weight in that row; here
+    /// they are grouped and separated.
+    pub(super) overflow_open: bool,
 }
 
 // ── Dual-pane state ──────────────────────────────────────────────────────────

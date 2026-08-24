@@ -47,6 +47,38 @@ pub(super) fn item<'a>(
         .into()
 }
 
+/// A menu entry that cannot be activated, shown rather than hidden.
+///
+/// Hiding "Coller" when the clipboard is empty makes the menu change shape and
+/// hides the shortcut from anyone still learning it. Greyed out, the entry says
+/// both that it exists and why it is not available right now.
+pub(super) fn disabled_item<'a>(
+    ctx: ViewCtx,
+    icon: &str,
+    label: &str,
+    shortcut: &str,
+) -> Element<'a, UiMessage> {
+    let ViewCtx {
+        colors,
+        spacing,
+        typography,
+    } = ctx;
+    let main_text = body_text(typography, format!("{} {}", icon, label)).color(colors.text_muted);
+    let content: Element<'_, UiMessage> = if shortcut.is_empty() {
+        main_text.into()
+    } else {
+        let shortcut_text = caption_text(typography, shortcut.to_string()).color(colors.text_muted);
+        row![main_text, horizontal_space(), shortcut_text]
+            .spacing(spacing.lg)
+            .align_y(Alignment::Center)
+            .into()
+    };
+    container(content)
+        .padding([spacing.xs, spacing.sm])
+        .width(Length::Fill)
+        .into()
+}
+
 /// A one-pixel separator line.
 pub(super) fn separator<'a>(ctx: ViewCtx) -> Element<'a, UiMessage> {
     let ViewCtx { colors, .. } = ctx;

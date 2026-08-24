@@ -1,6 +1,8 @@
-//! The search field, the command bar and the loading badge.
+//! The search field and the loading badge.
 //!
-//! Moved out of `render_header` unchanged.
+//! The command bar that used to live here — seven buttons on a permanent third
+//! row — is gone: its contents moved into the `⋯` menu, in
+//! `render_overflow_menu`. Only what belongs on the bar itself remains.
 
 use iced::widget::{container, progress_bar, row, text_input};
 use iced::{Alignment, Background, Color, Element, Length, Theme, border};
@@ -9,29 +11,24 @@ use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
 use super::XionApp;
+use super::widgets::ViewCtx;
 use super::widgets::caption_text;
 use super::widgets::filled_style;
 use super::widgets::surface_style;
-use super::widgets::{self, RADIUS, RADIUS_PILL};
-use super::widgets::{TipVariant, ViewCtx};
+use super::widgets::{RADIUS, RADIUS_PILL};
 
 impl XionApp {
-    /// The search field, the command bar row and the loading badge, in that
-    /// order — the caller lays them out.
+    /// The search field and the loading badge, in that order — the caller lays
+    /// them out.
     pub(super) fn render_command_bar(
         &self,
         ctx: ViewCtx,
-    ) -> (
-        Element<'_, UiMessage>,
-        Element<'_, UiMessage>,
-        Element<'_, UiMessage>,
-    ) {
+    ) -> (Element<'_, UiMessage>, Element<'_, UiMessage>) {
         let ViewCtx {
             colors,
             spacing,
             typography,
         } = ctx;
-        let toolbar_button = |label: String| widgets::toolbar_button(ctx, label);
 
         let active_tab_title = self
             .tab_manager
@@ -68,82 +65,6 @@ impl XionApp {
         .padding([spacing.xs, spacing.md])
         .width(Length::Fixed(240.0))
         .style(surface_style(colors, RADIUS.md));
-
-        let has_selection = !self.state.navigation.selection.selected.is_empty();
-        let has_clipboard = self.clipboard.kind.is_some() && !self.clipboard.items.is_empty();
-
-        let cut_button = if has_selection {
-            toolbar_button(format!("{} Couper", icons::CUT)).on_press(UiMessage::ClipboardCut)
-        } else {
-            toolbar_button(format!("{} Couper", icons::CUT))
-        };
-
-        let copy_button = if has_selection {
-            toolbar_button(format!("{} Copier", icons::COPY)).on_press(UiMessage::ClipboardCopy)
-        } else {
-            toolbar_button(format!("{} Copier", icons::COPY))
-        };
-
-        let paste_button = if has_clipboard {
-            toolbar_button(format!("{} Coller", icons::PASTE)).on_press(UiMessage::ClipboardPaste)
-        } else {
-            toolbar_button(format!("{} Coller", icons::PASTE))
-        };
-
-        let dark_mode_label = if self.state.config.dark_mode {
-            format!("{} Clair", icons::THEME)
-        } else {
-            format!("{} Sombre", icons::THEME)
-        };
-
-        let gitignore_label = if self.state.config.respect_gitignore {
-            format!("{} .gitignore ✓", icons::FILE)
-        } else {
-            format!("{} .gitignore", icons::FILE)
-        };
-        let grep_label = format!("{} Chercher", icons::FILE);
-        let compact_label = if self.state.config.compact_mode {
-            "⊞ Normal"
-        } else {
-            "⊟ Compact"
-        };
-        // #32: Accessibility — every command-bar button carries a tooltip.
-        macro_rules! tt {
-            ($widget:expr, $label:expr) => {
-                widgets::tip(ctx, $widget, $label, TipVariant::Command)
-            };
-        }
-        let command_bar = row![
-            tt!(
-                toolbar_button(format!("{} Nouveau", icons::NEW)).on_press(UiMessage::NewFolder),
-                "Nouveau dossier (Ctrl+Shift+N)"
-            ),
-            tt!(cut_button, "Couper (Ctrl+X)"),
-            tt!(copy_button, "Copier (Ctrl+C)"),
-            tt!(paste_button, "Coller (Ctrl+V)"),
-            tt!(
-                toolbar_button(dark_mode_label).on_press(UiMessage::ToggleDarkMode),
-                "Basculer thème clair/sombre"
-            ),
-            tt!(
-                toolbar_button(gitignore_label).on_press(UiMessage::ToggleGitignore),
-                "Respecter .gitignore"
-            ),
-            tt!(
-                toolbar_button(compact_label.to_string()).on_press(UiMessage::ToggleCompactMode),
-                "Mode compact/normal"
-            ),
-            tt!(
-                toolbar_button(grep_label).on_press(UiMessage::OpenGrep),
-                "Chercher dans le contenu (Ctrl+Shift+F)"
-            ),
-            tt!(
-                toolbar_button(format!("{} Actions", icons::ACTIONS))
-                    .on_press(UiMessage::ToggleContextMenu(!self.menus.context_open)),
-                "Menu contextuel (F10)"
-            )
-        ]
-        .spacing(spacing.sm);
 
         let loading_badge: Element<'_, UiMessage> =
             if self.show_loading_indicator || self.operation_progress.is_some() {
@@ -189,6 +110,6 @@ impl XionApp {
                 container(row![]).into()
             };
 
-        (search_bar.into(), command_bar.into(), loading_badge)
+        (search_bar.into(), loading_badge)
     }
 }

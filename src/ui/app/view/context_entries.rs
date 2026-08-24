@@ -6,8 +6,6 @@
 
 use iced::widget::{column, container, mouse_area};
 use iced::{Color, Element, Length};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::filesystem::FsEntryType;
 use crate::ui::theme::icons;

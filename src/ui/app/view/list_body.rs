@@ -6,8 +6,6 @@
 use iced::widget::space::vertical as vertical_space;
 use iced::widget::{button, column, container, mouse_area, row};
 use iced::{Alignment, Background, Element, Length, mouse};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::core::{SortOrderConfig, ViewMode};
 use crate::ui::UiMessage;

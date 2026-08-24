@@ -7,8 +7,6 @@
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{button, column, container, mouse_area, row};
 use iced::{Alignment, Background, Element, Theme, border};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::ui::theme::icons;
 use crate::ui::{KeyboardCommand, UiMessage};

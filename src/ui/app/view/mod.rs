@@ -27,8 +27,6 @@ use iced::widget::{
     button, column, container, mouse_area, opaque, row, scrollable, stack, text_input,
 };
 use iced::{Alignment, Background, Color, Element, Length, border, mouse};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::ui::UiMessage;
 use crate::ui::theme::UiTokens;

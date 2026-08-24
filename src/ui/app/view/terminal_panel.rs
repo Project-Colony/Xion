@@ -7,8 +7,6 @@ use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, row, scrollable, text_input, tooltip};
 use iced::{Alignment, Background, Color, Element, Length, Theme, border};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::ui::UiMessage;
 use crate::ui::theme::layout::TERMINAL_DEFAULT_HEIGHT;

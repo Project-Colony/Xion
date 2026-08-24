@@ -10,8 +10,6 @@ use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
 use iced::widget::{button, column, container, mouse_area, progress_bar, row, scrollable};
 use iced::{Alignment, Element, Length, Theme, mouse};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::ui::theme::icons;
 use crate::ui::theme::layout::TREE_RESIZE_BAR_HEIGHT;

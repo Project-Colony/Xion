@@ -6,8 +6,6 @@
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, row};
 use iced::{Alignment, Element};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::core::ViewMode;
 use crate::filesystem::{FsEntry, FsEntryType};

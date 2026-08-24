@@ -14,8 +14,6 @@ static CLI_START_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 use iced::alignment::Horizontal;
 // Tracing is available for future use
 use iced::{Font, Length, Point, Rectangle, Theme, keyboard, mouse};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::core::{ConfigManager, SortKeyConfig, ViewColumn};
 use crate::services::{DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService};

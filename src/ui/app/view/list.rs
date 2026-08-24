@@ -6,8 +6,6 @@
 
 use iced::widget::{column, container, mouse_area, row, scrollable, text_input};
 use iced::{Alignment, Element, Length};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::ui::{ScrollViewport, UiMessage};
 
@@ -55,14 +53,6 @@ impl XionApp {
         let total_entries = filtered_indices
             .as_ref()
             .map_or(display_entries.total, |indices| indices.len());
-        let _entry_index_for = |display_index: usize| -> Option<usize> {
-            if let Some(indices) = &filtered_indices {
-                indices.get(display_index).copied()
-            } else {
-                Some(display_index)
-            }
-        };
-
         let list_content = self.render_list_content(
             ctx,
             cx,

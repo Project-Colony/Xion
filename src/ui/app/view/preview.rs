@@ -7,8 +7,6 @@
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{column, container, image, row, scrollable};
 use iced::{Alignment, Color, Element, Length};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::filesystem::FsEntryType;
 use crate::ui::UiMessage;

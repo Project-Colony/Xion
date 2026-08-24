@@ -7,8 +7,6 @@
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
 use iced::widget::{column, container, mouse_area, opaque, row, stack};
 use iced::{Background, Element, Length, Point, Theme, border};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::ui::UiMessage;
 

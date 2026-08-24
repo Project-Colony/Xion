@@ -8,8 +8,6 @@ use std::path::PathBuf;
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
 use iced::widget::{button, column, container, mouse_area, opaque, row, stack, text_input};
 use iced::{Alignment, Element, Length, Point};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::ui::UiMessage;
 

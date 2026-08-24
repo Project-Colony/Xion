@@ -4,8 +4,6 @@
 
 use iced::widget::{container, progress_bar, row, text_input};
 use iced::{Alignment, Background, Color, Element, Length, Theme, border};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;

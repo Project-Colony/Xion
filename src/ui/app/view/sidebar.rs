@@ -5,8 +5,6 @@
 
 use iced::widget::{column, container, scrollable};
 use iced::{Background, Border, Element, Length};
-#[allow(unused_imports)]
-use tracing::{debug, info, warn};
 
 use crate::ui::UiMessage;
 

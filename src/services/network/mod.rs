@@ -1,10 +1,12 @@
 mod credentials;
+#[cfg(feature = "ftp")]
 mod ftp;
 mod mdns;
 mod net_view;
 mod wnet;
 
 pub use credentials::*;
+#[cfg(feature = "ftp")]
 pub use ftp::*;
 pub use mdns::*;
 use net_view::*;
@@ -13,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::filesystem::{
-    FsEntry, FsEntryType, ListOptions, Page, PageRequest,
+    FsEntry, FsEntryType, FsMetadata, ListOptions, Page, PageRequest,
     sorting::{compare_entries, matches_filter},
 };
 
@@ -454,5 +456,17 @@ The command completed successfully.
         record_scan_error(Some("panne de scan".to_string()));
         assert_eq!(svc.last_error(), Some("panne de scan".to_string()));
         record_scan_error(None);
+    }
+}
+
+/// Placeholder metadata for entries that have no local file behind them
+/// (network shares, remote listings).
+fn synthetic_metadata() -> FsMetadata {
+    FsMetadata {
+        size: 0,
+        modified: Some(std::time::SystemTime::now()),
+        accessed: None,
+        created: None,
+        readonly: false,
     }
 }

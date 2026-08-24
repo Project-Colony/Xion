@@ -17,12 +17,26 @@ categories = ["gui", "filesystem"]
 # self dev-dependency below turns the feature on for them alone.
 test-util = []
 
+# Remote FTP browsing. Unreachable from the UI today; see the note on suppaftp.
+ftp = ["dep:suppaftp"]
+
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 directories = "6.0"
-iced = { version = "0.14", features = ["image", "wgpu", "tokio"] }
+# `image-without-codecs` rather than `image`: the latter turns on image's own
+# default feature set, which re-enabled every codec the line below deliberately
+# refuses (exr, avif, qoi...). They were compiled and linked regardless.
+iced = { version = "0.14", features = ["image-without-codecs", "wgpu", "tokio"] }
 tokio = { version = "1", features = ["rt", "time", "sync", "process", "io-util"] }
-image = { version = "0.25", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
+# No "tiff": it was the only thing pulling tiff -> zune-jpeg 0.4, a SECOND
+# complete JPEG decoder alongside the zune-jpeg 0.5 that image itself uses.
+image = { version = "0.25", default-features = false, features = [
+    "bmp",
+    "gif",
+    "jpeg",
+    "png",
+    "webp",
+] }
 notify = "8"
 serde = { version = "1.0", features = ["derive"] }
 sysinfo = "0.39"
@@ -41,7 +55,12 @@ flate2 = "1"
 sevenz-rust = "0.6"
 ignore = "0.4"
 encoding_rs = "0.8"
-suppaftp = { version = "6", features = ["native-tls"] }
+# Optional, and off by default. `list_ftp_directory` has no caller anywhere in
+# src/ui/: nothing in the interface can reach it. Enabling it by default cost
+# twelve crates including the whole openssl chain — and a build dependency on
+# the system OpenSSL — for code that never runs. Turn it back on with
+# `--features ftp` once there is a command that calls it.
+suppaftp = { version = "6", features = ["native-tls"], optional = true }
 mdns-sd = "0.11"
 portable-pty = "0.9.0"
 vte = "0.15.0"

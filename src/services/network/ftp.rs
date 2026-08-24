@@ -97,13 +97,3 @@ pub(super) fn parse_ftp_list_line(line: &str) -> Option<FtpEntry> {
 
     Some(FtpEntry { name, is_dir, size })
 }
-
-pub(super) fn synthetic_metadata() -> FsMetadata {
-    FsMetadata {
-        size: 0,
-        modified: Some(SystemTime::now()),
-        accessed: None,
-        created: None,
-        readonly: false,
-    }
-}

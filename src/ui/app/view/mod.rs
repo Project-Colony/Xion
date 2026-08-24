@@ -22,12 +22,11 @@ mod status_bar;
 mod terminal_panel;
 mod widgets;
 
-use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
 use iced::widget::{
     button, column, container, mouse_area, opaque, row, scrollable, stack, text, text_input,
 };
-use iced::{Alignment, Background, Color, Element, Length, Theme, border, mouse};
+use iced::{Alignment, Background, Color, Element, Length, border, mouse};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
@@ -38,6 +37,9 @@ use crate::ui::theme::layout::PREVIEW_RESIZE_BAR_WIDTH;
 use super::XionApp;
 use widgets::ViewCtx;
 
+use widgets::filled_style;
+use widgets::hover_button_style;
+use widgets::surface_style;
 use widgets::{RADIUS, RADIUS_PILL};
 
 impl XionApp {
@@ -94,11 +96,7 @@ impl XionApp {
             )
             .padding([spacing.xs, spacing.sm])
             .width(Length::Fill)
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.hover)),
-                border: border::rounded(RADIUS.md).color(colors.border).width(1.0),
-                ..Default::default()
-            })
+            .style(filled_style(colors, colors.hover, RADIUS.md))
             .into();
             column![filter_bar, main_list_element]
         } else {
@@ -167,11 +165,7 @@ impl XionApp {
                 container(column![preview_header, preview_body].spacing(spacing.md))
                     .padding(spacing.md)
                     .width(Length::Fixed(animated_width))
-                    .style(move |_| iced::widget::container::Style {
-                        background: Some(Background::Color(colors.panel_background)),
-                        border: border::rounded(RADIUS.xl).color(colors.border).width(1.0),
-                        ..Default::default()
-                    });
+                    .style(surface_style(colors, RADIUS.xl));
 
             body = body.push(preview_resize_bar);
             body = body.push(preview_panel);
@@ -216,11 +210,7 @@ impl XionApp {
                         .font(typography.caption_font),
                 )
                 .padding([spacing.xs, spacing.sm])
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.panel_background)),
-                    border: border::rounded(RADIUS_PILL).color(colors.border).width(1.0),
-                    ..Default::default()
-                });
+                .style(surface_style(colors, RADIUS_PILL));
                 let position_x = (position.x + spacing.md).max(0.0);
                 let position_y = (position.y + spacing.md).max(0.0);
                 let layer: Element<'_, UiMessage> = container(
@@ -305,16 +295,7 @@ impl XionApp {
                             button(text(label).size(typography.body).font(typography.body_font))
                                 .width(Length::Fill)
                                 .padding([spacing.xs, spacing.sm])
-                                .style(move |_theme: &Theme, status: ButtonStatus| {
-                                    let mut style = iced::widget::button::Style {
-                                        text_color: colors.text_primary,
-                                        ..Default::default()
-                                    };
-                                    if matches!(status, ButtonStatus::Hovered) {
-                                        style.background = Some(Background::Color(colors.hover));
-                                    }
-                                    style
-                                })
+                                .style(hover_button_style(colors, colors.text_primary, None))
                                 .on_press(UiMessage::NavigateTo(dir_clone)),
                         );
                     }
@@ -330,11 +311,7 @@ impl XionApp {
                         .padding([spacing.xs, spacing.sm])
                         .width(Length::Fixed(280.0))
                         .max_height(400.0)
-                        .style(move |_| iced::widget::container::Style {
-                            background: Some(Background::Color(colors.panel_background)),
-                            border: border::rounded(RADIUS.lg).color(colors.border).width(1.0),
-                            ..Default::default()
-                        });
+                        .style(surface_style(colors, RADIUS.lg));
                     // Position below the header area
                     let menu_layer: Element<'_, UiMessage> = container(
                         column![

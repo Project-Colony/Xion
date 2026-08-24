@@ -5,7 +5,7 @@
 //! function, and the closures it defines are used nowhere else.
 
 use iced::widget::{column, container, mouse_area, row, scrollable, text, text_input};
-use iced::{Alignment, Background, Element, Length, border};
+use iced::{Alignment, Element, Length};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
@@ -17,6 +17,7 @@ use crate::ui::app::helpers::column_specs;
 use crate::ui::app::types::*;
 
 use super::widgets::RADIUS;
+use super::widgets::surface_style;
 
 use super::rows::RowCtx;
 
@@ -96,11 +97,7 @@ impl XionApp {
                 .align_y(Alignment::Center),
             )
             .padding([spacing.sm, spacing.md])
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.panel_background)),
-                border: border::rounded(RADIUS.lg).color(colors.border).width(1.0),
-                ..Default::default()
-            })
+            .style(surface_style(colors, RADIUS.lg))
         } else {
             container(row![])
         };

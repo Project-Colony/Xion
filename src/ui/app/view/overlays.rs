@@ -23,11 +23,7 @@ fn modal_overlay<'a>(
     dismiss: UiMessage,
     colors: UiColors,
 ) -> Element<'a, UiMessage> {
-    let modal = container(content).style(move |_| iced::widget::container::Style {
-        background: Some(Background::Color(colors.panel_background)),
-        border: border::rounded(RADIUS.lg).color(colors.border).width(1.0),
-        ..Default::default()
-    });
+    let modal = container(content).style(surface_style(colors, RADIUS.lg));
     let dismiss_layer =
         mouse_area(container(row![]).width(Length::Fill).height(Length::Fill)).on_press(dismiss);
     stack![
@@ -53,11 +49,7 @@ fn modal_overlay_sized<'a>(
 ) -> Element<'a, UiMessage> {
     let modal = container(content)
         .width(Length::Fixed(width))
-        .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.panel_background)),
-            border: border::rounded(RADIUS.lg).color(colors.border).width(1.0),
-            ..Default::default()
-        });
+        .style(surface_style(colors, RADIUS.lg));
     let dismiss_layer =
         mouse_area(container(row![]).width(Length::Fill).height(Length::Fill)).on_press(dismiss);
     stack![
@@ -74,6 +66,7 @@ fn modal_overlay_sized<'a>(
 }
 
 use super::widgets::RADIUS;
+use super::widgets::surface_style;
 
 impl XionApp {
     // ── Properties dialog ─────────────────────────────────────────────────────

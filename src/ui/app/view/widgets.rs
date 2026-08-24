@@ -7,7 +7,7 @@
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{Button, button, container, text, tooltip};
-use iced::{Background, Element, Theme, border};
+use iced::{Background, Color, Element, Theme, border};
 
 use crate::ui::{UiColors, UiMessage, UiSpacing, UiTypography};
 
@@ -46,16 +46,29 @@ pub(super) struct ViewCtx {
     pub(super) typography: UiTypography,
 }
 
+/// A solid fill with the standard one-pixel outline and a rounded corner.
+///
+/// Thirty call sites across the view tree had written this same struct literal
+/// inline, which is how three of them drifted onto different radii for the same
+/// kind of surface.
+pub(super) fn filled_style(
+    colors: UiColors,
+    fill: Color,
+    radius: f32,
+) -> impl Fn(&Theme) -> container::Style + Copy {
+    move |_: &Theme| container::Style {
+        background: Some(Background::Color(fill)),
+        border: border::rounded(radius).color(colors.border).width(1.0),
+        ..Default::default()
+    }
+}
+
 /// Container style for a floating surface: menus, dropdowns, dialogs.
 pub(super) fn surface_style(
     colors: UiColors,
     radius: f32,
 ) -> impl Fn(&Theme) -> container::Style + Copy {
-    move |_: &Theme| container::Style {
-        background: Some(Background::Color(colors.panel_background)),
-        border: border::rounded(radius).color(colors.border).width(1.0),
-        ..Default::default()
-    }
+    filled_style(colors, colors.panel_background, radius)
 }
 
 /// Container style for a recessed strip: list header, archive header, filter bar.
@@ -63,11 +76,7 @@ pub(super) fn chrome_style(
     colors: UiColors,
     radius: f32,
 ) -> impl Fn(&Theme) -> container::Style + Copy {
-    move |_: &Theme| container::Style {
-        background: Some(Background::Color(colors.chrome_background)),
-        border: border::rounded(radius).color(colors.border).width(1.0),
-        ..Default::default()
-    }
+    filled_style(colors, colors.chrome_background, radius)
 }
 
 /// Style shared by the toolbar, the context menus and the address suggestions:
@@ -98,6 +107,91 @@ pub(super) fn raised_button_style(
                 style.text_color = colors.text_muted;
             }
             ButtonStatus::Active | ButtonStatus::Disabled => {}
+        }
+
+        style
+    }
+}
+
+/// A flat control that only reacts on hover: address-bar chips, sort handles,
+/// the network entry. `outline` adds the one-pixel border some of them draw.
+pub(super) fn hover_button_style(
+    colors: UiColors,
+    text_color: Color,
+    outline: Option<f32>,
+) -> impl Fn(&Theme, ButtonStatus) -> button::Style + Copy {
+    move |_theme: &Theme, status: ButtonStatus| {
+        let mut style = button::Style {
+            text_color,
+            ..Default::default()
+        };
+
+        if matches!(status, ButtonStatus::Hovered) {
+            style.background = Some(Background::Color(colors.hover));
+            if let Some(radius) = outline {
+                style.border = border::rounded(radius).color(colors.border).width(1.0);
+            }
+        }
+
+        style
+    }
+}
+
+/// A row or tile that can be selected and focused: list rows, grid tiles, tree
+/// nodes. The focus ring is the selection outline drawn twice as thick.
+pub(super) fn selectable_button_style(
+    colors: UiColors,
+    selected: bool,
+    focused: bool,
+    radius: f32,
+) -> impl Fn(&Theme, ButtonStatus) -> button::Style + Copy {
+    move |_theme: &Theme, status: ButtonStatus| {
+        let mut style = button::Style {
+            text_color: colors.text_primary,
+            ..Default::default()
+        };
+
+        if selected {
+            style.background = Some(Background::Color(colors.selection));
+            style.border = border::rounded(radius)
+                .color(colors.selection_border)
+                .width(if focused { 2.0 } else { 1.0 });
+        }
+
+        match status {
+            ButtonStatus::Hovered => style.background = Some(Background::Color(colors.hover)),
+            ButtonStatus::Pressed => style.background = Some(Background::Color(colors.pressed)),
+            ButtonStatus::Active | ButtonStatus::Disabled => {}
+        }
+
+        style
+    }
+}
+
+/// A status-bar toggle: accented and filled while on, muted while off.
+pub(super) fn toggle_button_style(
+    colors: UiColors,
+    active: bool,
+) -> impl Fn(&Theme, ButtonStatus) -> button::Style + Copy {
+    move |_theme: &Theme, status: ButtonStatus| {
+        let mut style = button::Style {
+            text_color: if active {
+                colors.accent
+            } else {
+                colors.text_muted
+            },
+            ..Default::default()
+        };
+
+        if active {
+            style.background = Some(Background::Color(colors.selection));
+            style.border = border::rounded(RADIUS.sm)
+                .color(colors.selection_border)
+                .width(1.0);
+        }
+
+        if matches!(status, ButtonStatus::Hovered) {
+            style.background = Some(Background::Color(colors.hover));
         }
 
         style

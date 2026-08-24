@@ -3,10 +3,9 @@
 //!
 //! Moved out of `view()` unchanged.
 
-use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, row, text};
-use iced::{Alignment, Background, Element, Theme, border};
+use iced::{Alignment, Element};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
@@ -20,6 +19,8 @@ use super::widgets::ViewCtx;
 use crate::ui::app::types::*;
 
 use super::widgets::RADIUS;
+use super::widgets::surface_style;
+use super::widgets::toggle_button_style;
 
 impl XionApp {
     /// `display_entries` and `filtered_indices` are resolved once in `view()`
@@ -183,26 +184,7 @@ impl XionApp {
                     .font(typography.body_font),
             )
             .padding([spacing.xs, spacing.xs])
-            .style(move |_theme: &Theme, status: ButtonStatus| {
-                let mut style = iced::widget::button::Style {
-                    text_color: if active {
-                        colors.accent
-                    } else {
-                        colors.text_muted
-                    },
-                    ..Default::default()
-                };
-                if active {
-                    style.background = Some(Background::Color(colors.selection));
-                    style.border = border::rounded(RADIUS.sm)
-                        .color(colors.selection_border)
-                        .width(1.0);
-                }
-                if matches!(status, ButtonStatus::Hovered) {
-                    style.background = Some(Background::Color(colors.hover));
-                }
-                style
-            })
+            .style(toggle_button_style(colors, active))
             .on_press(UiMessage::ToggleViewMode)
         };
 
@@ -213,26 +195,7 @@ impl XionApp {
                 .font(typography.body_font),
         )
         .padding([spacing.xs, spacing.xs])
-        .style(move |_theme: &Theme, status: ButtonStatus| {
-            let mut style = iced::widget::button::Style {
-                text_color: if terminal_active {
-                    colors.accent
-                } else {
-                    colors.text_muted
-                },
-                ..Default::default()
-            };
-            if terminal_active {
-                style.background = Some(Background::Color(colors.selection));
-                style.border = border::rounded(RADIUS.sm)
-                    .color(colors.selection_border)
-                    .width(1.0);
-            }
-            if matches!(status, ButtonStatus::Hovered) {
-                style.background = Some(Background::Color(colors.hover));
-            }
-            style
-        })
+        .style(toggle_button_style(colors, terminal_active))
         .on_press(UiMessage::ToggleTerminal);
 
         let mut status_right = row![
@@ -255,11 +218,7 @@ impl XionApp {
             row![status_left, horizontal_space(), status_right].align_y(Alignment::Center),
         )
         .padding([spacing.xs, spacing.md])
-        .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.panel_background)),
-            border: border::rounded(RADIUS.lg).color(colors.border).width(1.0),
-            ..Default::default()
-        });
+        .style(surface_style(colors, RADIUS.lg));
 
         status_bar.into()
     }

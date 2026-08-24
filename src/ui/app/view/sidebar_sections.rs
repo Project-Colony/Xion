@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
 use iced::widget::{button, column, container, mouse_area, progress_bar, row, scrollable, text};
-use iced::{Alignment, Background, Element, Length, Theme, border, mouse};
+use iced::{Alignment, Element, Length, Theme, mouse};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
@@ -20,6 +20,10 @@ use crate::ui::{NETWORK_ROUTE, ScrollViewport, UiMessage};
 use super::XionApp;
 use super::widgets::RADIUS;
 use super::widgets::ViewCtx;
+use super::widgets::filled_style;
+use super::widgets::hover_button_style;
+use super::widgets::raised_button_style;
+use super::widgets::selectable_button_style;
 use crate::ui::app::types::*;
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
@@ -53,25 +57,7 @@ pub(super) fn sidebar_button<'a>(
         Some(path) => button(content)
             .padding([spacing.xs, spacing.sm])
             .width(Length::Fill)
-            .style(move |_theme: &Theme, status: ButtonStatus| {
-                let mut style = iced::widget::button::Style {
-                    text_color: colors.text_primary,
-                    ..Default::default()
-                };
-
-                match status {
-                    ButtonStatus::Hovered => {
-                        style.background = Some(Background::Color(colors.hover));
-                        style.border = border::rounded(RADIUS.md).color(colors.border).width(1.0);
-                    }
-                    ButtonStatus::Pressed => {
-                        style.background = Some(Background::Color(colors.pressed));
-                    }
-                    ButtonStatus::Active | ButtonStatus::Disabled => {}
-                }
-
-                style
-            })
+            .style(raised_button_style(colors, false))
             .on_press(UiMessage::NavigateTo(path))
             .into(),
         None => container(content)
@@ -189,29 +175,7 @@ impl XionApp {
                     button(content)
                         .padding([spacing.xs, spacing.sm])
                         .width(Length::Fill)
-                        .style(move |_theme: &Theme, status: ButtonStatus| {
-                            let mut style = iced::widget::button::Style {
-                                text_color: colors.text_primary,
-                                ..Default::default()
-                            };
-
-                            if selected {
-                                style.background = Some(Background::Color(colors.selection));
-                                style.border = border::rounded(RADIUS.md)
-                                    .color(colors.selection_border)
-                                    .width(1.0);
-                            }
-
-                            if matches!(status, ButtonStatus::Hovered) {
-                                style.background = Some(Background::Color(colors.hover));
-                            }
-
-                            if matches!(status, ButtonStatus::Pressed) {
-                                style.background = Some(Background::Color(colors.pressed));
-                            }
-
-                            style
-                        })
+                        .style(selectable_button_style(colors, selected, false, RADIUS.md))
                         .on_press(UiMessage::NavigateTo(path)),
                 )
                 .on_release(UiMessage::DropOnPath(drop_path));
@@ -248,11 +212,7 @@ impl XionApp {
                 container(row![])
                     .width(Length::Fill)
                     .height(Length::Fixed(TREE_RESIZE_BAR_HEIGHT))
-                    .style(move |_| iced::widget::container::Style {
-                        background: Some(Background::Color(colors.hover)),
-                        border: border::rounded(RADIUS.md).color(colors.border).width(1.0),
-                        ..Default::default()
-                    }),
+                    .style(filled_style(colors, colors.hover, RADIUS.md)),
             )
             .on_press(UiMessage::TreeResizeStart)
             .on_release(UiMessage::TreeResizeEnd)
@@ -430,25 +390,7 @@ impl XionApp {
                         button(content)
                             .padding([spacing.xs, spacing.sm])
                             .width(Length::Fill)
-                            .style(move |_theme: &Theme, status: ButtonStatus| {
-                                let mut style = iced::widget::button::Style {
-                                    text_color: colors.text_primary,
-                                    ..Default::default()
-                                };
-                                match status {
-                                    ButtonStatus::Hovered => {
-                                        style.background = Some(Background::Color(colors.hover));
-                                        style.border = border::rounded(RADIUS.md)
-                                            .color(colors.border)
-                                            .width(1.0);
-                                    }
-                                    ButtonStatus::Pressed => {
-                                        style.background = Some(Background::Color(colors.pressed));
-                                    }
-                                    ButtonStatus::Active | ButtonStatus::Disabled => {}
-                                }
-                                style
-                            })
+                            .style(raised_button_style(colors, false))
                             .on_press(UiMessage::NavigateTo(mount_path)),
                     );
                 }
@@ -481,17 +423,11 @@ impl XionApp {
                 )
                 .padding([spacing.xs, spacing.sm])
                 .width(Length::Fill)
-                .style(move |_theme: &Theme, status: ButtonStatus| {
-                    let mut style = iced::widget::button::Style {
-                        text_color: colors.text_primary,
-                        ..Default::default()
-                    };
-                    if matches!(status, ButtonStatus::Hovered) {
-                        style.background = Some(Background::Color(colors.hover));
-                        style.border = border::rounded(RADIUS.md).color(colors.border).width(1.0);
-                    }
-                    style
-                })
+                .style(hover_button_style(
+                    colors,
+                    colors.text_primary,
+                    Some(RADIUS.md),
+                ))
                 .on_press(UiMessage::NavigateToTrash),
             );
         } // end if !sec_drives

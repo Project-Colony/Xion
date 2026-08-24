@@ -6,7 +6,7 @@
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, row, scrollable, text};
-use iced::{Alignment, Background, Element, Length, Theme, border};
+use iced::{Alignment, Background, Element, Length, Theme};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
@@ -17,6 +17,8 @@ use super::XionApp;
 use super::widgets::ViewCtx;
 
 use super::widgets::RADIUS;
+use super::widgets::chrome_style;
+use super::widgets::surface_style;
 
 impl XionApp {
     /// `list` is built by the caller and consumed here: only one of the three
@@ -135,11 +137,7 @@ impl XionApp {
                 .spacing(spacing.sm),
             )
             .padding([spacing.xs, spacing.sm])
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.chrome_background)),
-                border: border::rounded(RADIUS.md).color(colors.border).width(1.0),
-                ..Default::default()
-            });
+            .style(chrome_style(colors, RADIUS.md));
             container(
                 column![
                     header,
@@ -149,11 +147,7 @@ impl XionApp {
             )
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.panel_background)),
-                border: border::rounded(RADIUS.xl).color(colors.border).width(1.0),
-                ..Default::default()
-            })
+            .style(surface_style(colors, RADIUS.xl))
             .into()
         } else if let Some(archive) = &self.archive_browser {
             let archive_path_str = archive
@@ -306,11 +300,7 @@ impl XionApp {
                 );
             let archive_header = container(archive_header_row)
                 .padding([spacing.xs, spacing.sm])
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.chrome_background)),
-                    border: border::rounded(RADIUS.md).color(colors.border).width(1.0),
-                    ..Default::default()
-                });
+                .style(chrome_style(colors, RADIUS.md));
 
             container(
                 column![
@@ -321,21 +311,13 @@ impl XionApp {
             )
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.panel_background)),
-                border: border::rounded(RADIUS.xl).color(colors.border).width(1.0),
-                ..Default::default()
-            })
+            .style(surface_style(colors, RADIUS.xl))
             .into()
         } else {
             container(list)
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.panel_background)),
-                    border: border::rounded(RADIUS.xl).color(colors.border).width(1.0),
-                    ..Default::default()
-                })
+                .style(surface_style(colors, RADIUS.xl))
                 .into()
         };
 

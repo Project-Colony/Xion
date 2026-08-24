@@ -6,7 +6,7 @@
 
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{column, container, image, row, scrollable, text};
-use iced::{Alignment, Background, Color, Element, Length, border};
+use iced::{Alignment, Color, Element, Length};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
@@ -20,6 +20,7 @@ use crate::ui::app::helpers::{entry_type_label, format_entry_size, format_modifi
 use crate::ui::app::types::*;
 
 use super::widgets::RADIUS;
+use super::widgets::chrome_style;
 
 impl XionApp {
     /// `display_entries` is resolved once in `view()` and passed in rather than
@@ -193,11 +194,7 @@ impl XionApp {
                             scrollable(container(inner).padding(spacing.sm).width(Length::Fill))
                                 .height(Length::Fixed(200.0)),
                         )
-                        .style(move |_| iced::widget::container::Style {
-                            background: Some(Background::Color(colors.chrome_background)),
-                            border: border::rounded(RADIUS.md).color(colors.border).width(1.0),
-                            ..Default::default()
-                        })
+                        .style(chrome_style(colors, RADIUS.md))
                         .width(Length::Fill);
                         let el: Element<'_, UiMessage> = preview_text.into();
                         el

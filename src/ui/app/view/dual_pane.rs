@@ -6,7 +6,7 @@
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, row, scrollable, text};
-use iced::{Alignment, Background, Element, Length, Theme, border};
+use iced::{Alignment, Background, Element, Length, Theme};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
@@ -18,6 +18,8 @@ use super::XionApp;
 use super::widgets::ViewCtx;
 
 use super::widgets::RADIUS;
+use super::widgets::chrome_style;
+use super::widgets::surface_style;
 
 impl XionApp {
     /// The divider and the pane B panel, or `None` when the dual pane is off or
@@ -110,11 +112,7 @@ impl XionApp {
             .align_y(Alignment::Center),
         )
         .padding([spacing.xs, spacing.sm])
-        .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.chrome_background)),
-            border: border::rounded(RADIUS.md).color(colors.border).width(1.0),
-            ..Default::default()
-        });
+        .style(chrome_style(colors, RADIUS.md));
 
         let pane_b_list: Element<'_, UiMessage> = if pane_b.is_loading {
             container(
@@ -133,11 +131,7 @@ impl XionApp {
         let pane_b_panel = container(column![pane_b_header, pane_b_list].spacing(spacing.xs))
             .width(Length::FillPortion(1))
             .height(Length::Fill)
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.panel_background)),
-                border: border::rounded(RADIUS.xl).color(colors.border).width(1.0),
-                ..Default::default()
-            });
+            .style(surface_style(colors, RADIUS.xl));
 
         // Divider between panes
         let pane_divider = container(row![])

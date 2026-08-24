@@ -3,10 +3,9 @@
 //!
 //! Moved out of `render_list`, which now only assembles what these return.
 
-use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::vertical as vertical_space;
 use iced::widget::{button, column, container, mouse_area, row, text};
-use iced::{Alignment, Background, Element, Length, Theme, border, mouse};
+use iced::{Alignment, Background, Element, Length, mouse};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
@@ -17,6 +16,9 @@ use super::XionApp;
 use super::rows::RowCtx;
 use super::widgets::RADIUS;
 use super::widgets::ViewCtx;
+use super::widgets::chrome_style;
+use super::widgets::hover_button_style;
+use super::widgets::selectable_button_style;
 use crate::ui::app::helpers::column_specs;
 use crate::ui::app::types::*;
 
@@ -121,32 +123,12 @@ impl XionApp {
                                     button(self.list_row(cx, entry))
                                         .padding([spacing.xs, spacing.sm])
                                         .height(Length::Fixed(row_height))
-                                        .style(move |_theme: &Theme, status: ButtonStatus| {
-                                            let mut style = iced::widget::button::Style {
-                                                text_color: colors.text_primary,
-                                                ..Default::default()
-                                            };
-
-                                            if is_selected {
-                                                style.background =
-                                                    Some(Background::Color(colors.selection));
-                                                style.border = border::rounded(RADIUS.md)
-                                                    .color(colors.selection_border)
-                                                    .width(if is_focused { 2.0 } else { 1.0 });
-                                            }
-
-                                            if matches!(status, ButtonStatus::Hovered) {
-                                                style.background =
-                                                    Some(Background::Color(colors.hover));
-                                            }
-
-                                            if matches!(status, ButtonStatus::Pressed) {
-                                                style.background =
-                                                    Some(Background::Color(colors.pressed));
-                                            }
-
-                                            style
-                                        })
+                                        .style(selectable_button_style(
+                                            colors,
+                                            is_selected,
+                                            is_focused,
+                                            RADIUS.md,
+                                        ))
                                         .on_press(message),
                                 )
                                 .on_press(UiMessage::EntryPressed(pressed_path))
@@ -218,43 +200,12 @@ impl XionApp {
                                                 .width(Length::Fill)
                                                 .height(Length::Fill)
                                                 .padding(spacing.sm)
-                                                .style(
-                                                    move |_theme: &Theme, status: ButtonStatus| {
-                                                        let mut style =
-                                                            iced::widget::button::Style {
-                                                                text_color: colors.text_primary,
-                                                                ..Default::default()
-                                                            };
-
-                                                        if is_selected {
-                                                            style.background = Some(
-                                                                Background::Color(colors.selection),
-                                                            );
-                                                            style.border =
-                                                                border::rounded(RADIUS.lg)
-                                                                    .color(colors.selection_border)
-                                                                    .width(if is_focused {
-                                                                        2.0
-                                                                    } else {
-                                                                        1.0
-                                                                    });
-                                                        }
-
-                                                        if matches!(status, ButtonStatus::Hovered) {
-                                                            style.background = Some(
-                                                                Background::Color(colors.hover),
-                                                            );
-                                                        }
-
-                                                        if matches!(status, ButtonStatus::Pressed) {
-                                                            style.background = Some(
-                                                                Background::Color(colors.pressed),
-                                                            );
-                                                        }
-
-                                                        style
-                                                    },
-                                                )
+                                                .style(selectable_button_style(
+                                                    colors,
+                                                    is_selected,
+                                                    is_focused,
+                                                    RADIUS.lg,
+                                                ))
                                                 .on_press(message),
                                         )
                                         .width(Length::FillPortion(1))
@@ -330,18 +281,7 @@ impl XionApp {
                 let cell: Element<'_, UiMessage> = if let Some(sort_key) = spec.sort_key {
                     button(header_text)
                         .padding([spacing.xs, spacing.sm])
-                        .style(move |_theme: &Theme, status: ButtonStatus| {
-                            let mut style = iced::widget::button::Style {
-                                text_color: colors.text_primary,
-                                ..Default::default()
-                            };
-
-                            if matches!(status, ButtonStatus::Hovered) {
-                                style.background = Some(Background::Color(colors.hover));
-                            }
-
-                            style
-                        })
+                        .style(hover_button_style(colors, colors.text_primary, None))
                         .on_press(UiMessage::ChangeSort(sort_key))
                         .into()
                 } else {
@@ -380,11 +320,7 @@ impl XionApp {
             container(header_row)
                 .padding([spacing.xs, spacing.sm])
                 .height(Length::Fixed(row_height))
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.chrome_background)),
-                    border: border::rounded(RADIUS.md).color(colors.border).width(1.0),
-                    ..Default::default()
-                })
+                .style(chrome_style(colors, RADIUS.md))
                 .into()
         } else {
             container(row![]).into()

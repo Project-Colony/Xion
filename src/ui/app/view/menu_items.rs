@@ -14,6 +14,7 @@ use crate::ui::{ContextAction, UiMessage};
 
 use super::widgets::RADIUS;
 use super::widgets::ViewCtx;
+use super::widgets::raised_button_style;
 
 /// One clickable menu entry, with its icon, label and optional shortcut hint.
 pub(super) fn item<'a>(
@@ -46,24 +47,7 @@ pub(super) fn item<'a>(
     button(content)
         .padding([spacing.xs, spacing.sm])
         .width(Length::Fill)
-        .style(move |_theme: &Theme, status: ButtonStatus| {
-            let mut style = iced::widget::button::Style {
-                text_color: colors.text_primary,
-                ..Default::default()
-            };
-            match status {
-                ButtonStatus::Hovered => {
-                    style.background = Some(Background::Color(colors.hover));
-                    style.border = border::rounded(RADIUS.md).color(colors.border).width(1.0);
-                }
-                ButtonStatus::Pressed => {
-                    style.background = Some(Background::Color(colors.pressed));
-                    style.border = border::rounded(RADIUS.md).color(colors.border).width(1.0);
-                }
-                _ => {}
-            }
-            style
-        })
+        .style(raised_button_style(colors, false))
         .on_press(msg)
         .into()
 }

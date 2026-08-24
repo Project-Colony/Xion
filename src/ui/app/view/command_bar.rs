@@ -11,6 +11,8 @@ use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
 use super::XionApp;
+use super::widgets::filled_style;
+use super::widgets::surface_style;
 use super::widgets::{self, RADIUS, RADIUS_PILL};
 use super::widgets::{TipVariant, ViewCtx};
 
@@ -71,11 +73,7 @@ impl XionApp {
         )
         .padding([spacing.xs, spacing.md])
         .width(Length::Fixed(240.0))
-        .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.panel_background)),
-            border: border::rounded(RADIUS.md).color(colors.border).width(1.0),
-            ..Default::default()
-        });
+        .style(surface_style(colors, RADIUS.md));
 
         let has_selection = !self.state.navigation.selection.selected.is_empty();
         let has_clipboard = self.clipboard.kind.is_some() && !self.clipboard.items.is_empty();
@@ -193,11 +191,7 @@ impl XionApp {
 
                 container(content)
                     .padding([spacing.xs, spacing.sm])
-                    .style(move |_| iced::widget::container::Style {
-                        background: Some(Background::Color(colors.hover)),
-                        border: border::rounded(RADIUS_PILL).color(colors.border).width(1.0),
-                        ..Default::default()
-                    })
+                    .style(filled_style(colors, colors.hover, RADIUS_PILL))
                     .into()
             } else {
                 container(row![]).into()

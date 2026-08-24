@@ -5,7 +5,7 @@
 //! and where to place it.
 
 use iced::widget::{column, container, mouse_area};
-use iced::{Background, Color, Element, Length, border};
+use iced::{Color, Element, Length};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
@@ -17,6 +17,7 @@ use super::XionApp;
 use super::menu_items;
 use super::widgets::RADIUS;
 use super::widgets::ViewCtx;
+use super::widgets::surface_style;
 use crate::ui::app::types::*;
 
 impl XionApp {
@@ -341,11 +342,7 @@ impl XionApp {
                     container(sub)
                         .padding([spacing.sm, spacing.md])
                         .width(Length::Fixed(180.0))
-                        .style(move |_| iced::widget::container::Style {
-                            background: Some(Background::Color(colors.panel_background)),
-                            border: border::rounded(RADIUS.lg).color(colors.border).width(1.0),
-                            ..Default::default()
-                        })
+                        .style(surface_style(colors, RADIUS.lg))
                         .into(),
                 )
             }
@@ -401,11 +398,7 @@ impl XionApp {
                     container(sub)
                         .padding([spacing.sm, spacing.md])
                         .width(Length::Fixed(180.0))
-                        .style(move |_| iced::widget::container::Style {
-                            background: Some(Background::Color(colors.panel_background)),
-                            border: border::rounded(RADIUS.lg).color(colors.border).width(1.0),
-                            ..Default::default()
-                        })
+                        .style(surface_style(colors, RADIUS.lg))
                         .into(),
                 )
             }

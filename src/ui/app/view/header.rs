@@ -17,6 +17,7 @@ use super::XionApp;
 use super::widgets::{self, TipVariant, ViewCtx};
 
 use super::widgets::RADIUS;
+use super::widgets::chrome_style;
 
 impl XionApp {
     /// Returns the header row and, separately, the address-history dropdown:
@@ -135,11 +136,7 @@ impl XionApp {
             bottom: spacing.sm,
             left: spacing.md,
         })
-        .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.chrome_background)),
-            border: border::rounded(RADIUS.xl).color(colors.border).width(1.0),
-            ..Default::default()
-        });
+        .style(chrome_style(colors, RADIUS.xl));
 
         (header.into(), history_menu)
     }

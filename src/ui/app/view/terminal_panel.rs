@@ -17,6 +17,8 @@ use super::XionApp;
 use super::widgets::ViewCtx;
 
 use super::widgets::RADIUS;
+use super::widgets::filled_style;
+use super::widgets::surface_style;
 
 impl XionApp {
     /// The terminal panel, or `None` while it is fully collapsed.
@@ -255,32 +257,20 @@ impl XionApp {
             }),
             container(text("Interrompre (Ctrl-C)").size(typography.caption))
                 .padding(spacing.xs)
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.panel_background)),
-                    border: border::rounded(RADIUS.sm).color(colors.border).width(1.0),
-                    ..Default::default()
-                }),
+                .style(surface_style(colors, RADIUS.sm)),
             tooltip::Position::Top,
         ));
         let tab_bar_element: Element<'_, UiMessage> = container(tab_bar.spacing(spacing.xs))
             .width(Length::Fill)
             .padding([spacing.xs, spacing.sm])
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(colors.sidebar_background)),
-                border: border::rounded(0.0).color(colors.border).width(1.0),
-                ..Default::default()
-            })
+            .style(filled_style(colors, colors.sidebar_background, 0.0))
             .into();
 
         let term_panel: Element<'_, UiMessage> =
             container(column![tab_bar_element, output_area, input_row].spacing(0))
                 .width(Length::Fill)
                 .height(Length::Fixed(animated_height))
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.panel_background)),
-                    border: border::rounded(RADIUS.lg).color(colors.border).width(1.0),
-                    ..Default::default()
-                })
+                .style(surface_style(colors, RADIUS.lg))
                 .into();
 
         Some(term_panel)

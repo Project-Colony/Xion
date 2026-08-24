@@ -5,10 +5,9 @@
 
 use std::path::PathBuf;
 
-use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
 use iced::widget::{button, column, container, mouse_area, opaque, row, stack, text, text_input};
-use iced::{Alignment, Background, Element, Length, Point, Theme, border};
+use iced::{Alignment, Element, Length, Point};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
@@ -16,6 +15,9 @@ use crate::ui::UiMessage;
 
 use super::XionApp;
 use super::widgets::ViewCtx;
+use super::widgets::hover_button_style;
+use super::widgets::raised_button_style;
+use super::widgets::surface_style;
 use super::widgets::{self, RADIUS, RADIUS_PILL};
 
 impl XionApp {
@@ -45,11 +47,7 @@ impl XionApp {
 
             container(address_input)
                 .width(Length::Fill)
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.panel_background)),
-                    border: border::rounded(RADIUS.md).color(colors.border).width(1.0),
-                    ..Default::default()
-                })
+                .style(surface_style(colors, RADIUS.md))
                 .into()
         } else {
             // Breadcrumb mode — clickable path segments
@@ -81,18 +79,11 @@ impl XionApp {
                                 }),
                         )
                         .padding([spacing.xs, 2.0])
-                        .style(move |_theme: &Theme, status: ButtonStatus| {
-                            let mut style = iced::widget::button::Style {
-                                text_color: colors.text_muted,
-                                ..Default::default()
-                            };
-                            if matches!(status, ButtonStatus::Hovered) {
-                                style.background = Some(Background::Color(colors.hover));
-                                style.border =
-                                    border::rounded(RADIUS.sm).color(colors.border).width(1.0);
-                            }
-                            style
-                        })
+                        .style(hover_button_style(
+                            colors,
+                            colors.text_muted,
+                            Some(RADIUS.sm),
+                        ))
                         .on_press(UiMessage::BreadcrumbDropdown(dropdown_target)),
                     );
                 }
@@ -116,36 +107,18 @@ impl XionApp {
                                 }),
                         )
                         .padding([spacing.xs, 2.0])
-                        .style(move |_theme: &Theme, status: ButtonStatus| {
-                            let mut style = iced::widget::button::Style {
-                                text_color: colors.text_muted,
-                                ..Default::default()
-                            };
-                            if matches!(status, ButtonStatus::Hovered) {
-                                style.background = Some(Background::Color(colors.hover));
-                                style.border =
-                                    border::rounded(RADIUS.sm).color(colors.border).width(1.0);
-                            }
-                            style
-                        })
+                        .style(hover_button_style(
+                            colors,
+                            colors.text_muted,
+                            Some(RADIUS.sm),
+                        ))
                         .on_press(UiMessage::BreadcrumbDropdown(dropdown_target)),
                     );
                 } else {
                     breadcrumb_row = breadcrumb_row.push(
                         button(text(label).size(typography.body).font(typography.body_font))
                             .padding([spacing.xs, spacing.xs])
-                            .style(move |_theme: &Theme, status: ButtonStatus| {
-                                let mut style = iced::widget::button::Style {
-                                    text_color: colors.accent,
-                                    ..Default::default()
-                                };
-                                if matches!(status, ButtonStatus::Hovered) {
-                                    style.background = Some(Background::Color(colors.hover));
-                                    style.border =
-                                        border::rounded(RADIUS.sm).color(colors.border).width(1.0);
-                                }
-                                style
-                            })
+                            .style(hover_button_style(colors, colors.accent, Some(RADIUS.sm)))
                             .on_press(UiMessage::NavigateTo(target)),
                     );
                 }
@@ -155,11 +128,7 @@ impl XionApp {
                 container(breadcrumb_row)
                     .width(Length::Fill)
                     .padding([spacing.xs, spacing.md])
-                    .style(move |_| iced::widget::container::Style {
-                        background: Some(Background::Color(colors.panel_background)),
-                        border: border::rounded(RADIUS.md).color(colors.border).width(1.0),
-                        ..Default::default()
-                    }),
+                    .style(surface_style(colors, RADIUS.md)),
             )
             .on_press(UiMessage::AddressEditStart);
 
@@ -196,11 +165,7 @@ impl XionApp {
                         }),
                 )
                 .padding([spacing.xs, spacing.sm])
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(Background::Color(colors.panel_background)),
-                    border: border::rounded(RADIUS_PILL).color(colors.border).width(1.0),
-                    ..Default::default()
-                })
+                .style(surface_style(colors, RADIUS_PILL))
                 .into()
             } else {
                 container(row![]).into()
@@ -214,26 +179,7 @@ impl XionApp {
             )
             .padding([spacing.xs, spacing.sm])
             .width(Length::Fill)
-            .style(move |_theme: &Theme, status: ButtonStatus| {
-                let mut style = iced::widget::button::Style {
-                    text_color: colors.text_primary,
-                    ..Default::default()
-                };
-
-                match status {
-                    ButtonStatus::Hovered => {
-                        style.background = Some(Background::Color(colors.hover));
-                        style.border = border::rounded(RADIUS.md).color(colors.border).width(1.0);
-                    }
-                    ButtonStatus::Pressed => {
-                        style.background = Some(Background::Color(colors.pressed));
-                        style.border = border::rounded(RADIUS.md).color(colors.border).width(1.0);
-                    }
-                    ButtonStatus::Active | ButtonStatus::Disabled => {}
-                }
-
-                style
-            })
+            .style(raised_button_style(colors, false))
             .on_press(UiMessage::AddressSuggestionSelected(target))
         };
 
@@ -264,11 +210,7 @@ impl XionApp {
                 let menu = container(suggestions_list)
                     .padding([spacing.xs, spacing.sm])
                     .width(Length::Fixed(420.0))
-                    .style(move |_| iced::widget::container::Style {
-                        background: Some(Background::Color(colors.panel_background)),
-                        border: border::rounded(RADIUS.lg).color(colors.border).width(1.0),
-                        ..Default::default()
-                    });
+                    .style(surface_style(colors, RADIUS.lg));
                 let menu_layer: Element<'_, UiMessage> = container(
                     column![
                         vertical_space().height(Length::Fixed(position_y)),

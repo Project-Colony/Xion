@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use bytes::Bytes;
+
 use crate::filesystem::TimedCache;
 
 /// Wall-clock budget for one external renderer. `Command::output()` waited
@@ -22,13 +24,20 @@ const MAX_CONCURRENT_EXTERNAL_TOOLS: usize = 3;
 
 #[derive(Debug, Clone)]
 pub struct Thumbnail {
-    pub bytes: Vec<u8>,
+    /// Shared, not owned outright: iced's `image::Handle` keeps the encoded
+    /// bytes alive for as long as it draws them. Handing it a `Vec` meant a
+    /// second full copy of every thumbnail — and of every preview, which this
+    /// crate caps at 64 Mio apiece.
+    pub bytes: Bytes,
     pub mime: Option<String>,
 }
 
 impl Thumbnail {
-    pub fn new(bytes: Vec<u8>, mime: Option<String>) -> Self {
-        Self { bytes, mime }
+    pub fn new(bytes: impl Into<Bytes>, mime: Option<String>) -> Self {
+        Self {
+            bytes: bytes.into(),
+            mime,
+        }
     }
 }
 

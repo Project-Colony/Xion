@@ -21,6 +21,9 @@ test-util = []
 ftp = ["dep:suppaftp"]
 
 [dependencies]
+# Le même tampon partagé que celui qu'iced attend pour ses images : garder les
+# octets d'une vignette dans un `Bytes` évite d'en donner une copie au handle.
+bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 directories = "6.0"
 # `image-without-codecs` rather than `image`: the latter turns on image's own

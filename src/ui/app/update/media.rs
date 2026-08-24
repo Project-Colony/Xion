@@ -27,6 +27,8 @@ impl XionApp {
                 match thumbnail {
                     Some(thumbnail) => {
                         // Create handle from bytes before moving into cache
+                        // `Bytes::clone` is a refcount bump: the handle and the cache now
+                        // point at the same buffer instead of holding one each.
                         let handle = image::Handle::from_bytes(thumbnail.bytes.clone());
                         self.media.thumbnail_handles.insert(path.clone(), handle);
                         self.media.thumbnails.insert(path.clone(), thumbnail);

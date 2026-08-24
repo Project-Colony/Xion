@@ -184,7 +184,7 @@ pub fn build_animated_preview(path: PathBuf, preview: &Thumbnail) -> Option<Anim
     use ::image::imageops::FilterType;
     use std::io::Cursor;
 
-    let decoder = GifDecoder::new(Cursor::new(preview.bytes.as_slice())).ok()?;
+    let decoder = GifDecoder::new(Cursor::new(preview.bytes.as_ref())).ok()?;
     // `collect_frames` would decode the whole animation before we could refuse
     // any of it; taking from the iterator stops at the cap instead.
     let frames: Vec<_> = decoder

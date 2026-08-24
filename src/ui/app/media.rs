@@ -55,6 +55,8 @@ impl XionApp {
         for path in candidates {
             if let Some(thumbnail) = self.media.thumbnails.get(&path) {
                 if !self.media.thumbnail_handles.contains_key(&path) {
+                    // `Bytes::clone` is a refcount bump: the handle and the cache now
+                    // point at the same buffer instead of holding one each.
                     let handle = image::Handle::from_bytes(thumbnail.bytes.clone());
                     self.media.thumbnail_handles.insert(path.clone(), handle);
                 }

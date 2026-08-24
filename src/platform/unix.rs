@@ -88,3 +88,102 @@ pub fn read_acl_text(path: &Path) -> io::Result<String> {
         render(0),
     ))
 }
+
+// ── Instance unique ───────────────────────────────────────────────────────────
+
+use super::single_instance::{Claim, Primary, SERVICE_NAME};
+
+/// The D-Bus object every instance agrees to talk on.
+const SERVICE_PATH: &str = "/org/xion/Xion";
+
+/// The interface later launches call to hand over a path.
+struct OpenService {
+    sender: std::sync::mpsc::Sender<PathBuf>,
+}
+
+#[zbus::interface(name = "org.xion.Xion")]
+impl OpenService {
+    /// Asks the running window to open `path`.
+    ///
+    /// Returns nothing and never fails: a caller that is about to exit has no
+    /// use for an error, and the running instance decides what a bad path
+    /// means — the same decision it makes for a path typed in the address bar.
+    fn open(&self, path: String) {
+        let _ = self.sender.send(PathBuf::from(path));
+    }
+}
+
+/// Claims this session's Xion, or hands `open` to the one already running.
+///
+/// A session bus that is missing or refuses the name yields `Primary` with a
+/// receiver that never produces anything: a desktop without D-Bus gets the old
+/// behaviour, one process per launch, rather than no file manager.
+pub fn claim(open: Option<&Path>) -> Claim {
+    let (sender, receiver) = std::sync::mpsc::channel();
+
+    match try_serve(sender) {
+        Some(connection) => Claim::Primary(Primary {
+            guard: Box::new(connection),
+            receiver,
+        }),
+        None => match forward(open) {
+            // Somebody answered: this process has done its job.
+            true => Claim::Secondary,
+            // The name is taken but nothing answered — a stale owner, or a
+            // peer that is not us. Running a second window is a far better
+            // outcome than exiting and opening nothing at all.
+            false => Claim::Primary(Primary {
+                guard: Box::new(()),
+                receiver,
+            }),
+        },
+    }
+}
+
+/// Tries to become the owner of the well-known name.
+///
+/// `None` means somebody else already owns it, or there is no session bus.
+fn try_serve(sender: std::sync::mpsc::Sender<PathBuf>) -> Option<zbus::blocking::Connection> {
+    let connection = zbus::blocking::connection::Builder::session()
+        .ok()?
+        .serve_at(SERVICE_PATH, OpenService { sender })
+        .ok()?
+        .build()
+        .ok()?;
+
+    // `DoNotQueue`, and the reply checked, both matter. The builder's `.name()`
+    // shortcut asks without it: a second launch was then *queued* behind the
+    // running instance, the request reported success, and the process went on
+    // to open its own window — the exact duplicate this module exists to
+    // prevent. Measured: two windows, two processes.
+    let reply = connection
+        .request_name_with_flags(SERVICE_NAME, zbus::fdo::RequestNameFlags::DoNotQueue.into())
+        .ok()?;
+
+    match reply {
+        zbus::fdo::RequestNameReply::PrimaryOwner => Some(connection),
+        // AlreadyOwner cannot happen — this connection was just created — and
+        // InQueue is impossible with DoNotQueue. Both mean "not ours".
+        _ => None,
+    }
+}
+
+/// Hands `open` to the running instance. `false` if nobody answered.
+fn forward(open: Option<&Path>) -> bool {
+    let Ok(connection) = zbus::blocking::Connection::session() else {
+        return false;
+    };
+    let Ok(proxy) =
+        zbus::blocking::Proxy::new(&connection, SERVICE_NAME, SERVICE_PATH, "org.xion.Xion")
+    else {
+        return false;
+    };
+
+    // With no path to hand over there is still a reason to make the call: it
+    // proves somebody is there, and it is what tells the running window to
+    // raise itself.
+    let path = open
+        .map(|path| path.display().to_string())
+        .unwrap_or_default();
+    proxy.call::<_, _, ()>("Open", &(path,)).is_ok()
+}

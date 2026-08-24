@@ -11,6 +11,12 @@ use std::time::Instant;
 /// Holds the CLI-provided start path, consumed once during app initialization.
 static CLI_START_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 
+/// The single-instance claim, handed from `run` to the app it constructs.
+///
+/// Same reason as `CLI_START_PATH` above: Iced builds the state itself, so
+/// there is no constructor argument to pass it through.
+static PRIMARY_CLAIM: Mutex<Option<crate::platform::single_instance::Primary>> = Mutex::new(None);
+
 use iced::alignment::Horizontal;
 // Tracing is available for future use
 use iced::{Font, Length, Point, Rectangle, Theme, keyboard, mouse};
@@ -161,6 +167,9 @@ pub struct XionApp {
     breadcrumb_dropdown_has_more: bool,
     // #18: Tab drag reorder
     tab_drag_source: Option<usize>,
+    /// Held for as long as the process lives; dropping it releases the
+    /// well-known name and the next launch would open a second window.
+    single_instance: Option<crate::platform::single_instance::Primary>,
 }
 
 struct ColumnSpec {
@@ -270,11 +279,17 @@ fn map_event_to_message(
     }
 }
 
-pub fn run(start_path: Option<PathBuf>) -> iced::Result {
+pub fn run(
+    start_path: Option<PathBuf>,
+    primary: crate::platform::single_instance::Primary,
+) -> iced::Result {
     if let Some(path) = start_path {
         if let Ok(mut guard) = CLI_START_PATH.lock() {
             *guard = Some(path);
         }
+    }
+    if let Ok(mut guard) = PRIMARY_CLAIM.lock() {
+        *guard = Some(primary);
     }
 
     let result = iced::application(XionApp::new, XionApp::update, XionApp::view)

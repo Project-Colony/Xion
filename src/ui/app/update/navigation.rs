@@ -41,6 +41,31 @@ impl XionApp {
                 self.breadcrumb_dropdown_items.clear();
                 tasks.push(self.navigate_to(path));
             }
+            // A later launch of the binary handed us a path.
+            UiMessage::OpenRequestTick => {
+                // Drained, not read once: several launches can land between two
+                // ticks, and the last one is the folder the user is looking at.
+                let mut requested = None;
+                while let Some(path) = self
+                    .single_instance
+                    .as_ref()
+                    .and_then(|primary| primary.try_recv())
+                {
+                    // An empty path means "you are already running, come to the
+                    // front" — a launch with no argument at all.
+                    if path.as_os_str().is_empty() {
+                        continue;
+                    }
+                    requested = Some(path);
+                }
+                if let Some(path) = requested {
+                    // Sans ça la fenêtre ouvre bien l'onglet mais reste
+                    // derrière celle où l'utilisateur vient de taper la
+                    // commande, et le dossier demandé n'apparaît jamais.
+                    tasks.push(iced::window::latest().and_then(iced::window::gain_focus));
+                    tasks.push(self.open_in_new_tab(path));
+                }
+            }
             UiMessage::AddTab => {
                 self.menus.history_open = false;
                 self.menus.history_position = None;

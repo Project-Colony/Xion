@@ -32,7 +32,22 @@ fn main() -> iced::Result {
 
     tracing::info!("Starting Xion file explorer");
 
-    xion::ui::run(args.first().and_then(|arg| resolve_start_path(arg)))
+    let start_path = args.first().and_then(|arg| resolve_start_path(arg));
+
+    // Before opening anything: is a Xion already running in this session? If so
+    // it has just been handed the path and will open it in a tab, so there is
+    // nothing left for this process to do. Starting a second window would mean
+    // a second ~38 MiB and a folder stranded away from what the user already
+    // had open.
+    let primary = match xion::platform::single_instance::claim(start_path.as_deref()) {
+        xion::platform::single_instance::Claim::Primary(primary) => primary,
+        xion::platform::single_instance::Claim::Secondary => {
+            tracing::info!("Instance déjà en cours : chemin transmis, sortie");
+            return Ok(());
+        }
+    };
+
+    xion::ui::run(start_path, primary)
 }
 
 /// Resolve a command-line path argument against the current directory.

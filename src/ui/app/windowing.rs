@@ -57,6 +57,16 @@ impl XionApp {
             );
         }
 
+        // Later launches hand their path to this process instead of starting a
+        // second window. Polling rather than pushing, because the D-Bus handler
+        // runs on its own thread and Iced only accepts messages from its own
+        // loop; a quarter of a second is imperceptible when a window has just
+        // been asked to appear, and costs one `try_recv` on an empty channel.
+        if self.single_instance.is_some() {
+            subscriptions
+                .push(time::every(Duration::from_millis(250)).map(|_| UiMessage::OpenRequestTick));
+        }
+
         Subscription::batch(subscriptions)
     }
 }

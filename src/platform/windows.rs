@@ -122,3 +122,33 @@ pub fn read_acl_text(path: &Path) -> io::Result<String> {
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
+
+// ── Instance unique ───────────────────────────────────────────────────────────
+
+use super::single_instance::{Claim, Primary};
+
+/// Always claims this process as the primary one.
+///
+/// Windows has no session bus. The equivalent is a named pipe: `CreateNamedPipeW`
+/// under a per-session name, a thread accepting connections, `ReadFile` for the
+/// path. That is roughly a hundred and fifty lines of `unsafe` Win32 — and this
+/// crate is developed on Linux, where it can be neither run nor even compiled,
+/// because cross-compiling to `x86_64-pc-windows-msvc` still stops on the C
+/// dependency `libz-sys` pulls in through `git2`.
+///
+/// Untested `unsafe` in a file manager is a worse trade than the thing it buys,
+/// which is only a faster second launch — never correctness. So Windows keeps
+/// the behaviour it has always had, one process per launch, and says so here
+/// rather than in a commit message nobody will find.
+///
+/// The seam is what matters: [`claim`] is the whole contract, and filling it in
+/// touches this function and nothing else.
+pub fn claim(_open: Option<&Path>) -> Claim {
+    // A receiver whose sender is dropped immediately: `try_recv` returns
+    // `None` for ever, which is exactly "no later launch will reach us".
+    let (_, receiver) = std::sync::mpsc::channel();
+    Claim::Primary(Primary {
+        guard: Box::new(()),
+        receiver,
+    })
+}

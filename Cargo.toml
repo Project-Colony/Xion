@@ -74,6 +74,12 @@ mdns-sd = "0.11"
 portable-pty = "0.9.0"
 vte = "0.15.0"
 
+# Déjà compilé dans le binaire — iced le tire via mundy, qui lit les réglages
+# d'apparence du bureau. L'instance unique ne coûte donc aucune dépendance
+# supplémentaire, seulement la version sur laquelle Cargo s'accorde déjà.
+[target.'cfg(unix)'.dependencies]
+zbus = "5"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",

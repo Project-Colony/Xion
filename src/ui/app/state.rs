@@ -394,6 +394,23 @@ impl XionApp {
         self.refresh_entries()
     }
 
+    /// Opens `path` in a new, active tab.
+    ///
+    /// This is what a later launch of the binary asks for. Unlike `add_tab` it
+    /// names the tab after the folder rather than "Ce PC N": the user asked for
+    /// somewhere in particular, so the tab strip should say where.
+    pub(super) fn open_in_new_tab(&mut self, path: PathBuf) -> Task<UiMessage> {
+        self.tab_manager.tabs.push(TabState {
+            title: crate::ui::app::helpers::tree_label_for_path(&path),
+            path: path.clone(),
+        });
+        self.tab_manager.active = self.tab_manager.count().saturating_sub(1);
+        self.update_active_tab_path(path.clone());
+        self.history.record(path);
+        self.save_tabs_to_config();
+        self.refresh_entries()
+    }
+
     pub(super) fn switch_tab(&mut self, index: usize) -> Task<UiMessage> {
         if index >= self.tab_manager.count() {
             return Task::none();

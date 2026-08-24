@@ -213,6 +213,7 @@ impl XionApp {
             breadcrumb_dropdown_items: Vec::new(),
             breadcrumb_dropdown_has_more: false,
             tab_drag_source: None,
+            single_instance: super::PRIMARY_CLAIM.lock().ok().and_then(|mut c| c.take()),
         };
         // If we restored tabs, set the active route to the active tab's path.
         // Skipped when an argument asked for a directory: the route already
@@ -368,6 +369,7 @@ impl XionApp {
             breadcrumb_dropdown_items: Vec::new(),
             breadcrumb_dropdown_has_more: false,
             tab_drag_source: None,
+            single_instance: None,
         };
         app.rebuild_tree_cache();
         app

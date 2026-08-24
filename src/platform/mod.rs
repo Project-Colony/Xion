@@ -5,6 +5,8 @@
 //! exposes the same surface; the `not(windows)` one degrades explicitly rather
 //! than silently doing nothing.
 
+pub mod single_instance;
+
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]

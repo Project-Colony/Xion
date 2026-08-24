@@ -397,6 +397,8 @@ pub enum UiMessage {
     NavigateToRecent,
     ClearRecents,
     // Feature H: Column Resizing
+    /// Drains paths handed over by a later launch of the binary.
+    OpenRequestTick,
     ColumnResizeStart(&'static str),
     ColumnResizeEnd,
     ColumnResized(&'static str, f32),

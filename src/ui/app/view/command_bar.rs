@@ -2,7 +2,7 @@
 //!
 //! Moved out of `render_header` unchanged.
 
-use iced::widget::{container, progress_bar, row, text, text_input};
+use iced::widget::{container, progress_bar, row, text_input};
 use iced::{Alignment, Background, Color, Element, Length, Theme, border};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -11,6 +11,7 @@ use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
 use super::XionApp;
+use super::widgets::caption_text;
 use super::widgets::filled_style;
 use super::widgets::surface_style;
 use super::widgets::{self, RADIUS, RADIUS_PILL};
@@ -62,14 +63,9 @@ impl XionApp {
             },
         );
         let search_bar = container(
-            row![
-                text(icons::SEARCH)
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-                search_input
-            ]
-            .spacing(spacing.xs)
-            .align_y(Alignment::Center),
+            row![caption_text(typography, icons::SEARCH), search_input]
+                .spacing(spacing.xs)
+                .align_y(Alignment::Center),
         )
         .padding([spacing.xs, spacing.md])
         .width(Length::Fixed(240.0))
@@ -178,9 +174,7 @@ impl XionApp {
                     ("Chargement…".to_string(), 0.5)
                 };
                 let content: Element<'_, UiMessage> = row![
-                    text(progress_label)
-                        .size(typography.caption)
-                        .font(typography.caption_font),
+                    caption_text(typography, progress_label),
                     progress_bar(0.0..=1.0, ratio)
                         .girth(Length::Fixed(4.0))
                         .length(Length::Fixed(80.0)),

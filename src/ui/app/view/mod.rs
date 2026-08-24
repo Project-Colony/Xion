@@ -24,7 +24,7 @@ mod widgets;
 
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
 use iced::widget::{
-    button, column, container, mouse_area, opaque, row, scrollable, stack, text, text_input,
+    button, column, container, mouse_area, opaque, row, scrollable, stack, text_input,
 };
 use iced::{Alignment, Background, Color, Element, Length, border, mouse};
 #[allow(unused_imports)]
@@ -37,7 +37,10 @@ use crate::ui::theme::layout::PREVIEW_RESIZE_BAR_WIDTH;
 use super::XionApp;
 use widgets::ViewCtx;
 
+use widgets::body_text;
+use widgets::caption_text;
 use widgets::filled_style;
+use widgets::glyph_text;
 use widgets::hover_button_style;
 use widgets::surface_style;
 use widgets::{RADIUS, RADIUS_PILL};
@@ -76,20 +79,14 @@ impl XionApp {
         let mut list_col = if self.quick_filter_active {
             let filter_bar: Element<'_, UiMessage> = container(
                 row![
-                    text("Filtrer :")
-                        .size(typography.caption)
-                        .font(typography.caption_font),
+                    caption_text(typography, "Filtrer :"),
                     text_input("", &self.quick_filter)
                         .on_input(UiMessage::QuickFilterChanged)
                         .padding(spacing.xs)
                         .width(Length::Fill),
-                    button(
-                        text("✕")
-                            .size(typography.caption)
-                            .font(typography.body_font)
-                    )
-                    .on_press(UiMessage::QuickFilterClear)
-                    .padding([spacing.xs, spacing.sm]),
+                    button(glyph_text(typography, "✕"))
+                        .on_press(UiMessage::QuickFilterClear)
+                        .padding([spacing.xs, spacing.sm]),
                 ]
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center),
@@ -150,14 +147,11 @@ impl XionApp {
             .interaction(mouse::Interaction::ResizingHorizontally)
             .into();
 
-            let preview_header = mouse_area(
-                text("Prévisualisation")
-                    .size(typography.caption)
-                    .font(typography.caption_font)
-                    .style(move |_| iced::widget::text::Style {
-                        color: Some(colors.text_muted),
-                    }),
-            )
+            let preview_header = mouse_area(caption_text(typography, "Prévisualisation").style(
+                move |_| iced::widget::text::Style {
+                    color: Some(colors.text_muted),
+                },
+            ))
             .on_press(UiMessage::Noop) // absorb single click
             .on_double_click(UiMessage::PreviewDoubleClick);
 
@@ -204,13 +198,9 @@ impl XionApp {
                 } else {
                     format!("{action} {count} éléments")
                 };
-                let overlay = container(
-                    text(label)
-                        .size(typography.caption)
-                        .font(typography.caption_font),
-                )
-                .padding([spacing.xs, spacing.sm])
-                .style(surface_style(colors, RADIUS_PILL));
+                let overlay = container(caption_text(typography, label))
+                    .padding([spacing.xs, spacing.sm])
+                    .style(surface_style(colors, RADIUS_PILL));
                 let position_x = (position.x + spacing.md).max(0.0);
                 let position_y = (position.y + spacing.md).max(0.0);
                 let layer: Element<'_, UiMessage> = container(
@@ -292,7 +282,7 @@ impl XionApp {
                             .to_string();
                         let dir_clone = dir.clone();
                         items_col = items_col.push(
-                            button(text(label).size(typography.body).font(typography.body_font))
+                            button(body_text(typography, label))
                                 .width(Length::Fill)
                                 .padding([spacing.xs, spacing.sm])
                                 .style(hover_button_style(colors, colors.text_primary, None))
@@ -301,9 +291,7 @@ impl XionApp {
                     }
                     if self.breadcrumb_dropdown_has_more {
                         items_col = items_col.push(
-                            text("\u{2026}") // "…"
-                                .size(typography.caption)
-                                .font(typography.caption_font)
+                            caption_text(typography, "\u{2026}") // "…"
                                 .color(colors.text_muted),
                         );
                     }

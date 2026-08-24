@@ -4,7 +4,7 @@
 //! Moved out of `render_list`, which now only assembles what these return.
 
 use iced::widget::space::vertical as vertical_space;
-use iced::widget::{button, column, container, mouse_area, row, text};
+use iced::widget::{button, column, container, mouse_area, row};
 use iced::{Alignment, Background, Element, Length, mouse};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -16,9 +16,12 @@ use super::XionApp;
 use super::rows::RowCtx;
 use super::widgets::RADIUS;
 use super::widgets::ViewCtx;
+use super::widgets::body_text;
+use super::widgets::caption_text;
 use super::widgets::chrome_style;
 use super::widgets::hover_button_style;
 use super::widgets::selectable_button_style;
+use super::widgets::title_text;
 use crate::ui::app::helpers::column_specs;
 use crate::ui::app::navigation::entry_index_for;
 use crate::ui::app::types::*;
@@ -46,33 +49,16 @@ impl XionApp {
 
         let list_content = if let Some(message) = &self.error {
             column![
-                text("Impossible de charger le dossier")
-                    .size(typography.title)
-                    .font(typography.title_font),
-                text(message)
-                    .size(typography.body)
-                    .font(typography.body_font),
-                button(
-                    text("Réessayer")
-                        .size(typography.body)
-                        .font(typography.body_font),
-                )
-                .on_press(UiMessage::Refresh)
+                title_text(typography, "Impossible de charger le dossier"),
+                body_text(typography, message),
+                button(body_text(typography, "Réessayer"),).on_press(UiMessage::Refresh)
             ]
             .spacing(spacing.sm)
         } else if total_entries == 0 && !self.is_loading {
             if is_filtered {
-                column![
-                    text("Aucun résultat")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
+                column![body_text(typography, "Aucun résultat")]
             } else {
-                column![
-                    text("Dossier vide")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                ]
+                column![body_text(typography, "Dossier vide")]
             }
         } else if total_entries == 0 {
             column![]
@@ -272,9 +258,7 @@ impl XionApp {
                 } else {
                     std::borrow::Cow::Owned(format!("{} {}", spec.label, sort_indicator))
                 };
-                let header_text = text(label)
-                    .size(typography.caption)
-                    .font(typography.caption_font);
+                let header_text = caption_text(typography, label);
                 let cell: Element<'_, UiMessage> = if let Some(sort_key) = spec.sort_key {
                     button(header_text)
                         .padding([spacing.xs, spacing.sm])

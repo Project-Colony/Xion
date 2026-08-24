@@ -4,7 +4,7 @@
 //! Moved out of `view()` unchanged.
 
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, container, row, text};
+use iced::widget::{button, container, row};
 use iced::{Alignment, Element};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -19,6 +19,8 @@ use super::widgets::ViewCtx;
 use crate::ui::app::types::*;
 
 use super::widgets::RADIUS;
+use super::widgets::caption_text;
+use super::widgets::glyph_text;
 use super::widgets::surface_style;
 use super::widgets::toggle_button_style;
 
@@ -166,37 +168,25 @@ impl XionApp {
 
         let status_text = format!("{}{}", selection_part, index_status);
 
-        let status_left = row![
-            text(status_text)
-                .size(typography.caption)
-                .font(typography.caption_font)
-        ]
-        .spacing(spacing.md)
-        .align_y(Alignment::Center);
+        let status_left = row![caption_text(typography, status_text)]
+            .spacing(spacing.md)
+            .align_y(Alignment::Center);
 
         let is_list = matches!(view_mode, ViewMode::List);
         let is_grid = matches!(view_mode, ViewMode::Grid);
 
         let view_button = |icon: String, active: bool| {
-            button(
-                text(icon)
-                    .size(typography.caption)
-                    .font(typography.body_font),
-            )
-            .padding([spacing.xs, spacing.xs])
-            .style(toggle_button_style(colors, active))
-            .on_press(UiMessage::ToggleViewMode)
+            button(glyph_text(typography, icon))
+                .padding([spacing.xs, spacing.xs])
+                .style(toggle_button_style(colors, active))
+                .on_press(UiMessage::ToggleViewMode)
         };
 
         let terminal_active = self.terminal_anim_target > 0.5;
-        let terminal_btn = button(
-            text(icons::TERMINAL.to_string())
-                .size(typography.caption)
-                .font(typography.body_font),
-        )
-        .padding([spacing.xs, spacing.xs])
-        .style(toggle_button_style(colors, terminal_active))
-        .on_press(UiMessage::ToggleTerminal);
+        let terminal_btn = button(glyph_text(typography, icons::TERMINAL.to_string()))
+            .padding([spacing.xs, spacing.xs])
+            .style(toggle_button_style(colors, terminal_active))
+            .on_press(UiMessage::ToggleTerminal);
 
         let mut status_right = row![
             terminal_btn,
@@ -207,11 +197,7 @@ impl XionApp {
         .align_y(Alignment::Center);
 
         if let Some(status) = self.last_action.clone() {
-            status_right = status_right.push(
-                text(status)
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-            );
+            status_right = status_right.push(caption_text(typography, status));
         }
 
         let status_bar = container(

@@ -7,7 +7,7 @@
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
 use iced::widget::{
-    button, column, container, mouse_area, opaque, row, scrollable, stack, text, text_input,
+    button, column, container, mouse_area, opaque, row, scrollable, stack, text_input,
 };
 use iced::{Alignment, Background, Color, Element, Length, Theme, border};
 
@@ -47,6 +47,9 @@ fn modal_overlay<'a>(
 }
 
 use super::widgets::RADIUS;
+use super::widgets::body_text;
+use super::widgets::caption_text;
+use super::widgets::glyph_text;
 use super::widgets::surface_style;
 
 impl XionApp {
@@ -84,15 +87,9 @@ impl XionApp {
 
                 let field = |label: &str, value: String| -> Element<'_, UiMessage> {
                     row![
-                        container(
-                            text(label.to_string())
-                                .size(typography.caption)
-                                .font(typography.body_font)
-                        )
-                        .width(Length::Fixed(120.0)),
-                        text(value)
-                            .size(typography.caption)
-                            .font(typography.caption_font),
+                        container(glyph_text(typography, label.to_string()))
+                            .width(Length::Fixed(120.0)),
+                        caption_text(typography, value),
                     ]
                     .spacing(spacing.sm)
                     .align_y(Alignment::Center)
@@ -100,9 +97,7 @@ impl XionApp {
                 };
 
                 let mut modal_content = column![
-                    text(title_str)
-                        .size(typography.body)
-                        .font(typography.body_font),
+                    body_text(typography, title_str),
                     field("Chemin", {
                         let p = dialog.path.display().to_string();
                         let char_count = p.chars().count();
@@ -129,13 +124,9 @@ impl XionApp {
                 }
                 let modal_content = modal_content
                     .push(
-                        button(
-                            text("Fermer")
-                                .size(typography.body)
-                                .font(typography.body_font),
-                        )
-                        .on_press(UiMessage::CloseProperties)
-                        .padding([spacing.xs, spacing.sm]),
+                        button(body_text(typography, "Fermer"))
+                            .on_press(UiMessage::CloseProperties)
+                            .padding([spacing.xs, spacing.sm]),
                     )
                     .spacing(spacing.sm)
                     .padding(spacing.lg);
@@ -169,17 +160,11 @@ impl XionApp {
                         colors.text_primary
                     };
                     row![
-                        text(old_name.as_str())
-                            .size(typography.caption)
-                            .font(typography.caption_font)
+                        caption_text(typography, old_name.as_str())
                             .color(old_color)
                             .width(Length::FillPortion(1)),
-                        text("→")
-                            .size(typography.caption)
-                            .font(typography.caption_font),
-                        text(new_name.as_str())
-                            .size(typography.caption)
-                            .font(typography.caption_font)
+                        caption_text(typography, "→"),
+                        caption_text(typography, new_name.as_str())
                             .color(new_color)
                             .width(Length::FillPortion(1)),
                     ]
@@ -189,13 +174,9 @@ impl XionApp {
                 .collect();
 
             let mut modal_content = column![
-                text("Renommage multiple")
-                    .size(typography.body)
-                    .font(typography.body_font),
+                body_text(typography, "Renommage multiple"),
                 row![
-                    text("Chercher :")
-                        .size(typography.caption)
-                        .font(typography.caption_font),
+                    caption_text(typography, "Chercher :"),
                     text_input("", &state.find)
                         .on_input(UiMessage::BulkRenameFindChanged)
                         .padding(spacing.xs)
@@ -204,9 +185,7 @@ impl XionApp {
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center),
                 row![
-                    text("Remplacer :")
-                        .size(typography.caption)
-                        .font(typography.caption_font),
+                    caption_text(typography, "Remplacer :"),
                     text_input("", &state.replace)
                         .on_input(UiMessage::BulkRenameReplaceChanged)
                         .padding(spacing.xs)
@@ -223,29 +202,17 @@ impl XionApp {
             }
 
             if let Some(err) = &state.error {
-                modal_content = modal_content.push(
-                    text(err.as_str())
-                        .size(typography.caption)
-                        .font(typography.caption_font),
-                );
+                modal_content = modal_content.push(caption_text(typography, err.as_str()));
             }
 
             modal_content = modal_content.push(
                 row![
-                    button(
-                        text("Appliquer")
-                            .size(typography.body)
-                            .font(typography.body_font)
-                    )
-                    .on_press(UiMessage::BulkRenameApply)
-                    .padding([spacing.xs, spacing.sm]),
-                    button(
-                        text("Annuler")
-                            .size(typography.body)
-                            .font(typography.body_font)
-                    )
-                    .on_press(UiMessage::BulkRenameCancel)
-                    .padding([spacing.xs, spacing.sm]),
+                    button(body_text(typography, "Appliquer"))
+                        .on_press(UiMessage::BulkRenameApply)
+                        .padding([spacing.xs, spacing.sm]),
+                    button(body_text(typography, "Annuler"))
+                        .on_press(UiMessage::BulkRenameCancel)
+                        .padding([spacing.xs, spacing.sm]),
                 ]
                 .spacing(spacing.sm),
             );
@@ -265,12 +232,8 @@ impl XionApp {
     ) -> Element<'_, UiMessage> {
         if let Some(diff) = &self.diff_view {
             if diff.loading {
-                let loading_content = column![
-                    text("Chargement du diff…")
-                        .size(typography.caption)
-                        .font(typography.caption_font)
-                ]
-                .padding(spacing.lg);
+                let loading_content =
+                    column![caption_text(typography, "Chargement du diff…")].padding(spacing.lg);
 
                 modal_overlay(loading_content, UiMessage::CloseDiff, colors, None)
             } else {
@@ -293,9 +256,7 @@ impl XionApp {
                                 Some(Color::from_rgba(0.5, 0.5, 0.5, 0.2)),
                             ),
                         };
-                        let t = text(line_text)
-                            .size(typography.caption)
-                            .font(typography.caption_font);
+                        let t = caption_text(typography, line_text);
                         if let Some(bg) = bg_color {
                             container(t)
                                 .width(Length::Fill)
@@ -323,17 +284,11 @@ impl XionApp {
                     .to_string();
                 let modal_content = column![
                     row![
-                        text(format!("Diff : {} ↔ {}", header_a, header_b))
-                            .size(typography.body)
-                            .font(typography.body_font),
+                        body_text(typography, format!("Diff : {} ↔ {}", header_a, header_b)),
                         horizontal_space(),
-                        button(
-                            text("✕")
-                                .size(typography.caption)
-                                .font(typography.body_font)
-                        )
-                        .on_press(UiMessage::CloseDiff)
-                        .padding([spacing.xs, spacing.sm]),
+                        button(glyph_text(typography, "✕"))
+                            .on_press(UiMessage::CloseDiff)
+                            .padding([spacing.xs, spacing.sm]),
                     ]
                     .spacing(spacing.sm)
                     .align_y(Alignment::Center),
@@ -379,17 +334,10 @@ impl XionApp {
                         })
                         .collect();
                     row![
-                        text(format!("{:08X}", offset_val))
-                            .size(typography.caption)
-                            .font(typography.caption_font)
+                        caption_text(typography, format!("{:08X}", offset_val))
                             .width(Length::Fixed(80.0)),
-                        text(hex_str)
-                            .size(typography.caption)
-                            .font(typography.caption_font)
-                            .width(Length::Fixed(380.0)),
-                        text(ascii_str)
-                            .size(typography.caption)
-                            .font(typography.caption_font),
+                        caption_text(typography, hex_str).width(Length::Fixed(380.0)),
+                        caption_text(typography, ascii_str),
                     ]
                     .spacing(spacing.sm)
                     .align_y(Alignment::Center)
@@ -404,17 +352,11 @@ impl XionApp {
                 .to_string();
             let modal_content = column![
                 row![
-                    text(format!("Hex : {}", filename))
-                        .size(typography.body)
-                        .font(typography.body_font),
+                    body_text(typography, format!("Hex : {}", filename)),
                     horizontal_space(),
-                    button(
-                        text("✕")
-                            .size(typography.caption)
-                            .font(typography.body_font)
-                    )
-                    .on_press(UiMessage::CloseHexView)
-                    .padding([spacing.xs, spacing.sm]),
+                    button(glyph_text(typography, "✕"))
+                        .on_press(UiMessage::CloseHexView)
+                        .padding([spacing.xs, spacing.sm]),
                 ]
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center),
@@ -454,36 +396,26 @@ impl XionApp {
                         .parent()
                         .map(|p| p.to_path_buf())
                         .unwrap_or_default();
-                    button(
-                        text(label)
-                            .size(typography.caption)
-                            .font(typography.caption_font),
-                    )
-                    .padding([spacing.xs, spacing.sm])
-                    .width(Length::Fill)
-                    .style(
-                        move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
-                            text_color: colors.text_primary,
-                            ..Default::default()
-                        },
-                    )
-                    .on_press(UiMessage::NavigateTo(parent))
-                    .into()
+                    button(caption_text(typography, label))
+                        .padding([spacing.xs, spacing.sm])
+                        .width(Length::Fill)
+                        .style(
+                            move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
+                                text_color: colors.text_primary,
+                                ..Default::default()
+                            },
+                        )
+                        .on_press(UiMessage::NavigateTo(parent))
+                        .into()
                 })
                 .collect();
             let modal_content = column![
                 row![
-                    text("Chercher dans les fichiers")
-                        .size(typography.body)
-                        .font(typography.body_font),
+                    body_text(typography, "Chercher dans les fichiers"),
                     horizontal_space(),
-                    button(
-                        text("✕")
-                            .size(typography.caption)
-                            .font(typography.body_font)
-                    )
-                    .on_press(UiMessage::CloseGrep)
-                    .padding([spacing.xs, spacing.sm]),
+                    button(glyph_text(typography, "✕"))
+                        .on_press(UiMessage::CloseGrep)
+                        .padding([spacing.xs, spacing.sm]),
                 ]
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center),
@@ -493,11 +425,10 @@ impl XionApp {
                         .on_submit(UiMessage::GrepSearch)
                         .padding(spacing.xs)
                         .width(Length::Fill),
-                    button(
-                        text(if gs.searching { "…" } else { "Chercher" })
-                            .size(typography.caption)
-                            .font(typography.caption_font)
-                    )
+                    button(caption_text(
+                        typography,
+                        if gs.searching { "…" } else { "Chercher" }
+                    ))
                     .on_press(UiMessage::GrepSearch)
                     .padding([spacing.xs, spacing.sm]),
                 ]
@@ -530,20 +461,14 @@ impl XionApp {
                     let allow_str = if entry.allow { "Autoriser" } else { "Refuser" };
                     let perms_str = entry.permissions.join(", ");
                     row![
-                        text(
+                        caption_text(
+                            typography,
                             crate::ui::app::helpers::truncate_name(&entry.principal, 30)
                                 .into_owned()
                         )
-                        .size(typography.caption)
-                        .font(typography.caption_font)
                         .width(Length::Fixed(200.0)),
-                        text(allow_str)
-                            .size(typography.caption)
-                            .font(typography.caption_font)
-                            .width(Length::Fixed(80.0)),
-                        text(perms_str)
-                            .size(typography.caption)
-                            .font(typography.caption_font),
+                        caption_text(typography, allow_str).width(Length::Fixed(80.0)),
+                        caption_text(typography, perms_str),
                     ]
                     .spacing(spacing.sm)
                     .align_y(Alignment::Center)
@@ -557,21 +482,13 @@ impl XionApp {
                 .unwrap_or("")
                 .to_string();
             let content_elem: Element<'_, UiMessage> = if pv.loading {
-                text("Chargement des permissions…")
-                    .size(typography.caption)
-                    .font(typography.caption_font)
-                    .into()
+                caption_text(typography, "Chargement des permissions…").into()
             } else if let Some(err) = &pv.error {
-                text(err.as_str())
-                    .size(typography.caption)
-                    .font(typography.caption_font)
+                caption_text(typography, err.as_str())
                     .color(colors.diff_removed)
                     .into()
             } else if pv.entries.is_empty() {
-                text("Aucune entrée ACL trouvée")
-                    .size(typography.caption)
-                    .font(typography.caption_font)
-                    .into()
+                caption_text(typography, "Aucune entrée ACL trouvée").into()
             } else {
                 scrollable(column(perm_rows).spacing(2))
                     .height(Length::Fixed(300.0))
@@ -579,17 +496,11 @@ impl XionApp {
             };
             let modal_content = column![
                 row![
-                    text(format!("Permissions : {}", filename))
-                        .size(typography.body)
-                        .font(typography.body_font),
+                    body_text(typography, format!("Permissions : {}", filename)),
                     horizontal_space(),
-                    button(
-                        text("✕")
-                            .size(typography.caption)
-                            .font(typography.body_font)
-                    )
-                    .on_press(UiMessage::ClosePermissions)
-                    .padding([spacing.xs, spacing.sm]),
+                    button(glyph_text(typography, "✕"))
+                        .on_press(UiMessage::ClosePermissions)
+                        .padding([spacing.xs, spacing.sm]),
                 ]
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center),
@@ -621,44 +532,31 @@ impl XionApp {
             return container(row![]).into();
         };
 
-        let confirm_button = button(
-            text(dialog.confirm_label.as_str())
-                .size(typography.body)
-                .font(typography.body_font),
-        )
-        .padding([spacing.xs, spacing.md])
-        .on_press(UiMessage::ConfirmAccept)
-        .style(
-            move |_theme: &Theme, status: ButtonStatus| iced::widget::button::Style {
-                background: Some(Background::Color(match status {
-                    ButtonStatus::Hovered => colors.diff_removed,
-                    _ => Color {
-                        a: 0.85,
-                        ..colors.diff_removed
-                    },
-                })),
-                text_color: colors.text_primary,
-                border: border::rounded(RADIUS.sm),
-                ..Default::default()
-            },
-        );
+        let confirm_button = button(body_text(typography, dialog.confirm_label.as_str()))
+            .padding([spacing.xs, spacing.md])
+            .on_press(UiMessage::ConfirmAccept)
+            .style(
+                move |_theme: &Theme, status: ButtonStatus| iced::widget::button::Style {
+                    background: Some(Background::Color(match status {
+                        ButtonStatus::Hovered => colors.diff_removed,
+                        _ => Color {
+                            a: 0.85,
+                            ..colors.diff_removed
+                        },
+                    })),
+                    text_color: colors.text_primary,
+                    border: border::rounded(RADIUS.sm),
+                    ..Default::default()
+                },
+            );
 
-        let cancel_button = button(
-            text("Annuler")
-                .size(typography.body)
-                .font(typography.body_font),
-        )
-        .padding([spacing.xs, spacing.md])
-        .on_press(UiMessage::ConfirmCancel);
+        let cancel_button = button(body_text(typography, "Annuler"))
+            .padding([spacing.xs, spacing.md])
+            .on_press(UiMessage::ConfirmCancel);
 
         let modal_content = column![
-            text(dialog.title.as_str())
-                .size(typography.body)
-                .font(typography.body_font),
-            text(dialog.message.as_str())
-                .size(typography.caption)
-                .font(typography.caption_font)
-                .color(colors.text_muted),
+            body_text(typography, dialog.title.as_str()),
+            caption_text(typography, dialog.message.as_str()).color(colors.text_muted),
             row![horizontal_space(), cancel_button, confirm_button].spacing(spacing.sm),
         ]
         .spacing(spacing.md)

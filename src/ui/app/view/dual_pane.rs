@@ -5,7 +5,7 @@
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, row, scrollable, text};
+use iced::widget::{button, column, container, row, scrollable};
 use iced::{Alignment, Background, Element, Length, Theme};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -18,7 +18,10 @@ use super::XionApp;
 use super::widgets::ViewCtx;
 
 use super::widgets::RADIUS;
+use super::widgets::body_text;
+use super::widgets::caption_text;
 use super::widgets::chrome_style;
+use super::widgets::glyph_text;
 use super::widgets::surface_style;
 
 impl XionApp {
@@ -59,10 +62,8 @@ impl XionApp {
                 let activate_path = entry.path.clone();
                 button(
                     row![
-                        text(icon).size(typography.body).font(typography.body_font),
-                        text(entry.name.clone())
-                            .size(typography.body)
-                            .font(typography.body_font),
+                        body_text(typography, icon),
+                        body_text(typography, entry.name.clone()),
                     ]
                     .spacing(spacing.sm)
                     .align_y(Alignment::Center),
@@ -87,26 +88,18 @@ impl XionApp {
 
         let pane_b_header = container(
             row![
-                text(icons::FOLDER)
-                    .size(typography.caption)
-                    .font(typography.body_font),
-                text(pane_b_path)
-                    .size(typography.caption)
-                    .font(typography.caption_font),
+                glyph_text(typography, icons::FOLDER),
+                caption_text(typography, pane_b_path),
                 horizontal_space(),
-                button(
-                    text("✕")
-                        .size(typography.caption)
-                        .font(typography.body_font)
-                )
-                .on_press(UiMessage::ToggleDualPane)
-                .padding([spacing.xs, spacing.sm])
-                .style(move |_: &Theme, _: ButtonStatus| {
-                    iced::widget::button::Style {
-                        text_color: colors.text_muted,
-                        ..Default::default()
-                    }
-                }),
+                button(glyph_text(typography, "✕"))
+                    .on_press(UiMessage::ToggleDualPane)
+                    .padding([spacing.xs, spacing.sm])
+                    .style(move |_: &Theme, _: ButtonStatus| {
+                        iced::widget::button::Style {
+                            text_color: colors.text_muted,
+                            ..Default::default()
+                        }
+                    }),
             ]
             .spacing(spacing.sm)
             .align_y(Alignment::Center),
@@ -115,14 +108,10 @@ impl XionApp {
         .style(chrome_style(colors, RADIUS.md));
 
         let pane_b_list: Element<'_, UiMessage> = if pane_b.is_loading {
-            container(
-                text("Chargement…")
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+            container(caption_text(typography, "Chargement…"))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
         } else {
             scrollable(column(pane_b_entries).spacing(0))
                 .height(Length::Fill)

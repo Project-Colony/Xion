@@ -6,7 +6,7 @@
 //! the borrow is fine.
 
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, image, row, text};
+use iced::widget::{button, column, container, image, row};
 use iced::{Alignment, Background, Element, Length, border};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -36,6 +36,8 @@ pub(super) struct RowCtx<'c> {
 }
 
 use super::widgets::RADIUS;
+use super::widgets::body_text;
+use super::widgets::caption_text;
 
 impl XionApp {
     /// The icon or thumbnail shown at the start of a row or tile.
@@ -51,10 +53,7 @@ impl XionApp {
         } = cx.ui;
         let view_mode = cx.view_mode;
         match entry.entry_type {
-            FsEntryType::Directory => text(icons::FOLDER)
-                .size(typography.body)
-                .font(typography.body_font)
-                .into(),
+            FsEntryType::Directory => body_text(typography, icons::FOLDER).into(),
             FsEntryType::File if matches!(view_mode, ViewMode::Grid) => {
                 // Grid mode: show thumbnail preview if available
                 self.media
@@ -73,10 +72,7 @@ impl XionApp {
                             .and_then(|ext| ext.to_str())
                             .map(icons::icon_for_extension)
                             .unwrap_or(icons::FILE);
-                        text(icon)
-                            .size(typography.body)
-                            .font(typography.body_font)
-                            .into()
+                        body_text(typography, icon).into()
                     })
             }
             FsEntryType::File => {
@@ -87,19 +83,10 @@ impl XionApp {
                     .and_then(|ext| ext.to_str())
                     .map(icons::icon_for_extension)
                     .unwrap_or(icons::FILE);
-                text(icon)
-                    .size(typography.body)
-                    .font(typography.body_font)
-                    .into()
+                body_text(typography, icon).into()
             }
-            FsEntryType::Symlink => text(icons::SYMLINK)
-                .size(typography.body)
-                .font(typography.body_font)
-                .into(),
-            FsEntryType::Other => text(icons::UNKNOWN)
-                .size(typography.body)
-                .font(typography.body_font)
-                .into(),
+            FsEntryType::Symlink => body_text(typography, icons::SYMLINK).into(),
+            FsEntryType::Other => body_text(typography, icons::UNKNOWN).into(),
         }
     }
 
@@ -144,11 +131,7 @@ impl XionApp {
                                 GitFileStatus::Conflict => ("!", colors.git_conflict),
                                 GitFileStatus::Deleted => ("D", colors.git_deleted),
                             };
-                            text(label)
-                                .size(typography.caption)
-                                .font(typography.caption_font)
-                                .color(color)
-                                .into()
+                            caption_text(typography, label).color(color).into()
                         });
                     let is_cut = self.clipboard.is_cut(&entry.path);
                     let mut name_row = row![self.entry_leading(cx, entry)]
@@ -162,9 +145,7 @@ impl XionApp {
                     // borrow outlives the returned tree. Names under the
                     // limit — nearly all of them — no longer allocate.
                     let display_name = truncate_name(&entry.name, 60);
-                    let name_text = text(display_name)
-                        .size(typography.body)
-                        .font(typography.body_font);
+                    let name_text = body_text(typography, display_name);
                     let name_text = if is_cut {
                         name_text.color(colors.text_muted)
                     } else {
@@ -180,14 +161,12 @@ impl XionApp {
                         .align_x(spec.align)
                         .into()
                 }
-                ViewColumn::Type => container(
-                    text(entry_type_label(entry.entry_type))
-                        .size(typography.caption)
-                        .font(typography.caption_font),
-                )
-                .width(spec.width)
-                .align_x(spec.align)
-                .into(),
+                ViewColumn::Type => {
+                    container(caption_text(typography, entry_type_label(entry.entry_type)))
+                        .width(spec.width)
+                        .align_x(spec.align)
+                        .into()
+                }
                 ViewColumn::Size => {
                     // Feature 8: Show dir sizes
                     let size_str = if entry.entry_type == FsEntryType::Directory {
@@ -201,20 +180,15 @@ impl XionApp {
                     } else {
                         format_entry_size(entry)
                     };
-                    container(
-                        text(size_str)
-                            .size(typography.caption)
-                            .font(typography.caption_font),
-                    )
-                    .width(spec.width)
-                    .align_x(spec.align)
-                    .into()
+                    container(caption_text(typography, size_str))
+                        .width(spec.width)
+                        .align_x(spec.align)
+                        .into()
                 }
-                ViewColumn::Modified => container(
-                    text(format_modified(entry.metadata.modified))
-                        .size(typography.caption)
-                        .font(typography.caption_font),
-                )
+                ViewColumn::Modified => container(caption_text(
+                    typography,
+                    format_modified(entry.metadata.modified),
+                ))
                 .width(spec.width)
                 .align_x(spec.align)
                 .into(),
@@ -237,12 +211,8 @@ impl XionApp {
         for (index, spec) in column_specs.iter().enumerate() {
             let cell: Element<'_, UiMessage> = if index == 0 {
                 let content = row![
-                    text(icons::LOADING)
-                        .size(typography.body)
-                        .font(typography.body_font),
-                    text("Chargement…")
-                        .size(typography.body)
-                        .font(typography.body_font)
+                    body_text(typography, icons::LOADING),
+                    body_text(typography, "Chargement…")
                 ]
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center);
@@ -290,11 +260,7 @@ impl XionApp {
                     }),
             );
         }
-        name_row = name_row.push(
-            text(grid_name)
-                .size(typography.caption)
-                .font(typography.caption_font),
-        );
+        name_row = name_row.push(caption_text(typography, grid_name));
         let tile_content = column![self.entry_leading(cx, entry), name_row,]
             .spacing(spacing.xs)
             .align_x(Alignment::Center);

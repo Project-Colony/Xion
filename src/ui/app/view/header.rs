@@ -5,7 +5,7 @@
 //! used (`toolbar_button`, `tab_button`).
 
 use iced::widget::button::Status as ButtonStatus;
-use iced::widget::{button, column, container, mouse_area, row, text};
+use iced::widget::{button, column, container, mouse_area, row};
 use iced::{Alignment, Background, Element, Theme, border};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -17,6 +17,7 @@ use super::XionApp;
 use super::widgets::{self, TipVariant, ViewCtx};
 
 use super::widgets::RADIUS;
+use super::widgets::body_text;
 use super::widgets::chrome_style;
 
 impl XionApp {
@@ -36,7 +37,7 @@ impl XionApp {
         let toolbar_button = |label: String| widgets::toolbar_button(ctx, label);
 
         let tab_button = |label: String, active: bool| {
-            button(text(label).size(typography.body).font(typography.body_font))
+            button(body_text(typography, label))
                 .padding([spacing.xs, spacing.md])
                 .style(move |_theme: &Theme, status: ButtonStatus| {
                     let mut style = iced::widget::button::Style {

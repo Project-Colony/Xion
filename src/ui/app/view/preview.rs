@@ -5,7 +5,7 @@
 //! animation stay in `view()`, which owns the layout.
 
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{column, container, image, row, scrollable, text};
+use iced::widget::{column, container, image, row, scrollable};
 use iced::{Alignment, Color, Element, Length};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -20,7 +20,11 @@ use crate::ui::app::helpers::{entry_type_label, format_entry_size, format_modifi
 use crate::ui::app::types::*;
 
 use super::widgets::RADIUS;
+use super::widgets::body_text;
+use super::widgets::caption_text;
 use super::widgets::chrome_style;
+use super::widgets::glyph_text;
+use super::widgets::title_text;
 
 impl XionApp {
     /// `display_entries` is resolved once in `view()` and passed in rather than
@@ -38,18 +42,13 @@ impl XionApp {
 
         let preview_row = |label: String, value: String| {
             row![
-                container(
-                    text(label)
-                        .size(typography.caption)
-                        .font(typography.caption_font)
-                        .style(move |_| iced::widget::text::Style {
-                            color: Some(colors.text_muted),
-                        }),
-                )
+                container(caption_text(typography, label).style(move |_| {
+                    iced::widget::text::Style {
+                        color: Some(colors.text_muted),
+                    }
+                }),)
                 .width(Length::Fixed(90.0)),
-                text(value)
-                    .size(typography.caption)
-                    .font(typography.caption_font)
+                caption_text(typography, value)
             ]
             .spacing(spacing.xs)
             .align_y(Alignment::Center)
@@ -93,18 +92,10 @@ impl XionApp {
                                         .height(Length::Fixed(preview_media_size))
                                         .into()
                                 })
-                                .unwrap_or_else(|| {
-                                    text(icons::LOADING)
-                                        .size(typography.title)
-                                        .font(typography.title_font)
-                                        .into()
-                                })
+                                .unwrap_or_else(|| title_text(typography, icons::LOADING).into())
                         }
                     }
-                    _ => text(icon)
-                        .size(typography.title)
-                        .font(typography.title_font)
-                        .into(),
+                    _ => title_text(typography, icon).into(),
                 };
 
                 let metadata = column![
@@ -163,20 +154,14 @@ impl XionApp {
                                         let a = *rgba as u8;
                                         let color = Color::from_rgba8(r, g, b, a as f32 / 255.0);
                                         line_row = line_row.push(
-                                            text(span_text.as_str())
-                                                .size(typography.caption)
-                                                .font(typography.body_font)
-                                                .color(color),
+                                            glyph_text(typography, span_text.as_str()).color(color),
                                         );
                                     }
                                     lines_col = lines_col.push(line_row);
                                 }
                                 lines_col.into()
                             } else {
-                                text(content.as_str())
-                                    .size(typography.caption)
-                                    .font(typography.body_font)
-                                    .into()
+                                glyph_text(typography, content.as_str()).into()
                             }
                         } else {
                             let label = if is_pdf {
@@ -184,10 +169,7 @@ impl XionApp {
                             } else {
                                 content.clone()
                             };
-                            text(label)
-                                .size(typography.caption)
-                                .font(typography.body_font)
-                                .into()
+                            glyph_text(typography, label).into()
                         };
 
                         let preview_text = container(
@@ -204,9 +186,7 @@ impl XionApp {
                 // Feature L: encoding badge
                 let encoding_badge: Element<'_, UiMessage> =
                     if let Some(enc) = &self.preview_encoding {
-                        text(enc.as_str())
-                            .size(typography.caption)
-                            .font(typography.caption_font)
+                        caption_text(typography, enc.as_str())
                             .style(move |_| iced::widget::text::Style {
                                 color: Some(colors.text_muted),
                             })
@@ -218,20 +198,17 @@ impl XionApp {
                 column![
                     preview_media,
                     row![
-                        text(&entry.name)
-                            .size(typography.body)
-                            .font(typography.body_font),
+                        body_text(typography, &entry.name),
                         horizontal_space(),
                         encoding_badge,
                     ]
                     .align_y(Alignment::Center)
                     .spacing(spacing.xs),
-                    text(entry.path.display().to_string())
-                        .size(typography.caption)
-                        .font(typography.caption_font)
-                        .style(move |_| iced::widget::text::Style {
+                    caption_text(typography, entry.path.display().to_string()).style(move |_| {
+                        iced::widget::text::Style {
                             color: Some(colors.text_muted),
-                        }),
+                        }
+                    }),
                     text_preview_section,
                     metadata
                 ]
@@ -240,23 +217,21 @@ impl XionApp {
                 .into()
             }
             None if self.state.navigation.selection.selected.is_empty() => column![
-                text("Sélectionnez un élément")
-                    .size(typography.caption)
-                    .font(typography.caption_font)
-                    .style(move |_| iced::widget::text::Style {
+                caption_text(typography, "Sélectionnez un élément").style(move |_| {
+                    iced::widget::text::Style {
                         color: Some(colors.text_muted),
-                    })
+                    }
+                })
             ]
             .align_x(Alignment::Center)
             .spacing(spacing.sm)
             .into(),
             None => column![
-                text("Aperçu en cours de chargement…")
-                    .size(typography.caption)
-                    .font(typography.caption_font)
-                    .style(move |_| iced::widget::text::Style {
+                caption_text(typography, "Aperçu en cours de chargement…").style(move |_| {
+                    iced::widget::text::Style {
                         color: Some(colors.text_muted),
-                    })
+                    }
+                })
             ]
             .align_x(Alignment::Center)
             .spacing(spacing.sm)

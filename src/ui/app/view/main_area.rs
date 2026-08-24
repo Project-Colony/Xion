@@ -5,7 +5,7 @@
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, row, scrollable, text};
+use iced::widget::{button, column, container, row, scrollable};
 use iced::{Alignment, Background, Element, Length, Theme};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -17,6 +17,8 @@ use super::XionApp;
 use super::widgets::ViewCtx;
 
 use super::widgets::RADIUS;
+use super::widgets::body_text;
+use super::widgets::caption_text;
 use super::widgets::chrome_style;
 use super::widgets::surface_style;
 
@@ -37,12 +39,7 @@ impl XionApp {
         let main_list_element: Element<'_, UiMessage> = if self.state.route.is_recent() {
             let recents = self.recents.list();
             let recent_rows: Vec<Element<'_, UiMessage>> = if recents.is_empty() {
-                vec![
-                    text("Aucun fichier récent")
-                        .size(typography.body)
-                        .font(typography.body_font)
-                        .into(),
-                ]
+                vec![body_text(typography, "Aucun fichier récent").into()]
             } else {
                 recents
                     .iter()
@@ -71,22 +68,20 @@ impl XionApp {
                         let path = entry.path.clone();
                         button(
                             row![
-                                text(icon).size(typography.body).font(typography.body_font),
+                                body_text(typography, icon),
                                 column![
-                                    text(name).size(typography.body).font(typography.body_font),
+                                    body_text(typography, name),
                                     row![
-                                        text(parent)
-                                            .size(typography.caption)
-                                            .font(typography.caption_font)
-                                            .style(move |_| iced::widget::text::Style {
-                                                color: Some(colors.text_muted)
-                                            }),
-                                        text(accessed_str)
-                                            .size(typography.caption)
-                                            .font(typography.caption_font)
-                                            .style(move |_| iced::widget::text::Style {
-                                                color: Some(colors.text_muted)
-                                            }),
+                                        caption_text(typography, parent).style(move |_| {
+                                            iced::widget::text::Style {
+                                                color: Some(colors.text_muted),
+                                            }
+                                        }),
+                                        caption_text(typography, accessed_str).style(move |_| {
+                                            iced::widget::text::Style {
+                                                color: Some(colors.text_muted),
+                                            }
+                                        }),
                                     ]
                                     .spacing(spacing.md),
                                 ]
@@ -115,23 +110,17 @@ impl XionApp {
             };
             let header = container(
                 row![
-                    text("Fichiers récents")
-                        .size(typography.body)
-                        .font(typography.body_font),
+                    body_text(typography, "Fichiers récents"),
                     horizontal_space(),
-                    button(
-                        text("Effacer")
-                            .size(typography.caption)
-                            .font(typography.caption_font)
-                    )
-                    .on_press(UiMessage::ClearRecents)
-                    .padding([spacing.xs, spacing.sm])
-                    .style(
-                        move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
-                            text_color: colors.text_muted,
-                            ..Default::default()
-                        }
-                    ),
+                    button(caption_text(typography, "Effacer"))
+                        .on_press(UiMessage::ClearRecents)
+                        .padding([spacing.xs, spacing.sm])
+                        .style(
+                            move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
+                                text_color: colors.text_muted,
+                                ..Default::default()
+                            }
+                        ),
                 ]
                 .align_y(Alignment::Center)
                 .spacing(spacing.sm),
@@ -212,14 +201,10 @@ impl XionApp {
                     };
                     button(
                         row![
-                            text(icon).size(typography.body).font(typography.body_font),
-                            text(entry.name.clone())
-                                .size(typography.body)
-                                .font(typography.body_font),
+                            body_text(typography, icon),
+                            body_text(typography, entry.name.clone()),
                             horizontal_space(),
-                            text(size_str)
-                                .size(typography.caption)
-                                .font(typography.caption_font),
+                            caption_text(typography, size_str),
                         ]
                         .spacing(spacing.sm)
                         .align_y(Alignment::Center),
@@ -255,7 +240,7 @@ impl XionApp {
             let mut archive_header_row = row![].spacing(spacing.sm).align_y(Alignment::Center);
             if let Some(parent) = parent_inner_path {
                 archive_header_row = archive_header_row.push(
-                    button(text("↑").size(typography.body).font(typography.body_font))
+                    button(body_text(typography, "↑"))
                         .on_press(UiMessage::ArchiveFolderOpen { inner_path: parent })
                         .padding([spacing.xs, spacing.sm])
                         .style(
@@ -267,8 +252,9 @@ impl XionApp {
                 );
             }
             archive_header_row = archive_header_row
-                .push(
-                    text(format!(
+                .push(body_text(
+                    typography,
+                    format!(
                         "{} {} [{}]{}",
                         icons::FILE_ARCHIVE,
                         archive_path_str,
@@ -278,25 +264,19 @@ impl XionApp {
                             crate::ui::app::types::ArchiveType::SevenZ => "7Z",
                         },
                         inner_str
-                    ))
-                    .size(typography.body)
-                    .font(typography.body_font),
-                )
+                    ),
+                ))
                 .push(horizontal_space())
                 .push(
-                    button(
-                        text(icons::CLOSE)
-                            .size(typography.body)
-                            .font(typography.body_font),
-                    )
-                    .on_press(UiMessage::CloseArchiveBrowser)
-                    .padding([spacing.xs, spacing.sm])
-                    .style(
-                        move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
-                            text_color: colors.text_muted,
-                            ..Default::default()
-                        },
-                    ),
+                    button(body_text(typography, icons::CLOSE))
+                        .on_press(UiMessage::CloseArchiveBrowser)
+                        .padding([spacing.xs, spacing.sm])
+                        .style(
+                            move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
+                                text_color: colors.text_muted,
+                                ..Default::default()
+                            },
+                        ),
                 );
             let archive_header = container(archive_header_row)
                 .padding([spacing.xs, spacing.sm])

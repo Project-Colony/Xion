@@ -5,7 +5,7 @@
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, row, scrollable, text, text_input, tooltip};
+use iced::widget::{button, column, container, row, scrollable, text_input, tooltip};
 use iced::{Alignment, Background, Color, Element, Length, Theme, border};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -17,7 +17,9 @@ use super::XionApp;
 use super::widgets::ViewCtx;
 
 use super::widgets::RADIUS;
+use super::widgets::caption_text;
 use super::widgets::filled_style;
+use super::widgets::glyph_text;
 use super::widgets::surface_style;
 
 impl XionApp {
@@ -38,9 +40,7 @@ impl XionApp {
 
         let active_tab = self.terminal.active_ref();
         let output_text: Element<'_, UiMessage> = if active_tab.lines.is_empty() {
-            text("Entrez une commande…")
-                .size(typography.caption)
-                .font(typography.caption_font)
+            caption_text(typography, "Entrez une commande…")
                 .style(move |_: &Theme| iced::widget::text::Style {
                     color: Some(colors.text_muted),
                 })
@@ -48,9 +48,7 @@ impl XionApp {
         } else {
             let combined = active_tab.cached_output.as_deref().unwrap_or("");
             // Borrowed: the whole scrollback was copied on every rebuild.
-            text(combined)
-                .size(typography.caption)
-                .font(typography.caption_font)
+            caption_text(typography, combined)
                 .style(move |_: &Theme| iced::widget::text::Style {
                     color: Some(colors.text_primary),
                 })
@@ -85,11 +83,11 @@ impl XionApp {
             .display()
             .to_string();
 
-        let prompt_label = text(format!("{cwd_display} >"))
-            .size(typography.caption)
-            .font(typography.body_font)
-            .style(move |_: &Theme| iced::widget::text::Style {
-                color: Some(colors.accent),
+        let prompt_label =
+            glyph_text(typography, format!("{cwd_display} >")).style(move |_: &Theme| {
+                iced::widget::text::Style {
+                    color: Some(colors.accent),
+                }
             });
 
         let input_field = text_input("commande…", &self.terminal.active_ref().input)
@@ -132,27 +130,23 @@ impl XionApp {
         for (i, tab) in self.terminal.tabs.iter().enumerate() {
             let is_active = i == self.terminal.active_tab;
             let tab_label = tab.title.clone();
-            let tab_btn = button(
-                text(tab_label.clone())
-                    .size(typography.caption)
-                    .font(typography.caption_font),
-            )
-            .padding([spacing.xs, spacing.sm])
-            .style(
-                move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
-                    text_color: if is_active {
-                        colors.accent
-                    } else {
-                        colors.text_muted
+            let tab_btn = button(caption_text(typography, tab_label.clone()))
+                .padding([spacing.xs, spacing.sm])
+                .style(
+                    move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
+                        text_color: if is_active {
+                            colors.accent
+                        } else {
+                            colors.text_muted
+                        },
+                        background: if is_active {
+                            Some(Background::Color(colors.hover))
+                        } else {
+                            None
+                        },
+                        ..Default::default()
                     },
-                    background: if is_active {
-                        Some(Background::Color(colors.hover))
-                    } else {
-                        None
-                    },
-                    ..Default::default()
-                },
-            );
+                );
             let tab_btn = if is_active {
                 tab_btn
             } else {
@@ -162,19 +156,15 @@ impl XionApp {
             if self.terminal.tabs.len() > 1 {
                 let muted = colors.text_muted;
                 tab_bar = tab_bar.push(
-                    button(
-                        text("✕")
-                            .size(typography.caption)
-                            .font(typography.body_font),
-                    )
-                    .padding([spacing.xs, spacing.xs])
-                    .on_press(UiMessage::TerminalCloseTab(i))
-                    .style(
-                        move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
-                            text_color: muted,
-                            ..Default::default()
-                        },
-                    ),
+                    button(glyph_text(typography, "✕"))
+                        .padding([spacing.xs, spacing.xs])
+                        .on_press(UiMessage::TerminalCloseTab(i))
+                        .style(
+                            move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
+                                text_color: muted,
+                                ..Default::default()
+                            },
+                        ),
                 );
             }
         }
@@ -191,71 +181,62 @@ impl XionApp {
             let is_active = current_shell == shell_cfg;
             let shell_cfg_clone = shell_cfg.clone();
             tab_bar = tab_bar.push(
-                button(
-                    text(*label)
-                        .size(typography.caption)
-                        .font(typography.caption_font),
-                )
-                .padding([spacing.xs, spacing.xs])
-                .on_press(UiMessage::SetShell(shell_cfg_clone))
-                .style(move |_: &Theme, _: ButtonStatus| {
-                    iced::widget::button::Style {
-                        text_color: if is_active {
-                            colors.accent
-                        } else {
-                            muted_color
+                button(caption_text(typography, *label))
+                    .padding([spacing.xs, spacing.xs])
+                    .on_press(UiMessage::SetShell(shell_cfg_clone))
+                    .style(
+                        move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
+                            text_color: if is_active {
+                                colors.accent
+                            } else {
+                                muted_color
+                            },
+                            background: if is_active {
+                                Some(Background::Color(colors.hover))
+                            } else {
+                                None
+                            },
+                            border: if is_active {
+                                border::rounded(RADIUS.sm).color(colors.accent).width(1.0)
+                            } else {
+                                border::rounded(RADIUS.sm).width(0.0)
+                            },
+                            ..Default::default()
                         },
-                        background: if is_active {
-                            Some(Background::Color(colors.hover))
-                        } else {
-                            None
-                        },
-                        border: if is_active {
-                            border::rounded(RADIUS.sm).color(colors.accent).width(1.0)
-                        } else {
-                            border::rounded(RADIUS.sm).width(0.0)
-                        },
-                        ..Default::default()
-                    }
-                }),
+                    ),
             );
         }
         tab_bar = tab_bar.push(
-            button(
-                text("+")
-                    .size(typography.caption)
-                    .font(typography.body_font),
-            )
-            .padding([spacing.xs, spacing.sm])
-            .on_press(UiMessage::TerminalAddTab)
-            .style(
-                move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
-                    text_color: muted_color,
-                    ..Default::default()
-                },
-            ),
+            button(glyph_text(typography, "+"))
+                .padding([spacing.xs, spacing.sm])
+                .on_press(UiMessage::TerminalAddTab)
+                .style(
+                    move |_: &Theme, _: ButtonStatus| iced::widget::button::Style {
+                        text_color: muted_color,
+                        ..Default::default()
+                    },
+                ),
         );
         // Ctrl-C. A pipe-backed shell had no way to interrupt anything; a
         // pty does, and a runaway command needs a visible way out.
         tab_bar = tab_bar.push(horizontal_space());
         tab_bar = tab_bar.push(tooltip(
-            button(
-                text("⛔")
-                    .size(typography.caption)
-                    .font(typography.body_font),
-            )
-            .padding([spacing.xs, spacing.sm])
-            .on_press(UiMessage::TerminalInterrupt)
-            .style(move |_: &Theme, status: ButtonStatus| {
-                iced::widget::button::Style {
-                    text_color: match status {
-                        ButtonStatus::Hovered => colors.text_primary,
-                        _ => muted_color,
+            button(glyph_text(typography, "⛔"))
+                .padding([spacing.xs, spacing.sm])
+                .on_press(UiMessage::TerminalInterrupt)
+                .style(
+                    move |_: &Theme, status: ButtonStatus| iced::widget::button::Style {
+                        text_color: match status {
+                            ButtonStatus::Hovered => colors.text_primary,
+                            _ => muted_color,
+                        },
+                        ..Default::default()
                     },
-                    ..Default::default()
-                }
-            }),
-            container(text("Interrompre (Ctrl-C)").size(typography.caption))
+                ),
+            // Cette infobulle était la seule à ne pas nommer sa police : elle
+            // s'affichait donc dans la police par défaut d'iced, pas dans celle
+            // des légendes comme toutes les autres.
+            container(caption_text(typography, "Interrompre (Ctrl-C)"))
                 .padding(spacing.xs)
                 .style(surface_style(colors, RADIUS.sm)),
             tooltip::Position::Top,

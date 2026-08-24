@@ -6,7 +6,7 @@
 //! local closures inside `view()`.
 
 use iced::widget::button::Status as ButtonStatus;
-use iced::widget::{Button, button, container, text, tooltip};
+use iced::widget::{Button, Text, button, container, text, tooltip};
 use iced::{Background, Color, Element, Theme, border};
 
 use crate::ui::{UiColors, UiMessage, UiSpacing, UiTypography};
@@ -111,6 +111,50 @@ pub(super) fn raised_button_style(
 
         style
     }
+}
+
+/// The four typographic roles the interface actually uses.
+///
+/// Every one of the 140 pieces of text in the view tree used to name its size
+/// and its font separately, which meant the pairing was a convention rather
+/// than a rule, and reading a call site told you two numbers instead of a role.
+///
+/// `glyph_text` is not a mistake: the ✕, +, ⛔ and Nerd Font marks are drawn at
+/// caption size in the body font, deliberately.
+pub(super) fn body_text<'a>(
+    typography: UiTypography,
+    content: impl text::IntoFragment<'a>,
+) -> Text<'a> {
+    text(content)
+        .size(typography.body)
+        .font(typography.body_font)
+}
+
+pub(super) fn caption_text<'a>(
+    typography: UiTypography,
+    content: impl text::IntoFragment<'a>,
+) -> Text<'a> {
+    text(content)
+        .size(typography.caption)
+        .font(typography.caption_font)
+}
+
+pub(super) fn glyph_text<'a>(
+    typography: UiTypography,
+    content: impl text::IntoFragment<'a>,
+) -> Text<'a> {
+    text(content)
+        .size(typography.caption)
+        .font(typography.body_font)
+}
+
+pub(super) fn title_text<'a>(
+    typography: UiTypography,
+    content: impl text::IntoFragment<'a>,
+) -> Text<'a> {
+    text(content)
+        .size(typography.title)
+        .font(typography.title_font)
 }
 
 /// A flat control that only reacts on hover: address-bar chips, sort handles,

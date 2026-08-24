@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
-use iced::widget::{button, column, container, mouse_area, opaque, row, stack, text, text_input};
+use iced::widget::{button, column, container, mouse_area, opaque, row, stack, text_input};
 use iced::{Alignment, Element, Length, Point};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -15,6 +15,9 @@ use crate::ui::UiMessage;
 
 use super::XionApp;
 use super::widgets::ViewCtx;
+use super::widgets::body_text;
+use super::widgets::caption_text;
+use super::widgets::glyph_text;
 use super::widgets::hover_button_style;
 use super::widgets::raised_button_style;
 use super::widgets::surface_style;
@@ -70,14 +73,11 @@ impl XionApp {
                     // The separator lists siblings = subdirectories of parent_path
                     let dropdown_target = PathBuf::from(&parent_path);
                     breadcrumb_row = breadcrumb_row.push(
-                        button(
-                            text("❯")
-                                .size(typography.caption)
-                                .font(typography.caption_font)
-                                .style(move |_| iced::widget::text::Style {
-                                    color: Some(colors.text_muted),
-                                }),
-                        )
+                        button(caption_text(typography, "❯").style(move |_| {
+                            iced::widget::text::Style {
+                                color: Some(colors.text_muted),
+                            }
+                        }))
                         .padding([spacing.xs, 2.0])
                         .style(hover_button_style(
                             colors,
@@ -94,18 +94,14 @@ impl XionApp {
 
                 if is_last {
                     // Also add a trailing separator for the last segment to list its children
-                    breadcrumb_row = breadcrumb_row
-                        .push(text(label).size(typography.body).font(typography.body_font));
+                    breadcrumb_row = breadcrumb_row.push(body_text(typography, label));
                     let dropdown_target = PathBuf::from(&accumulated);
                     breadcrumb_row = breadcrumb_row.push(
-                        button(
-                            text("❯")
-                                .size(typography.caption)
-                                .font(typography.caption_font)
-                                .style(move |_| iced::widget::text::Style {
-                                    color: Some(colors.text_muted),
-                                }),
-                        )
+                        button(caption_text(typography, "❯").style(move |_| {
+                            iced::widget::text::Style {
+                                color: Some(colors.text_muted),
+                            }
+                        }))
                         .padding([spacing.xs, 2.0])
                         .style(hover_button_style(
                             colors,
@@ -116,7 +112,7 @@ impl XionApp {
                     );
                 } else {
                     breadcrumb_row = breadcrumb_row.push(
-                        button(text(label).size(typography.body).font(typography.body_font))
+                        button(body_text(typography, label))
                             .padding([spacing.xs, spacing.xs])
                             .style(hover_button_style(colors, colors.accent, Some(RADIUS.sm)))
                             .on_press(UiMessage::NavigateTo(target)),
@@ -156,14 +152,11 @@ impl XionApp {
 
         let address_status: Element<'_, UiMessage> =
             if let Some((label, status_color)) = address_validation {
-                container(
-                    text(label)
-                        .size(typography.caption)
-                        .font(typography.caption_font)
-                        .style(move |_| iced::widget::text::Style {
-                            color: Some(status_color),
-                        }),
-                )
+                container(caption_text(typography, label).style(move |_| {
+                    iced::widget::text::Style {
+                        color: Some(status_color),
+                    }
+                }))
                 .padding([spacing.xs, spacing.sm])
                 .style(surface_style(colors, RADIUS_PILL))
                 .into()
@@ -172,15 +165,11 @@ impl XionApp {
             };
 
         let suggestion_button = |label: String, target: PathBuf| {
-            button(
-                text(label)
-                    .size(typography.caption)
-                    .font(typography.body_font),
-            )
-            .padding([spacing.xs, spacing.sm])
-            .width(Length::Fill)
-            .style(raised_button_style(colors, false))
-            .on_press(UiMessage::AddressSuggestionSelected(target))
+            button(glyph_text(typography, label))
+                .padding([spacing.xs, spacing.sm])
+                .width(Length::Fill)
+                .style(raised_button_style(colors, false))
+                .on_press(UiMessage::AddressSuggestionSelected(target))
         };
 
         let address_suggestions = self.address_suggestions();
@@ -189,15 +178,13 @@ impl XionApp {
 
         let history_menu: Option<Element<'_, UiMessage>> =
             if self.menus.history_open && !address_suggestions.is_empty() {
-                let mut suggestions_list = column![
-                    text("Historique")
-                        .size(typography.caption)
-                        .font(typography.caption_font)
-                        .style(move |_| iced::widget::text::Style {
+                let mut suggestions_list =
+                    column![caption_text(typography, "Historique").style(move |_| {
+                        iced::widget::text::Style {
                             color: Some(colors.text_muted),
-                        })
-                ]
-                .spacing(spacing.xs);
+                        }
+                    })]
+                    .spacing(spacing.xs);
                 for suggestion in address_suggestions {
                     suggestions_list = suggestions_list.push(suggestion_button(
                         suggestion.display().to_string(),

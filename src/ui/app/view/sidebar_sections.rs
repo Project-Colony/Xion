@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
-use iced::widget::{button, column, container, mouse_area, progress_bar, row, scrollable, text};
+use iced::widget::{button, column, container, mouse_area, progress_bar, row, scrollable};
 use iced::{Alignment, Element, Length, Theme, mouse};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -20,6 +20,8 @@ use crate::ui::{NETWORK_ROUTE, ScrollViewport, UiMessage};
 use super::XionApp;
 use super::widgets::RADIUS;
 use super::widgets::ViewCtx;
+use super::widgets::body_text;
+use super::widgets::caption_text;
 use super::widgets::filled_style;
 use super::widgets::hover_button_style;
 use super::widgets::raised_button_style;
@@ -45,13 +47,11 @@ pub(super) fn sidebar_button<'a>(
         spacing,
         typography,
     } = ctx;
-    let content: Element<'_, UiMessage> = row![
-        text(icon).size(typography.body).font(typography.body_font),
-        text(label).size(typography.body).font(typography.body_font)
-    ]
-    .spacing(spacing.sm)
-    .align_y(Alignment::Center)
-    .into();
+    let content: Element<'_, UiMessage> =
+        row![body_text(typography, icon), body_text(typography, label)]
+            .spacing(spacing.sm)
+            .align_y(Alignment::Center)
+            .into();
 
     match target {
         Some(path) => button(content)
@@ -81,15 +81,10 @@ pub(super) fn section_header<'a>(
     let chevron = if collapsed { "▸" } else { "▾" };
     button(
         row![
-            text(chevron)
-                .size(typography.caption)
-                .font(typography.caption_font),
-            text(label)
-                .size(typography.caption)
-                .font(typography.caption_font)
-                .style(move |_| iced::widget::text::Style {
-                    color: Some(colors.text_muted)
-                }),
+            caption_text(typography, chevron),
+            caption_text(typography, label).style(move |_| iced::widget::text::Style {
+                color: Some(colors.text_muted)
+            }),
         ]
         .spacing(spacing.xs)
         .align_y(Alignment::Center),
@@ -134,14 +129,12 @@ impl XionApp {
 
         let mut tree_section = column![].spacing(spacing.xs);
         if tree_nodes.is_empty() {
-            tree_section = tree_section.push(
-                text("Arborescence indisponible")
-                    .size(typography.caption)
-                    .font(typography.caption_font)
-                    .style(move |_| iced::widget::text::Style {
+            tree_section =
+                tree_section.push(caption_text(typography, "Arborescence indisponible").style(
+                    move |_| iced::widget::text::Style {
                         color: Some(colors.text_muted),
-                    }),
-            );
+                    },
+                ));
         } else {
             let window = self.tree_virtual_window(tree_nodes.len());
             if window.padding_top > 0.0 {
@@ -160,11 +153,9 @@ impl XionApp {
                     horizontal_space().width(Length::Fixed(depth as f32 * (spacing.sm + 2.0)));
                 let content: Element<'_, UiMessage> = row![
                     indent,
-                    text(chevron)
-                        .size(typography.caption)
-                        .font(typography.caption_font),
-                    text(icon).size(typography.body).font(typography.body_font),
-                    text(label).size(typography.body).font(typography.body_font)
+                    caption_text(typography, chevron),
+                    body_text(typography, icon),
+                    body_text(typography, label)
                 ]
                 .spacing(spacing.xs)
                 .align_y(Alignment::Center)
@@ -297,26 +288,19 @@ impl XionApp {
             column![section_header(ctx, "Favoris", sec_favorites)].spacing(spacing.xs);
         if !sec_favorites {
             if custom_favorites.is_empty() {
-                favorites_section = favorites_section.push(
-                    text("Aucun favori")
-                        .size(typography.caption)
-                        .font(typography.caption_font),
-                );
+                favorites_section =
+                    favorites_section.push(caption_text(typography, "Aucun favori"));
             } else {
                 for favorite in custom_favorites {
                     let label = format_sidebar_label(favorite);
                     let fav_path = favorite.clone();
-                    let remove_btn = button(
-                        text(icons::CLOSE)
-                            .size(typography.caption)
-                            .font(typography.caption_font),
-                    )
-                    .padding(0)
-                    .style(move |_theme: &Theme, _status| iced::widget::button::Style {
-                        text_color: colors.text_muted,
-                        ..Default::default()
-                    })
-                    .on_press(UiMessage::RemoveFavorite(fav_path));
+                    let remove_btn = button(caption_text(typography, icons::CLOSE))
+                        .padding(0)
+                        .style(move |_theme: &Theme, _status| iced::widget::button::Style {
+                            text_color: colors.text_muted,
+                            ..Default::default()
+                        })
+                        .on_press(UiMessage::RemoveFavorite(fav_path));
                     favorites_section = favorites_section.push(
                         row![
                             sidebar_button(ctx, icons::FOLDER, label, Some(favorite.clone())),
@@ -352,11 +336,7 @@ impl XionApp {
             // was collapsed and its result thrown away.
             let drives = all_drives();
             if drives.is_empty() {
-                drive_section = drive_section.push(
-                    text("Aucun lecteur")
-                        .size(typography.caption)
-                        .font(typography.caption_font),
-                );
+                drive_section = drive_section.push(caption_text(typography, "Aucun lecteur"));
             } else {
                 for (mount, usage) in &drives {
                     let total_gb = format_gigabytes(usage.total);
@@ -369,19 +349,16 @@ impl XionApp {
                     let mount_path = mount.clone();
                     let content: Element<'_, UiMessage> = column![
                         row![
-                            text(icons::DRIVE)
-                                .size(typography.caption)
-                                .font(typography.caption_font),
-                            text(drive_label(mount))
-                                .size(typography.caption)
-                                .font(typography.caption_font)
+                            caption_text(typography, icons::DRIVE),
+                            caption_text(typography, drive_label(mount))
                         ]
                         .spacing(spacing.xs)
                         .align_y(Alignment::Center),
                         progress_bar(0.0..=1.0, used_ratio).girth(Length::Fixed(6.0)),
-                        text(format!("{} Go libres sur {} Go", free_gb, total_gb))
-                            .size(typography.caption)
-                            .font(typography.caption_font)
+                        caption_text(
+                            typography,
+                            format!("{} Go libres sur {} Go", free_gb, total_gb)
+                        )
                     ]
                     .spacing(spacing.xs)
                     .into();
@@ -411,12 +388,8 @@ impl XionApp {
             drive_section = drive_section.push(
                 button(
                     row![
-                        text(icons::DELETE)
-                            .size(typography.body)
-                            .font(typography.body_font),
-                        text("Corbeille")
-                            .size(typography.body)
-                            .font(typography.body_font),
+                        body_text(typography, icons::DELETE),
+                        body_text(typography, "Corbeille"),
                     ]
                     .spacing(spacing.xs)
                     .align_y(Alignment::Center),

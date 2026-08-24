@@ -4,7 +4,7 @@
 //! Moved out of `view()` unchanged. This was the largest single section of that
 //! function, and the closures it defines are used nowhere else.
 
-use iced::widget::{column, container, mouse_area, row, scrollable, text, text_input};
+use iced::widget::{column, container, mouse_area, row, scrollable, text_input};
 use iced::{Alignment, Element, Length};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -20,6 +20,7 @@ use super::widgets::RADIUS;
 use super::widgets::surface_style;
 
 use super::rows::RowCtx;
+use super::widgets::body_text;
 
 impl XionApp {
     /// `display_entries` and `filtered_indices` are resolved once by `view()`
@@ -84,9 +85,7 @@ impl XionApp {
                 .padding([spacing.xs, spacing.md]);
             container(
                 row![
-                    text("Renommer :")
-                        .size(typography.body)
-                        .font(typography.body_font),
+                    body_text(typography, "Renommer :"),
                     input,
                     widgets::toolbar_button(ctx, "Valider".to_string())
                         .on_press(UiMessage::RenameSubmit),

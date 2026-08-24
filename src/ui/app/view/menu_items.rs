@@ -5,7 +5,7 @@
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, container, row, text};
+use iced::widget::{button, container, row};
 use iced::{Alignment, Background, Color, Element, Length, Theme, border};
 #[allow(unused_imports)]
 use tracing::{debug, info, warn};
@@ -14,6 +14,8 @@ use crate::ui::{ContextAction, UiMessage};
 
 use super::widgets::RADIUS;
 use super::widgets::ViewCtx;
+use super::widgets::body_text;
+use super::widgets::caption_text;
 use super::widgets::raised_button_style;
 
 /// One clickable menu entry, with its icon, label and optional shortcut hint.
@@ -29,16 +31,11 @@ pub(super) fn item<'a>(
         spacing,
         typography,
     } = ctx;
-    let main_text = text(format!("{} {}", icon, label))
-        .size(typography.body)
-        .font(typography.body_font);
+    let main_text = body_text(typography, format!("{} {}", icon, label));
     let content: Element<'_, UiMessage> = if shortcut.is_empty() {
         main_text.into()
     } else {
-        let shortcut_text = text(shortcut.to_string())
-            .size(typography.caption)
-            .font(typography.caption_font)
-            .color(colors.text_muted);
+        let shortcut_text = caption_text(typography, shortcut.to_string()).color(colors.text_muted);
         row![main_text, horizontal_space(), shortcut_text]
             .spacing(spacing.lg)
             .align_y(Alignment::Center)
@@ -86,14 +83,9 @@ pub(super) fn label_dot<'a>(
             ..Default::default()
         });
     button(
-        row![
-            dot,
-            text(label_text)
-                .size(typography.body)
-                .font(typography.body_font)
-        ]
-        .spacing(spacing.sm)
-        .align_y(Alignment::Center),
+        row![dot, body_text(typography, label_text)]
+            .spacing(spacing.sm)
+            .align_y(Alignment::Center),
     )
     .padding([spacing.xs, spacing.sm])
     .width(Length::Fill)

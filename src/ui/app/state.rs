@@ -9,18 +9,41 @@ use std::sync::Arc;
 
 use iced::Task;
 
-use crate::filesystem::{EntryFilter, ListOptions, LocalFileSystem, PageRequest, SortKey, SortOrder, WatchEvent};
+use crate::filesystem::{
+    EntryFilter, ListOptions, LocalFileSystem, PageRequest, SortKey, SortOrder, WatchEvent,
+};
 use crate::services::{SearchIndexOptions, SearchQuery, SearchService};
-use crate::ui::{GitFileStatus, UiMessage};
 use crate::ui::theme::layout::TREE_MAX_DEPTH;
 use crate::ui::theme::timing::LOADING_INDICATOR_DELAY;
+use crate::ui::{GitFileStatus, UiMessage};
 
 use super::XionApp;
 use super::helpers::{build_tree_nodes, list_options_from_config};
 use super::types::{PagedEntries, TabState, root_path_for, route_kind_from_path};
 
+/// Concurrency cap on recursive directory-size walks.
+static DIR_SIZE_LIMIT: std::sync::LazyLock<tokio::sync::Semaphore> =
+    std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(3));
+
 impl XionApp {
+    /// Reload the current directory, discarding the user's query.
+    ///
+    /// This is the *navigation* refresh: arriving somewhere new resets the
+    /// search box, the quick filter and the scroll position.
     pub(super) fn refresh_entries(&mut self) -> Task<UiMessage> {
+        self.refresh_entries_inner(true)
+    }
+
+    /// Reload the current directory *in place*, keeping what the user typed.
+    ///
+    /// Copying a file used to wipe the active search and quick filter, because
+    /// every file operation went through the navigation refresh. The list has
+    /// to be re-read, but the query the user is in the middle of is not stale.
+    pub(super) fn refresh_entries_in_place(&mut self) -> Task<UiMessage> {
+        self.refresh_entries_inner(false)
+    }
+
+    fn refresh_entries_inner(&mut self, reset_query: bool) -> Task<UiMessage> {
         let page_size = self.entries.page_size;
         if self.entries.total > 0 {
             self.stale_entries = Some(std::mem::replace(
@@ -39,9 +62,11 @@ impl XionApp {
         self.show_loading_indicator = false;
         self.loading_generation = self.loading_generation.wrapping_add(1);
         self.clear_selection();
-        self.search.input.clear();
+        if reset_query {
+            self.search.input.clear();
+            self.search.matches = None;
+        }
         self.search.index = None;
-        self.search.matches = None;
         self.search.index_path = None;
         self.search.indexing = false;
         self.selection_snapshot = None;
@@ -51,13 +76,20 @@ impl XionApp {
         self.mouse_pressed = false;
         self.selection_box_start = None;
         self.selection_box_current = None;
-        // Clear quick filter when navigating to a new directory
-        self.quick_filter.clear();
-        self.quick_filter_active = false;
+        if reset_query {
+            self.quick_filter.clear();
+            self.quick_filter_active = false;
+        }
         // Clear stale git/dir-size data immediately so old indicators don't persist
         self.git_statuses.clear();
         self.dir_sizes.clear();
         self.dir_sizes_loading.clear();
+        // Thumbnail maps used to be cleared only when the config changed, so
+        // they grew monotonically for the whole session: every decoded handle
+        // of every directory ever visited stayed resident.
+        self.media.thumbnail_handles.clear();
+        self.media.thumbnail_misses.clear();
+        self.media.thumbnails_in_flight.clear();
         self.rebuild_tree_cache();
 
         Task::batch(vec![
@@ -88,8 +120,12 @@ impl XionApp {
                 // 15-second timeout to prevent network discovery from blocking indefinitely
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(15),
-                    tokio::task::spawn_blocking(crate::services::network::NetworkDiscoveryService::run_scan),
-                ).await {
+                    tokio::task::spawn_blocking(
+                        crate::services::network::NetworkDiscoveryService::run_scan,
+                    ),
+                )
+                .await
+                {
                     Ok(Ok(results)) => results,
                     _ => Vec::new(),
                 }
@@ -129,9 +165,14 @@ impl XionApp {
 
         // #10: Check LRU cache first
         if let Some(pos) = self.search_index_cache.iter().position(|(p, _)| p == &path) {
-            let (_, cached_index) = self.search_index_cache.remove(pos).unwrap();
+            // `position` just proved the index is in range, but expressing that
+            // with `if let` costs nothing and leaves no panic in the binary.
+            let Some((_, cached_index)) = self.search_index_cache.remove(pos) else {
+                return Task::none();
+            };
             // Move to back (most recently used)
-            self.search_index_cache.push_back((path.clone(), cached_index.clone()));
+            self.search_index_cache
+                .push_back((path.clone(), cached_index.clone()));
             self.search.index = Some(cached_index);
             self.search.matches = None;
             self.search.index_path = Some(path);
@@ -258,6 +299,7 @@ impl XionApp {
         let page_request = PageRequest::new(offset, self.entries.page_size);
         let route_key = self.state.route.key();
         let route_kind = self.state.route.kind.clone();
+        let generation = self.loading_generation;
         // These clones are intentional — config structs are small and must be owned by the async task
         let list_config = self.state.config.list.clone();
         let respect_gitignore = self.state.config.respect_gitignore;
@@ -287,14 +329,20 @@ impl XionApp {
                     crate::ui::RouteKind::Recent => {
                         // Recent view handled separately; return empty page
                         use crate::filesystem::Page;
-                        Ok(Page { items: vec![], total: 0, offset: 0, limit: 0 })
+                        Ok(Page {
+                            items: vec![],
+                            total: 0,
+                            offset: 0,
+                            limit: 0,
+                        })
                     }
                 };
-                (route_key, page_index, result)
+                (route_key, page_index, generation, result)
             },
-            |(path, page_index, result)| UiMessage::PageLoaded {
+            |(path, page_index, generation, result)| UiMessage::PageLoaded {
                 path,
                 page_index,
+                generation,
                 result,
             },
         )
@@ -322,7 +370,8 @@ impl XionApp {
         self.tab_manager.tabs.push(TabState { title, path });
         self.tab_manager.active = self.tab_manager.count().saturating_sub(1);
         let active_path = self
-            .tab_manager.active_path()
+            .tab_manager
+            .active_path()
             .cloned()
             .unwrap_or_else(|| self.state.config.start_path.clone());
         self.update_active_tab_path(active_path.clone());
@@ -367,9 +416,12 @@ impl XionApp {
     /// Persists current tab state to config on disk.
     pub(super) fn save_tabs_to_config(&mut self) {
         self.state.config.tabs = self
-            .tab_manager.tabs
+            .tab_manager
+            .tabs
             .iter()
-            .map(|t| crate::core::TabPersistConfig { path: t.path.clone() })
+            .map(|t| crate::core::TabPersistConfig {
+                path: t.path.clone(),
+            })
             .collect();
         self.state.config.active_tab_index = self.tab_manager.active;
         self.config_manager.save(&self.state.config);
@@ -384,7 +436,22 @@ impl XionApp {
                 tokio::task::spawn_blocking(move || {
                     let repo = git2::Repository::discover(&path).ok()?;
                     let root = repo.workdir()?.to_path_buf();
-                    let statuses = repo.statuses(None).ok()?;
+                    // `statuses(None)` walks the entire repository. In a large
+                    // checkout that is seconds of work, redone on every single
+                    // navigation, to colour at most a screenful of rows. Scope
+                    // it to the directory being displayed.
+                    let mut options = git2::StatusOptions::new();
+                    options
+                        .include_untracked(true)
+                        .recurse_untracked_dirs(false)
+                        .include_ignored(false)
+                        .include_unmodified(false);
+                    if let Ok(relative) = path.strip_prefix(&root) {
+                        if !relative.as_os_str().is_empty() {
+                            options.pathspec(relative);
+                        }
+                    }
+                    let statuses = repo.statuses(Some(&mut options)).ok()?;
                     let mut map: HashMap<PathBuf, GitFileStatus> = HashMap::new();
                     for entry in statuses.iter() {
                         let s = entry.status();
@@ -398,9 +465,8 @@ impl XionApp {
                                 | git2::Status::INDEX_DELETED,
                         ) {
                             GitFileStatus::Staged
-                        } else if s.intersects(
-                            git2::Status::WT_MODIFIED | git2::Status::WT_DELETED,
-                        ) {
+                        } else if s.intersects(git2::Status::WT_MODIFIED | git2::Status::WT_DELETED)
+                        {
                             GitFileStatus::Modified
                         } else if s.contains(git2::Status::WT_NEW) {
                             GitFileStatus::Untracked
@@ -424,13 +490,14 @@ impl XionApp {
 
     pub(super) fn request_dir_sizes(&mut self) -> Task<UiMessage> {
         let mut tasks = Vec::new();
-        let entries_snapshot: Vec<PathBuf> = self
-            .entries
-            .items
-            .iter()
-            .flatten()
-            .filter(|e| e.entry_type == crate::filesystem::FsEntryType::Directory)
-            .map(|e| e.path.clone())
+        // Only the rows on screen. Walking every loaded directory spawned one
+        // unbounded recursive walk per subfolder — a directory of 500 folders
+        // launched 500 concurrent disk traversals nobody had asked for.
+        let window = self.entry_virtual_window();
+        let entries_snapshot: Vec<PathBuf> = (window.start..window.end)
+            .filter_map(|index| self.entries.get(index))
+            .filter(|entry| entry.entry_type == crate::filesystem::FsEntryType::Directory)
+            .map(|entry| entry.path.clone())
             .collect();
 
         for path in entries_snapshot {
@@ -441,6 +508,11 @@ impl XionApp {
             let task_path = path.clone();
             tasks.push(Task::perform(
                 async move {
+                    // At most a few traversals at a time: each one saturates a
+                    // blocking worker, and they would otherwise starve the
+                    // thumbnail and preview tasks that the user is waiting on.
+                    // RAII — the permit is held until this future completes.
+                    let _permit = DIR_SIZE_LIMIT.acquire().await;
                     let bytes = tokio::task::spawn_blocking(move || {
                         let mut total: u64 = 0;
                         let mut count = 0usize;
@@ -486,8 +558,7 @@ impl XionApp {
         {
             for node in &mut self.cached_tree_nodes {
                 node.selected = node.path == *current_path;
-                node.expanded =
-                    current_path.starts_with(&node.path) && node.depth < TREE_MAX_DEPTH;
+                node.expanded = current_path.starts_with(&node.path) && node.depth < TREE_MAX_DEPTH;
             }
             // If the current path (or one of its ancestors below the root)
             // isn't already in the cached nodes, we need a full rebuild so
@@ -512,11 +583,7 @@ impl XionApp {
             name_query: None,
             respect_gitignore: self.state.config.respect_gitignore,
         };
-        self.cached_tree_nodes = build_tree_nodes(
-            &tree_root,
-            current_path,
-            TREE_MAX_DEPTH,
-            &tree_options,
-        );
+        self.cached_tree_nodes =
+            build_tree_nodes(&tree_root, current_path, TREE_MAX_DEPTH, &tree_options);
     }
 }

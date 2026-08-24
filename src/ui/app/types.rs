@@ -15,11 +15,11 @@ use iced::widget::image;
 use sysinfo::Disks;
 
 use crate::core::AppResult;
-use crate::filesystem::{FileOperationKind, FsEntry, FileWatcher, Page, WatchEvent};
+use crate::filesystem::{FileOperationKind, FileWatcher, FsEntry, Page, WatchEvent};
 use crate::services::{
     FavoritesService, PreviewImageService, SearchIndex, ThumbnailService, VirtualWindow,
 };
-use crate::ui::{NETWORK_ROUTE, RECENT_ROUTE, RouteKind, DiffLine, GrepResult, AclEntry};
+use crate::ui::{AclEntry, DiffLine, GrepResult, NETWORK_ROUTE, RECENT_ROUTE, RouteKind};
 
 // ── Paginated entry buffer ────────────────────────────────────────────────────
 
@@ -355,7 +355,11 @@ struct AddressValidationCacheInner {
 }
 
 impl AddressValidationCache {
-    pub(super) fn get(&self, input: &str, resolve: impl FnOnce() -> Option<PathBuf>) -> Option<AddressValidation> {
+    pub(super) fn get(
+        &self,
+        input: &str,
+        resolve: impl FnOnce() -> Option<PathBuf>,
+    ) -> Option<AddressValidation> {
         let mut inner = self.inner.borrow_mut();
         if input != inner.input {
             inner.input = input.to_string();
@@ -376,7 +380,6 @@ impl AddressValidationCache {
 // ── Terminal state ────────────────────────────────────────────────────────────
 
 /// Maximum number of output lines kept in the terminal buffer.
-const TERMINAL_MAX_LINES: usize = 500;
 
 #[derive(Debug, Default)]
 pub(super) struct TerminalTab {
@@ -390,17 +393,19 @@ pub(super) struct TerminalTab {
 }
 
 impl TerminalTab {
-    pub(super) fn push_lines(&mut self, new_lines: Vec<String>) {
-        self.lines.extend(new_lines);
-        if self.lines.len() > TERMINAL_MAX_LINES {
-            let excess = self.lines.len() - TERMINAL_MAX_LINES;
-            self.lines.drain(..excess);
-        }
+    /// Mirror the pty's rendered screen.
+    ///
+    /// The pty owns the scrollback and its bound, so the tab no longer keeps a
+    /// second, shorter buffer that silently truncated what the first one had
+    /// already truncated.
+    pub(super) fn set_lines(&mut self, lines: Vec<String>) {
+        self.lines = lines;
         self.rebuild_cached_output();
     }
 
-    pub(super) fn push_prompt(&mut self, cwd: &std::path::Path, cmd: &str) {
-        self.lines.push(format!("{}> {}", cwd.display(), cmd));
+    /// Append a line produced by Xion itself, not by the shell.
+    pub(super) fn push_notice(&mut self, notice: String) {
+        self.lines.push(notice);
         self.rebuild_cached_output();
     }
 
@@ -408,30 +413,11 @@ impl TerminalTab {
         self.cached_output = Some(self.lines.join("\n"));
     }
 
-    pub(super) fn effective_cwd<'a>(&'a self, fallback: &'a std::path::Path) -> &'a std::path::Path {
+    pub(super) fn effective_cwd<'a>(
+        &'a self,
+        fallback: &'a std::path::Path,
+    ) -> &'a std::path::Path {
         self.cwd.as_deref().unwrap_or(fallback)
-    }
-
-    pub(super) fn apply_cd(&mut self, cmd: &str, fallback: &std::path::Path) {
-        let trimmed = cmd.trim();
-        let lower = trimmed.to_ascii_lowercase();
-        let rest = if let Some(r) = lower.strip_prefix("cd ").or_else(|| lower.strip_prefix("chdir ")) {
-            // Use the original trimmed string at the same offset to preserve path casing
-            let offset = trimmed.len() - r.len();
-            trimmed[offset..].trim()
-        } else if lower == "cd" || lower == "chdir" {
-            return;
-        } else {
-            return;
-        };
-
-        let base = self.cwd.as_deref().unwrap_or(fallback);
-        let new_cwd = if std::path::Path::new(rest).is_absolute() {
-            std::path::PathBuf::from(rest)
-        } else {
-            base.join(rest)
-        };
-        self.cwd = Some(new_cwd);
     }
 }
 
@@ -443,7 +429,10 @@ pub(super) struct TerminalState {
 
 impl Default for TerminalState {
     fn default() -> Self {
-        let default_tab = TerminalTab { title: "Terminal 1".to_string(), ..Default::default() };
+        let default_tab = TerminalTab {
+            title: "Terminal 1".to_string(),
+            ..Default::default()
+        };
         Self {
             tabs: vec![default_tab],
             active_tab: 0,
@@ -481,21 +470,15 @@ impl TerminalState {
     }
 
     // Delegate helpers to active tab for backward compat
-    pub(super) fn push_lines(&mut self, new_lines: Vec<String>) {
-        self.active().push_lines(new_lines);
+    pub(super) fn push_notice(&mut self, notice: String) {
+        self.active().push_notice(notice);
     }
 
-    pub(super) fn push_prompt(&mut self, cwd: &std::path::Path, cmd: &str) {
-        self.active().push_prompt(cwd, cmd);
-    }
-
-    pub(super) fn effective_cwd<'a>(&'a self, fallback: &'a std::path::Path) -> &'a std::path::Path {
+    pub(super) fn effective_cwd<'a>(
+        &'a self,
+        fallback: &'a std::path::Path,
+    ) -> &'a std::path::Path {
         self.active_ref().effective_cwd(fallback)
-    }
-
-    pub(super) fn apply_cd(&mut self, cmd: &str, fallback: &std::path::Path) {
-        self.clamp_active();
-        self.tabs[self.active_tab].apply_cd(cmd, fallback);
     }
 }
 
@@ -521,7 +504,7 @@ pub(super) struct BulkRenameState {
     pub(super) find: String,
     pub(super) replace: String,
     pub(super) use_regex: bool,
-    pub(super) previews: Vec<(String, String)>,  // (original name, new name)
+    pub(super) previews: Vec<(String, String)>, // (original name, new name)
     pub(super) error: Option<String>,
 }
 
@@ -537,7 +520,7 @@ pub(super) enum ArchiveType {
 #[derive(Debug, Clone)]
 pub(super) struct ArchiveBrowserState {
     pub(super) archive_path: PathBuf,
-    pub(super) inner_path: String,       // current folder within archive
+    pub(super) inner_path: String, // current folder within archive
     pub(super) entries: Vec<crate::ui::ArchiveEntry>,
     pub(super) archive_type: ArchiveType,
 }
@@ -558,7 +541,7 @@ pub(super) struct DiffViewState {
 pub(super) struct HexViewState {
     pub(super) path: PathBuf,
     pub(super) data: Vec<u8>,
-    pub(super) offset: usize,  // scroll offset in rows of 16 bytes
+    pub(super) offset: usize, // scroll offset in rows of 16 bytes
 }
 
 // ── Grep ──────────────────────────────────────────────────────────────────────
@@ -650,13 +633,18 @@ pub(super) enum UndoAction {
     /// Files were copied to destination (undo = delete created copies)
     Copy { created: Vec<PathBuf> },
     /// Files were moved
-    Move { original_paths: Vec<(PathBuf, PathBuf)> }, // (source, destination) pairs
+    Move {
+        original_paths: Vec<(PathBuf, PathBuf)>,
+    }, // (source, destination) pairs
     /// A file was created
     FileCreated { path: PathBuf },
     /// A folder was created
     FolderCreated { path: PathBuf },
     /// A rename was done
-    Renamed { old_path: PathBuf, new_path: PathBuf },
+    Renamed {
+        old_path: PathBuf,
+        new_path: PathBuf,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -675,16 +663,21 @@ impl UndoStack {
     pub(super) fn pop(&mut self) -> Option<UndoAction> {
         self.actions.pop()
     }
-
 }
 
 /// Context stashed before an async file operation, to build undo actions on completion.
 #[derive(Debug, Clone)]
 pub(super) enum PendingUndoContext {
     /// Clipboard copy: sources and destination directory
-    Copy { sources: Vec<PathBuf>, destination: PathBuf },
+    Copy {
+        sources: Vec<PathBuf>,
+        destination: PathBuf,
+    },
     /// Clipboard move or cut: sources and destination directory
-    Move { sources: Vec<PathBuf>, destination: PathBuf },
+    Move {
+        sources: Vec<PathBuf>,
+        destination: PathBuf,
+    },
     /// Rename: old path (new path comes from the report)
     Rename { old_path: PathBuf },
 }
@@ -755,7 +748,7 @@ pub(super) enum ContextSubmenu {
     Label,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(super) struct MenuState {
     pub(super) context_open: bool,
     pub(super) context_position: Option<iced::Point>,
@@ -767,34 +760,32 @@ pub(super) struct MenuState {
     pub(super) history_position: Option<iced::Point>,
 }
 
-impl Default for MenuState {
-    fn default() -> Self {
-        Self {
-            context_open: false,
-            context_position: None,
-            background_context_open: false,
-            context_submenu: None,
-            history_open: false,
-            history_position: None,
-        }
-    }
-}
-
 // ── Dual-pane state ──────────────────────────────────────────────────────────
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(super) struct DualPaneState {
     pub(super) enabled: bool,
     pub(super) pane_b: Option<PaneB>,
     pub(super) active: usize,
 }
 
-impl Default for DualPaneState {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            pane_b: None,
-            active: 0,
-        }
-    }
+// ── Confirmation dialog ──────────────────────────────────────────────────────
+
+/// What a confirmation dialog will carry out if the user accepts.
+///
+/// Only irreversible operations go through here. Anything recoverable — moving
+/// to the trash, for instance — must not ask, or the prompt becomes noise the
+/// user clicks through.
+#[derive(Debug, Clone)]
+pub(super) enum ConfirmedAction {
+    /// Permanent deletion, bypassing the trash.
+    DeletePermanently(Vec<std::path::PathBuf>),
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ConfirmDialog {
+    pub(super) title: String,
+    pub(super) message: String,
+    pub(super) confirm_label: String,
+    pub(super) action: ConfirmedAction,
 }

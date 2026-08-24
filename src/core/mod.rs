@@ -14,8 +14,8 @@ pub mod config;
 pub use config::{
     AppConfig, AppConfigLoad, CacheConfig, ConfigManager, ConfigSource, ConfigWarning,
     EntryFilterConfig, FilesystemConfig, KeyChord, KeyInput, KeyKind, ListConfig, NamedKey,
-    PagingConfig, ShortcutBindings, ShellConfig, SortKeyConfig, SortOrderConfig, TabPersistConfig, ThemeConfig,
-    ViewColumn, ViewConfig, ViewMode,
+    PagingConfig, ShellConfig, ShortcutBindings, SortKeyConfig, SortOrderConfig, TabPersistConfig,
+    ThemeConfig, ViewColumn, ViewConfig, ViewMode,
 };
 
 pub type AppResult<T> = Result<T, XionError>;
@@ -26,6 +26,11 @@ pub enum XionError {
     InvalidPath(PathBuf),
     NotFound(PathBuf),
     Watcher(String),
+    /// The operation is well-formed but refused on purpose: copying a folder
+    /// into itself, an archive entry escaping its extraction directory, and
+    /// similar guards. Distinct from `Io` so the UI can word it as a refusal
+    /// rather than a failure.
+    Rejected(String),
 }
 
 impl fmt::Display for XionError {
@@ -35,6 +40,7 @@ impl fmt::Display for XionError {
             Self::InvalidPath(path) => write!(formatter, "Invalid path: {}", path.display()),
             Self::NotFound(path) => write!(formatter, "Not found: {}", path.display()),
             Self::Watcher(error) => write!(formatter, "File watcher error: {error}"),
+            Self::Rejected(reason) => write!(formatter, "Opération refusée : {reason}"),
         }
     }
 }

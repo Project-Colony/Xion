@@ -3,8 +3,29 @@
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+        <!-- asInvoker, not requireAdministrator.
+             A file explorer has no business running elevated: every process it
+             starts (the integrated shell, an opened document, ffmpeg) inherited
+             the administrator token, and UIPI blocked drag & drop from a normal
+             Explorer window into an elevated one. The few operations that do
+             need elevation must request it per-operation. -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
       </requestedPrivileges>
     </security>
   </trustInfo>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 and 11: opts out of the Vista/7/8 compatibility shims. -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <!-- Declared so Windows does not bitmap-scale the wgpu surface. -->
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <!-- UTF-8 as the process ANSI code page: `net view` and other console
+           helpers stop mangling accented names. -->
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
 </assembly>

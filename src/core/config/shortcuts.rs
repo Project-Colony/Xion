@@ -84,7 +84,12 @@ impl KeyChord {
             }
         };
 
-        Ok(Self { key, ctrl, alt, shift })
+        Ok(Self {
+            key,
+            ctrl,
+            alt,
+            shift,
+        })
     }
 
     /// Returns `true` if this chord matches the given key input.
@@ -136,67 +141,99 @@ impl Default for ShortcutBindings {
         Self {
             move_up: KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowUp),
-                ctrl: false, alt: false, shift: false,
+                ctrl: false,
+                alt: false,
+                shift: false,
             },
             move_down: KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowDown),
-                ctrl: false, alt: false, shift: false,
+                ctrl: false,
+                alt: false,
+                shift: false,
             },
             move_home: KeyChord {
                 key: KeyKind::Named(NamedKey::Home),
-                ctrl: false, alt: false, shift: false,
+                ctrl: false,
+                alt: false,
+                shift: false,
             },
             move_end: KeyChord {
                 key: KeyKind::Named(NamedKey::End),
-                ctrl: false, alt: false, shift: false,
+                ctrl: false,
+                alt: false,
+                shift: false,
             },
             activate: KeyChord {
                 key: KeyKind::Named(NamedKey::Enter),
-                ctrl: false, alt: false, shift: false,
+                ctrl: false,
+                alt: false,
+                shift: false,
             },
             clear_selection: KeyChord {
                 key: KeyKind::Named(NamedKey::Escape),
-                ctrl: false, alt: false, shift: false,
+                ctrl: false,
+                alt: false,
+                shift: false,
             },
             cycle_pane_focus: KeyChord {
                 key: KeyKind::Named(NamedKey::Tab),
-                ctrl: false, alt: false, shift: false,
+                ctrl: false,
+                alt: false,
+                shift: false,
             },
             back: KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowLeft),
-                ctrl: false, alt: true, shift: false,
+                ctrl: false,
+                alt: true,
+                shift: false,
             },
             forward: KeyChord {
                 key: KeyKind::Named(NamedKey::ArrowRight),
-                ctrl: false, alt: true, shift: false,
+                ctrl: false,
+                alt: true,
+                shift: false,
             },
             refresh: KeyChord {
                 key: KeyKind::Character("r".to_string()),
-                ctrl: true, alt: false, shift: false,
+                ctrl: true,
+                alt: false,
+                shift: false,
             },
             select_all: KeyChord {
                 key: KeyKind::Character("a".to_string()),
-                ctrl: true, alt: false, shift: false,
+                ctrl: true,
+                alt: false,
+                shift: false,
             },
             toggle_context_menu: KeyChord {
                 key: KeyKind::Character("m".to_string()),
-                ctrl: true, alt: false, shift: false,
+                ctrl: true,
+                alt: false,
+                shift: false,
             },
             rename: KeyChord {
                 key: KeyKind::Named(NamedKey::F2),
-                ctrl: false, alt: false, shift: false,
+                ctrl: false,
+                alt: false,
+                shift: false,
             },
             delete: KeyChord {
                 key: KeyKind::Named(NamedKey::Delete),
-                ctrl: false, alt: false, shift: false,
+                ctrl: false,
+                alt: false,
+                shift: false,
             },
             new_folder: KeyChord {
                 key: KeyKind::Character("n".to_string()),
-                ctrl: true, alt: false, shift: true,
+                ctrl: true,
+                alt: false,
+                shift: true,
             },
             focus_search: KeyChord {
                 key: KeyKind::Character("e".to_string()),
-                ctrl: true, alt: false, shift: false,
+                ctrl: true,
+                alt: false,
+                shift: false,
             },
         }
     }

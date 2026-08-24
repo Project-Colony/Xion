@@ -151,7 +151,14 @@ impl SearchService {
         list_options: ListOptions,
     ) -> AppResult<SearchIndex> {
         let mut entries = Vec::new();
-        self.index_dir_with_options(filesystem, root, &options, &list_options, &mut entries, MAX_SEARCH_DEPTH)?;
+        self.index_dir_with_options(
+            filesystem,
+            root,
+            &options,
+            &list_options,
+            &mut entries,
+            MAX_SEARCH_DEPTH,
+        )?;
         Ok(SearchIndex {
             root: root.to_path_buf(),
             entries,
@@ -187,7 +194,12 @@ impl SearchService {
         let mut items = Vec::with_capacity(page.limit);
         let mut total = 0usize;
         for entry in &index.entries {
-            if !Self::matches_query(entry, query, normalized_text.as_ref(), &normalized_extensions) {
+            if !Self::matches_query(
+                entry,
+                query,
+                normalized_text.as_ref(),
+                &normalized_extensions,
+            ) {
                 continue;
             }
             if total >= page.offset && items.len() < page.limit {
@@ -232,7 +244,11 @@ impl SearchService {
         let extensions = if query.case_sensitive {
             query.extensions.clone()
         } else {
-            query.extensions.iter().map(|ext| ext.to_lowercase()).collect()
+            query
+                .extensions
+                .iter()
+                .map(|ext| ext.to_lowercase())
+                .collect()
         };
         (text, extensions)
     }
@@ -247,7 +263,10 @@ impl SearchService {
         remaining_depth: usize,
     ) -> AppResult<()> {
         if remaining_depth == 0 {
-            tracing::warn!("Recherche: profondeur max atteinte à {:?}, résultats incomplets", path);
+            tracing::warn!(
+                "Recherche: profondeur max atteinte à {:?}, résultats incomplets",
+                path
+            );
             return Ok(());
         }
         if options.max_entries > 0 && output.len() >= options.max_entries {

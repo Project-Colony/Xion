@@ -13,8 +13,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// The registry paths we create for context menu integration.
 const DIR_SHELL_KEY: &str = r"HKEY_CURRENT_USER\Software\Classes\Directory\shell\Xion";
 const DIR_COMMAND_KEY: &str = r"HKEY_CURRENT_USER\Software\Classes\Directory\shell\Xion\command";
-const BG_SHELL_KEY: &str =
-    r"HKEY_CURRENT_USER\Software\Classes\Directory\Background\shell\Xion";
+const BG_SHELL_KEY: &str = r"HKEY_CURRENT_USER\Software\Classes\Directory\Background\shell\Xion";
 const BG_COMMAND_KEY: &str =
     r"HKEY_CURRENT_USER\Software\Classes\Directory\Background\shell\Xion\command";
 const DRIVE_SHELL_KEY: &str = r"HKEY_CURRENT_USER\Software\Classes\Drive\shell\Xion";
@@ -43,7 +42,11 @@ pub fn register() -> io::Result<()> {
     // Drive context menu: right-click on a drive
     reg_add(DRIVE_SHELL_KEY, "(Default)", "Ouvrir avec Xion")?;
     reg_add(DRIVE_SHELL_KEY, "Icon", &exe)?;
-    reg_add(DRIVE_COMMAND_KEY, "(Default)", &format!("\"{}\" \"%1\"", exe))?;
+    reg_add(
+        DRIVE_COMMAND_KEY,
+        "(Default)",
+        &format!("\"{}\" \"%1\"", exe),
+    )?;
 
     println!("Xion enregistré dans le menu contextuel Windows.");
     Ok(())

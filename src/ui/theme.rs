@@ -15,8 +15,7 @@ pub mod fonts {
         include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Regular.ttf");
     pub const ITALIC: &[u8] =
         include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Italic.ttf");
-    pub const THIN: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Thin.ttf");
+    pub const THIN: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Thin.ttf");
     pub const THIN_ITALIC: &[u8] =
         include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-ThinItalic.ttf");
     pub const EXTRA_LIGHT: &[u8] =
@@ -35,8 +34,7 @@ pub mod fonts {
         include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-SemiBold.ttf");
     pub const SEMI_BOLD_ITALIC: &[u8] =
         include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-SemiBoldItalic.ttf");
-    pub const BOLD: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Bold.ttf");
+    pub const BOLD: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Bold.ttf");
     pub const BOLD_ITALIC: &[u8] =
         include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-BoldItalic.ttf");
     pub const EXTRA_BOLD: &[u8] =
@@ -47,87 +45,87 @@ pub mod fonts {
 
 /// Nerd Font icons used in the UI.
 pub mod icons {
-    pub const DEVICE: &str = "\u{f0379}";   // 󰍹 nf-md-monitor
-    pub const LOADING: &str = "\u{f1356}";  // 󱍖 nf-md-loading
-    pub const FOLDER: &str = "\u{f024b}";   // 󰉋 nf-md-folder
-    pub const FILE: &str = "\u{f0214}";     // 󰈔 nf-md-file
-    pub const SYMLINK: &str = "\u{f0337}";  // 󰌷 nf-md-link_variant
-    pub const UNKNOWN: &str = "\u{f02d7}";  // 󰋗 nf-md-help_circle
-    pub const HOME: &str = "\u{f02dc}";     // 󰋜 nf-md-home
-    pub const GALLERY: &str = "\u{f024f}";  // 󰉏 nf-md-folder_image
-    pub const DESKTOP: &str = "\u{f0391}";  // 󰎑 nf-md-monitor_dashboard (approximation)
+    pub const DEVICE: &str = "\u{f0379}"; // 󰍹 nf-md-monitor
+    pub const LOADING: &str = "\u{f1356}"; // 󱍖 nf-md-loading
+    pub const FOLDER: &str = "\u{f024b}"; // 󰉋 nf-md-folder
+    pub const FILE: &str = "\u{f0214}"; // 󰈔 nf-md-file
+    pub const SYMLINK: &str = "\u{f0337}"; // 󰌷 nf-md-link_variant
+    pub const UNKNOWN: &str = "\u{f02d7}"; // 󰋗 nf-md-help_circle
+    pub const HOME: &str = "\u{f02dc}"; // 󰋜 nf-md-home
+    pub const GALLERY: &str = "\u{f024f}"; // 󰉏 nf-md-folder_image
+    pub const DESKTOP: &str = "\u{f0391}"; // 󰎑 nf-md-monitor_dashboard (approximation)
     pub const DOWNLOAD: &str = "\u{f01da}"; // 󰇚 nf-md-download
-    pub const DOCUMENTS: &str = "\u{f0219}";// 󰈙 nf-md-file_document
-    pub const MUSIC: &str = "\u{f0388}";    // 󰎈 nf-md-music_box
-    pub const VIDEO: &str = "\u{f057e}";    // 󰕾 nf-md-video
-    pub const PC: &str = "\u{f0379}";       // 󰍹 nf-md-monitor
-    pub const DRIVE: &str = "\u{f02ca}";    // 󰋊 nf-md-harddisk
-    pub const NETWORK: &str = "\u{f0317}";  // 󰌗 nf-md-lan
-    pub const BACK: &str = "\u{f004d}";     // 󰁍 nf-md-arrow_left
-    pub const FORWARD: &str = "\u{f0054}";  // 󰁔 nf-md-arrow_right
-    pub const REFRESH: &str = "\u{f0450}";  // 󰑐 nf-md-refresh
-    pub const SEARCH: &str = "\u{f0349}";   // 󰍉 nf-md-magnify
-    pub const NEW: &str = "\u{f0415}";      // 󰐕 nf-md-plus
-    pub const CUT: &str = "\u{f0190}";      // 󰆐 nf-md-content_cut
-    pub const COPY: &str = "\u{f018f}";     // 󰆏 nf-md-content_copy
-    pub const PASTE: &str = "\u{f0192}";    // 󰆒 nf-md-content_paste
-    pub const SORT: &str = "\u{f04ba}";     // 󰒺 nf-md-sort
+    pub const DOCUMENTS: &str = "\u{f0219}"; // 󰈙 nf-md-file_document
+    pub const MUSIC: &str = "\u{f0388}"; // 󰎈 nf-md-music_box
+    pub const VIDEO: &str = "\u{f057e}"; // 󰕾 nf-md-video
+    pub const PC: &str = "\u{f0379}"; // 󰍹 nf-md-monitor
+    pub const DRIVE: &str = "\u{f02ca}"; // 󰋊 nf-md-harddisk
+    pub const NETWORK: &str = "\u{f0317}"; // 󰌗 nf-md-lan
+    pub const BACK: &str = "\u{f004d}"; // 󰁍 nf-md-arrow_left
+    pub const FORWARD: &str = "\u{f0054}"; // 󰁔 nf-md-arrow_right
+    pub const REFRESH: &str = "\u{f0450}"; // 󰑐 nf-md-refresh
+    pub const SEARCH: &str = "\u{f0349}"; // 󰍉 nf-md-magnify
+    pub const NEW: &str = "\u{f0415}"; // 󰐕 nf-md-plus
+    pub const CUT: &str = "\u{f0190}"; // 󰆐 nf-md-content_cut
+    pub const COPY: &str = "\u{f018f}"; // 󰆏 nf-md-content_copy
+    pub const PASTE: &str = "\u{f0192}"; // 󰆒 nf-md-content_paste
+    pub const SORT: &str = "\u{f04ba}"; // 󰒺 nf-md-sort
     pub const VIEW_GRID: &str = "\u{f0574}"; // 󰕴 nf-md-view_grid
     pub const VIEW_LIST: &str = "\u{f0575}"; // 󰕵 nf-md-view_list
-    pub const MORE: &str = "\u{f01d8}";     // 󰇘 nf-md-dots_horizontal
-    pub const ACTIONS: &str = "\u{f035b}";  // 󰍛 nf-md-menu
-    pub const OPEN: &str = "\u{f0256}";     // 󰉖 nf-md-folder_open
-    pub const RENAME: &str = "\u{f0ea8}";   // 󰺨 nf-md-rename_box
-    pub const DELETE: &str = "\u{f01b4}";   // 󰆴 nf-md-delete
-    pub const CLOSE: &str = "\u{f0156}";    // 󰅖 nf-md-close
-    pub const THEME: &str = "\u{f05df}";    // 󰗟 nf-md-weather_night (dark mode toggle)
+    pub const MORE: &str = "\u{f01d8}"; // 󰇘 nf-md-dots_horizontal
+    pub const ACTIONS: &str = "\u{f035b}"; // 󰍛 nf-md-menu
+    pub const OPEN: &str = "\u{f0256}"; // 󰉖 nf-md-folder_open
+    pub const RENAME: &str = "\u{f0ea8}"; // 󰺨 nf-md-rename_box
+    pub const DELETE: &str = "\u{f01b4}"; // 󰆴 nf-md-delete
+    pub const CLOSE: &str = "\u{f0156}"; // 󰅖 nf-md-close
+    pub const THEME: &str = "\u{f05df}"; // 󰗟 nf-md-weather_night (dark mode toggle)
     pub const TERMINAL: &str = "\u{f0489}"; // 󰒉 nf-md-console
 
     // ── File type icons ────────────────────────────────────────────
-    pub const FILE_CODE: &str = "\u{f0217}";    // 󰈗 nf-md-file_code
-    pub const FILE_IMAGE: &str = "\u{f021f}";   // 󰈟 nf-md-file_image
-    pub const FILE_MUSIC: &str = "\u{f0223}";   // 󰈣 nf-md-file_music
-    pub const FILE_VIDEO: &str = "\u{f022b}";   // 󰈫 nf-md-file_video
-    pub const FILE_PDF: &str = "\u{f0226}";     // 󰈦 nf-md-file_pdf_box
+    pub const FILE_CODE: &str = "\u{f0217}"; // 󰈗 nf-md-file_code
+    pub const FILE_IMAGE: &str = "\u{f021f}"; // 󰈟 nf-md-file_image
+    pub const FILE_MUSIC: &str = "\u{f0223}"; // 󰈣 nf-md-file_music
+    pub const FILE_VIDEO: &str = "\u{f022b}"; // 󰈫 nf-md-file_video
+    pub const FILE_PDF: &str = "\u{f0226}"; // 󰈦 nf-md-file_pdf_box
     pub const FILE_ARCHIVE: &str = "\u{f06fb}"; // 󰛻 nf-md-zip_box
-    pub const FILE_TEXT: &str = "\u{f0219}";    // 󰈙 nf-md-file_document
-    pub const FILE_TABLE: &str = "\u{f021b}";   // 󰈛 nf-md-file_excel
-    pub const FILE_CONFIG: &str = "\u{f0493}";  // 󰒓 nf-md-settings
-    pub const FILE_GIT: &str = "\u{f02a2}";     // 󰊢 nf-md-git
-    pub const FILE_LOCK: &str = "\u{f033e}";    // 󰌾 nf-md-lock
-    pub const FILE_FONT: &str = "\u{f031a}";    // 󰌚 nf-md-format_font
-    pub const FILE_EXE: &str = "\u{f0214}";     // 󰈔 nf-md-file (kept same as default)
-    pub const FILE_DB: &str = "\u{f01bc}";      // 󰆼 nf-md-database
+    pub const FILE_TEXT: &str = "\u{f0219}"; // 󰈙 nf-md-file_document
+    pub const FILE_TABLE: &str = "\u{f021b}"; // 󰈛 nf-md-file_excel
+    pub const FILE_CONFIG: &str = "\u{f0493}"; // 󰒓 nf-md-settings
+    pub const FILE_GIT: &str = "\u{f02a2}"; // 󰊢 nf-md-git
+    pub const FILE_LOCK: &str = "\u{f033e}"; // 󰌾 nf-md-lock
+    pub const FILE_FONT: &str = "\u{f031a}"; // 󰌚 nf-md-format_font
+    pub const FILE_EXE: &str = "\u{f0214}"; // 󰈔 nf-md-file (kept same as default)
+    pub const FILE_DB: &str = "\u{f01bc}"; // 󰆼 nf-md-database
 
     /// Returns the Nerd Font icon for a file based on its extension.
     pub fn icon_for_extension(ext: &str) -> &'static str {
         match ext.to_ascii_lowercase().as_str() {
             // Code
-            "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "c" | "cpp" | "h" | "hpp"
-            | "cs" | "java" | "go" | "rb" | "php" | "swift" | "kt" | "lua" | "zig"
-            | "asm" | "sh" | "bash" | "zsh" | "ps1" | "bat" | "cmd" | "r" | "dart"
-            | "scala" | "html" | "htm" | "css" | "scss" | "sass" | "less" | "vue"
-            | "svelte" => FILE_CODE,
+            "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "c" | "cpp" | "h" | "hpp" | "cs"
+            | "java" | "go" | "rb" | "php" | "swift" | "kt" | "lua" | "zig" | "asm" | "sh"
+            | "bash" | "zsh" | "ps1" | "bat" | "cmd" | "r" | "dart" | "scala" | "html" | "htm"
+            | "css" | "scss" | "sass" | "less" | "vue" | "svelte" => FILE_CODE,
             // Images
-            "png" | "jpg" | "jpeg" | "gif" | "bmp" | "svg" | "webp" | "ico" | "tiff"
-            | "tif" | "psd" | "ai" | "raw" | "cr2" | "nef" | "heic" | "avif" => FILE_IMAGE,
+            "png" | "jpg" | "jpeg" | "gif" | "bmp" | "svg" | "webp" | "ico" | "tiff" | "tif"
+            | "psd" | "ai" | "raw" | "cr2" | "nef" | "heic" | "avif" => FILE_IMAGE,
             // Audio
-            "mp3" | "wav" | "flac" | "ogg" | "aac" | "wma" | "m4a" | "opus" | "mid"
-            | "midi" => FILE_MUSIC,
+            "mp3" | "wav" | "flac" | "ogg" | "aac" | "wma" | "m4a" | "opus" | "mid" | "midi" => {
+                FILE_MUSIC
+            }
             // Video
-            "mp4" | "avi" | "mkv" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg"
-            | "mpeg" | "3gp" => FILE_VIDEO,
+            "mp4" | "avi" | "mkv" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg"
+            | "3gp" => FILE_VIDEO,
             // Documents
             "pdf" => FILE_PDF,
             "txt" | "md" | "rtf" | "log" | "nfo" | "readme" => FILE_TEXT,
             "csv" | "xls" | "xlsx" | "ods" => FILE_TABLE,
             "doc" | "docx" | "odt" => FILE_TEXT,
             // Archives
-            "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" | "zst" | "lz4"
-            | "cab" | "iso" | "dmg" => FILE_ARCHIVE,
+            "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" | "zst" | "lz4" | "cab" | "iso"
+            | "dmg" => FILE_ARCHIVE,
             // Config
-            "json" | "yaml" | "yml" | "toml" | "xml" | "ini" | "cfg" | "conf"
-            | "env" | "properties" => FILE_CONFIG,
+            "json" | "yaml" | "yml" | "toml" | "xml" | "ini" | "cfg" | "conf" | "env"
+            | "properties" => FILE_CONFIG,
             // Git
             "gitignore" | "gitmodules" | "gitattributes" => FILE_GIT,
             // Fonts

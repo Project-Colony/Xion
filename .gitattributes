@@ -1,0 +1,10 @@
+# Rust sources are LF everywhere; a CRLF checkout on Windows made `cargo fmt
+# --check` fail and let UTF-8 BOMs slip into two files.
+*.rs        text eol=lf
+*.toml      text eol=lf
+*.md        text eol=lf
+*.yml       text eol=lf
+*.json      text eol=lf
+*.rc        text eol=lf
+*.manifest  text eol=lf
+*.ttf       binary

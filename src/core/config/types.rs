@@ -65,6 +65,21 @@ pub enum ThemeConfig {
     HighContrast,
 }
 
+impl ThemeConfig {
+    /// Whether this theme uses a dark palette.
+    ///
+    /// `AppConfig::dark_mode` is derived from the theme, but the test was
+    /// duplicated verbatim in the UI update handlers and nowhere in the config
+    /// loader, so a hand-edited file could carry `theme = "Nord"` with
+    /// `dark_mode = false` and keep a light syntax highlighter on a dark UI.
+    pub fn is_dark(&self) -> bool {
+        matches!(
+            self,
+            Self::Dark | Self::Nord | Self::Solarized | Self::HighContrast
+        )
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub enum ShellConfig {
     #[default]
@@ -259,4 +274,24 @@ pub struct AppConfigLoad {
     pub config: AppConfig,
     pub source: ConfigSource,
     pub warnings: Vec<ConfigWarning>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppConfig, ThemeConfig};
+
+    #[test]
+    fn theme_is_dark_covers_every_variant() {
+        assert!(!ThemeConfig::Light.is_dark());
+        assert!(ThemeConfig::Dark.is_dark());
+        assert!(ThemeConfig::Nord.is_dark());
+        assert!(ThemeConfig::Solarized.is_dark());
+        assert!(ThemeConfig::HighContrast.is_dark());
+    }
+
+    #[test]
+    fn default_config_keeps_dark_mode_and_theme_in_sync() {
+        let config = AppConfig::default();
+        assert_eq!(config.dark_mode, config.theme.is_dark());
+    }
 }

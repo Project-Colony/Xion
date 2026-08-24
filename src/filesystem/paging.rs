@@ -73,7 +73,7 @@ impl<T> Page<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PageRequest};
+    use super::PageRequest;
 
     #[test]
     fn page_request_applies_offset_and_limit() {

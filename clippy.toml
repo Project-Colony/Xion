@@ -1,0 +1,4 @@
+# A file explorer legitimately holds wide state structs and long match arms in
+# the message loop; the thresholds below flag genuine outliers, not the domain.
+too-many-arguments-threshold = 9
+type-complexity-threshold = 350

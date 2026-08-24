@@ -10,12 +10,12 @@ use chrono::{DateTime, Local};
 use iced::{Length, Rectangle};
 
 use crate::core::{
-    EntryFilterConfig, KeyInput, KeyKind, NamedKey, ShortcutBindings,
-    SortKeyConfig, SortOrderConfig, ViewColumn,
+    EntryFilterConfig, KeyInput, KeyKind, NamedKey, ShortcutBindings, SortKeyConfig,
+    SortOrderConfig, ViewColumn,
 };
 use crate::filesystem::{EntryFilter, FsEntry, FsEntryType, ListOptions, SortKey, SortOrder};
-use crate::ui::KeyboardCommand;
 use crate::services::Thumbnail;
+use crate::ui::KeyboardCommand;
 use crate::ui::theme::layout::TREE_MAX_CHILDREN;
 use iced::keyboard;
 
@@ -101,7 +101,10 @@ pub fn rectangles_intersect(a: Rectangle, b: Rectangle) -> bool {
 
 // ── Config mapping ────────────────────────────────────────────────────────────
 
-pub fn list_options_from_config(list_config: crate::core::ListConfig, respect_gitignore: bool) -> ListOptions {
+pub fn list_options_from_config(
+    list_config: crate::core::ListConfig,
+    respect_gitignore: bool,
+) -> ListOptions {
     ListOptions {
         show_hidden: list_config.show_hidden,
         sort_by: match list_config.sort_key {
@@ -149,13 +152,10 @@ pub fn is_gif_preview(preview: &Thumbnail) -> bool {
         || preview.bytes.starts_with(b"GIF89a")
 }
 
-pub fn build_animated_preview(
-    path: PathBuf,
-    preview: &Thumbnail,
-) -> Option<AnimatedPreview> {
-    use std::io::Cursor;
-    use ::image::codecs::gif::GifDecoder;
+pub fn build_animated_preview(path: PathBuf, preview: &Thumbnail) -> Option<AnimatedPreview> {
     use ::image::AnimationDecoder;
+    use ::image::codecs::gif::GifDecoder;
+    use std::io::Cursor;
 
     let decoder = GifDecoder::new(Cursor::new(preview.bytes.as_slice())).ok()?;
     let frames = decoder.into_frames().collect_frames().ok()?;
@@ -272,10 +272,17 @@ fn collect_tree_nodes(
             Some((entry.path(), name))
         })
         .collect();
-    directories.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+    directories.sort_by_key(|a| a.1.to_lowercase());
 
     for (dir_path, _) in directories.into_iter().take(TREE_MAX_CHILDREN) {
-        collect_tree_nodes(&dir_path, current_path, depth + 1, max_depth, options, nodes);
+        collect_tree_nodes(
+            &dir_path,
+            current_path,
+            depth + 1,
+            max_depth,
+            options,
+            nodes,
+        );
     }
 }
 
@@ -297,18 +304,51 @@ pub fn command_from_key_press_with_shortcuts(
         };
     }
     check_shortcut!(shortcuts.move_up, KeyboardCommand::MoveUp { extend }, true);
-    check_shortcut!(shortcuts.move_down, KeyboardCommand::MoveDown { extend }, true);
-    check_shortcut!(shortcuts.move_home, KeyboardCommand::MoveHome { extend }, true);
-    check_shortcut!(shortcuts.move_end, KeyboardCommand::MoveEnd { extend }, true);
+    check_shortcut!(
+        shortcuts.move_down,
+        KeyboardCommand::MoveDown { extend },
+        true
+    );
+    check_shortcut!(
+        shortcuts.move_home,
+        KeyboardCommand::MoveHome { extend },
+        true
+    );
+    check_shortcut!(
+        shortcuts.move_end,
+        KeyboardCommand::MoveEnd { extend },
+        true
+    );
     check_shortcut!(shortcuts.activate, KeyboardCommand::Activate, false);
-    check_shortcut!(shortcuts.clear_selection, KeyboardCommand::ClearSelection, false);
-    check_shortcut!(shortcuts.cycle_pane_focus, KeyboardCommand::CyclePaneFocus, false);
+    check_shortcut!(
+        shortcuts.clear_selection,
+        KeyboardCommand::ClearSelection,
+        false
+    );
+    check_shortcut!(
+        shortcuts.cycle_pane_focus,
+        KeyboardCommand::CyclePaneFocus,
+        false
+    );
     check_shortcut!(shortcuts.back, KeyboardCommand::Back, false);
     check_shortcut!(shortcuts.forward, KeyboardCommand::Forward, false);
     check_shortcut!(shortcuts.refresh, KeyboardCommand::Refresh, false);
     check_shortcut!(shortcuts.select_all, KeyboardCommand::SelectAll, false);
-    check_shortcut!(shortcuts.toggle_context_menu, KeyboardCommand::ToggleContextMenu, false);
+    check_shortcut!(
+        shortcuts.toggle_context_menu,
+        KeyboardCommand::ToggleContextMenu,
+        false
+    );
     check_shortcut!(shortcuts.rename, KeyboardCommand::Rename, false);
+    // Shift+Delete is the Explorer convention for "skip the recycle bin".
+    // Checked before the plain binding so the modifier is not swallowed.
+    if matches!(input.key, KeyKind::Named(NamedKey::Delete))
+        && input.shift
+        && !input.ctrl
+        && !input.alt
+    {
+        return Some(KeyboardCommand::DeletePermanently);
+    }
     check_shortcut!(shortcuts.delete, KeyboardCommand::Delete, false);
     check_shortcut!(shortcuts.new_folder, KeyboardCommand::NewFolder, false);
     check_shortcut!(shortcuts.focus_search, KeyboardCommand::FocusSearch, false);
@@ -318,17 +358,29 @@ pub fn command_from_key_press_with_shortcuts(
     }
 
     // Space → QuickLook (no modifiers)
-    if matches!(&input.key, KeyKind::Named(NamedKey::Space)) && !input.ctrl && !input.alt && !input.shift {
+    if matches!(&input.key, KeyKind::Named(NamedKey::Space))
+        && !input.ctrl
+        && !input.alt
+        && !input.shift
+    {
         return Some(KeyboardCommand::QuickLook);
     }
 
     // Shift+F2 → BulkRename
-    if matches!(&input.key, KeyKind::Named(NamedKey::F2)) && input.shift && !input.ctrl && !input.alt {
+    if matches!(&input.key, KeyKind::Named(NamedKey::F2))
+        && input.shift
+        && !input.ctrl
+        && !input.alt
+    {
         return Some(KeyboardCommand::BulkRename);
     }
 
     // F3 → ToggleDualPane
-    if matches!(&input.key, KeyKind::Named(NamedKey::F3)) && !input.ctrl && !input.alt && !input.shift {
+    if matches!(&input.key, KeyKind::Named(NamedKey::F3))
+        && !input.ctrl
+        && !input.alt
+        && !input.shift
+    {
         return Some(KeyboardCommand::ToggleDualPane);
     }
 
@@ -342,7 +394,11 @@ pub fn command_from_key_press_with_shortcuts(
     }
 
     // Alt+↑ → GoToParent
-    if !input.ctrl && input.alt && !input.shift && matches!(&input.key, KeyKind::Named(NamedKey::ArrowUp)) {
+    if !input.ctrl
+        && input.alt
+        && !input.shift
+        && matches!(&input.key, KeyKind::Named(NamedKey::ArrowUp))
+    {
         return Some(KeyboardCommand::GoToParent);
     }
 
@@ -376,7 +432,11 @@ pub fn command_from_key_press_with_shortcuts(
     }
 
     // Tab without Ctrl → SwitchActivePane (only handled in app based on dual_pane state)
-    if matches!(&input.key, KeyKind::Named(NamedKey::Tab)) && !input.ctrl && !input.alt && !input.shift {
+    if matches!(&input.key, KeyKind::Named(NamedKey::Tab))
+        && !input.ctrl
+        && !input.alt
+        && !input.shift
+    {
         // CyclePaneFocus handled via shortcut binding; this fallback for SwitchActivePane
         // is handled via the CyclePaneFocus binding in the default config (Tab = CyclePaneFocus)
         // so we don't emit SwitchActivePane here; the app handles it contextually
@@ -423,7 +483,11 @@ pub fn command_from_key_press_with_shortcuts(
     // Quick filter: printable single character, no modifiers
     if !input.ctrl && !input.alt && !input.shift {
         if let KeyKind::Character(c) = &input.key {
-            if c.len() == 1 && c.chars().next().is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '.') {
+            if c.len() == 1
+                && c.chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '.')
+            {
                 return Some(KeyboardCommand::QuickFilterChanged(c.clone()));
             }
         }
@@ -434,7 +498,10 @@ pub fn command_from_key_press_with_shortcuts(
     None
 }
 
-pub fn key_input_from_event(key: keyboard::Key, modifiers: keyboard::Modifiers) -> Option<KeyInput> {
+pub fn key_input_from_event(
+    key: keyboard::Key,
+    modifiers: keyboard::Modifiers,
+) -> Option<KeyInput> {
     let key_kind = match key {
         keyboard::Key::Named(named) => match named {
             keyboard::key::Named::ArrowUp => KeyKind::Named(NamedKey::ArrowUp),
@@ -489,8 +556,14 @@ mod tests {
     fn truncate_long_name_preserves_extension() {
         let result = truncate_name("very_long_filename.txt", 12);
         assert!(result.ends_with(".txt"), "Should preserve .txt: {result}");
-        assert!(result.chars().count() <= 12, "Should be <= 12 chars: {result}");
-        assert!(result.contains('\u{2026}'), "Should contain ellipsis: {result}");
+        assert!(
+            result.chars().count() <= 12,
+            "Should be <= 12 chars: {result}"
+        );
+        assert!(
+            result.contains('\u{2026}'),
+            "Should contain ellipsis: {result}"
+        );
     }
 
     #[test]
@@ -544,15 +617,35 @@ mod tests {
 
     #[test]
     fn rect_intersect_overlapping() {
-        let a = Rectangle { x: 0.0, y: 0.0, width: 10.0, height: 10.0 };
-        let b = Rectangle { x: 5.0, y: 5.0, width: 10.0, height: 10.0 };
+        let a = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        };
+        let b = Rectangle {
+            x: 5.0,
+            y: 5.0,
+            width: 10.0,
+            height: 10.0,
+        };
         assert!(rectangles_intersect(a, b));
     }
 
     #[test]
     fn rect_no_intersect() {
-        let a = Rectangle { x: 0.0, y: 0.0, width: 10.0, height: 10.0 };
-        let b = Rectangle { x: 20.0, y: 20.0, width: 10.0, height: 10.0 };
+        let a = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        };
+        let b = Rectangle {
+            x: 20.0,
+            y: 20.0,
+            width: 10.0,
+            height: 10.0,
+        };
         assert!(!rectangles_intersect(a, b));
     }
 
@@ -570,11 +663,99 @@ mod tests {
     #[test]
     fn column_specs_ensures_fill() {
         let specs = column_specs(&[ViewColumn::Name, ViewColumn::Size]);
-        assert!(matches!(specs[0].width, Length::Fill | Length::FillPortion(_)));
+        assert!(matches!(
+            specs[0].width,
+            Length::Fill | Length::FillPortion(_)
+        ));
     }
 
     #[test]
     fn column_specs_empty() {
         assert!(column_specs(&[]).is_empty());
+    }
+}
+
+/// Largest text file the preview, diff and hex views will load.
+///
+/// Reads here used to be unbounded: opening an 8 GB log allocated 8 GB before
+/// the UI could refuse it.
+pub(super) const MAX_TEXT_PREVIEW_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Largest file the animated-image preview will load.
+pub(super) const MAX_PREVIEW_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Read at most `max_bytes` of a file, refusing outright anything larger.
+///
+/// The size is checked before allocating, so a huge file costs one `stat` and
+/// not a multi-gigabyte buffer. `Read::take` still bounds the copy in case the
+/// file grows between the check and the read.
+pub(super) fn read_file_capped(path: &std::path::Path, max_bytes: u64) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+
+    let metadata = std::fs::metadata(path).map_err(|error| error.to_string())?;
+    if metadata.len() > max_bytes {
+        return Err(format!(
+            "fichier trop volumineux ({}) — limite {}",
+            format_bytes(metadata.len()),
+            format_bytes(max_bytes)
+        ));
+    }
+
+    let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut buffer = Vec::with_capacity(metadata.len() as usize);
+    file.take(max_bytes)
+        .read_to_end(&mut buffer)
+        .map_err(|error| error.to_string())?;
+    Ok(buffer)
+}
+
+/// Same as [`read_file_capped`], decoding the result as UTF-8 lossily.
+pub(super) fn read_text_capped(path: &std::path::Path, max_bytes: u64) -> Result<String, String> {
+    let bytes = read_file_capped(path, max_bytes)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[cfg(test)]
+mod capped_read_tests {
+    use super::*;
+
+    /// Regression: preview and diff used to `read` the whole file, so an 8 GB
+    /// log allocated 8 GB before anything could refuse it.
+    #[test]
+    fn a_file_over_the_cap_is_refused_without_reading_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("big.log");
+        std::fs::write(&path, vec![b'x'; 4096]).unwrap();
+
+        let error = read_file_capped(&path, 1024).unwrap_err();
+
+        assert!(error.contains("trop volumineux"), "message : {error}");
+    }
+
+    #[test]
+    fn a_file_under_the_cap_is_read_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("small.txt");
+        std::fs::write(&path, b"bonjour").unwrap();
+
+        assert_eq!(read_file_capped(&path, 1024).unwrap(), b"bonjour");
+        assert_eq!(read_text_capped(&path, 1024).unwrap(), "bonjour");
+    }
+
+    #[test]
+    fn a_missing_file_reports_an_error_rather_than_an_empty_result() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_text_capped(&dir.path().join("absent"), 1024).is_err());
+    }
+
+    #[test]
+    fn invalid_utf8_is_decoded_lossily_not_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("latin1.txt");
+        std::fs::write(&path, [0x61, 0xFF, 0x62]).unwrap();
+
+        let text = read_text_capped(&path, 1024).unwrap();
+
+        assert!(text.starts_with('a') && text.ends_with('b'));
     }
 }

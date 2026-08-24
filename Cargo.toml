@@ -10,16 +10,23 @@ license = "MIT"
 keywords = ["file-explorer", "gui", "iced", "filesystem"]
 categories = ["gui", "filesystem"]
 
+[features]
+# `XionApp::new_for_test` and the `*_for_test` accessors are compiled out of
+# release builds: they only exist under `cfg(test)` or this feature. Integration
+# tests live outside the crate, where `cfg(test)` does not apply, so the
+# self dev-dependency below turns the feature on for them alone.
+test-util = []
+
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-directories = "5.0"
+directories = "6.0"
 iced = { version = "0.14", features = ["image", "wgpu", "tokio"] }
 tokio = { version = "1", features = ["rt", "time", "sync", "process", "io-util"] }
 image = { version = "0.25", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
-notify = "6.1"
+notify = "8"
 serde = { version = "1.0", features = ["derive"] }
-sysinfo = "0.30"
-toml = "0.8"
+sysinfo = "0.39"
+toml = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 trash = "5"
@@ -36,17 +43,43 @@ ignore = "0.4"
 encoding_rs = "0.8"
 suppaftp = { version = "6", features = ["native-tls"] }
 mdns-sd = "0.11"
+portable-pty = "0.9.0"
+vte = "0.15.0"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_NetworkManagement_WNet", "Win32_Foundation"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_WNet",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
+[dev-dependencies]
+# Tests must never touch the user's real config directory or home; every test
+# that needs a filesystem gets a tempdir that cleans itself up.
+tempfile = "3"
+# A package may dev-depend on itself: this is what turns `test-util` on for
+# tests/ without ever enabling it for the shipped binary.
+xion = { path = ".", features = ["test-util"] }
+
+# Deliberately NOT under [target.'cfg(windows)'.build-dependencies]: build
+# dependencies are resolved for the HOST, so gating them on Windows would make
+# the crate unavailable exactly when cross-compiling Linux -> Windows. build.rs
+# gates the call itself on CARGO_CFG_TARGET_OS instead.
 [build-dependencies]
 embed-resource = "3"
 
 [profile.release]
 lto = true
 codegen-units = 1
-panic = "abort"
+# No `panic = "abort"`: pdf-extract, zip, sevenz-rust, image and syntect all
+# parse attacker-supplied files inside `spawn_blocking`, and none of them
+# promises to be panic-free. Aborting turned a malformed thumbnail into the loss
+# of every tab, the terminal session and any running copy; unwinding lets tokio
+# surface the panic as a JoinError and the preview simply fails.
 strip = true
 
 [profile.dev]

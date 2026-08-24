@@ -1,0 +1,6 @@
+[build]
+# Cap parallel codegen. Cargo defaults to one job per logical CPU, which on a
+# 16-core machine means 16 rustc processes each able to hold a gigabyte or more
+# — enough to push the box into swap while the editor and the app are running.
+# Leaving headroom costs a little wall-clock and keeps the machine usable.
+jobs = 6

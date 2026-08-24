@@ -298,7 +298,10 @@ impl XionApp {
             spacing,
             typography,
         } = ctx;
-        let column_specs = column_specs(&self.state.config.view.columns);
+        let column_specs = column_specs(
+            &self.state.config.view.columns,
+            &self.state.config.column_widths,
+        );
         let row_height = self.state.config.view.row_height;
         let list_header_visible = visible;
 
@@ -317,9 +320,9 @@ impl XionApp {
                     ""
                 };
                 let label = if sort_indicator.is_empty() {
-                    spec.label.to_string()
+                    std::borrow::Cow::Borrowed(spec.label)
                 } else {
-                    format!("{} {}", spec.label, sort_indicator)
+                    std::borrow::Cow::Owned(format!("{} {}", spec.label, sort_indicator))
                 };
                 let header_text = text(label)
                     .size(typography.caption)
@@ -348,7 +351,7 @@ impl XionApp {
                 };
                 header_row = header_row.push(container(cell).width(spec.width).align_x(spec.align));
                 // Feature H: resize handle between columns
-                let col_name = spec.label.to_string();
+                let col_name = spec.column.key();
                 let is_resizing = self
                     .column_resize_state
                     .as_ref()

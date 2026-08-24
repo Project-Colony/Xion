@@ -46,11 +46,13 @@ impl XionApp {
                 if let Some(ref resize) = self.column_resize_state {
                     let delta = position.x - resize.start_x;
                     let new_width = (resize.start_width + delta).max(30.0);
-                    if let Some(width) = self.state.config.column_widths.get_mut(&resize.column) {
+                    if let Some(width) = self.state.config.column_widths.get_mut(resize.column) {
                         *width = new_width;
                     } else {
-                        let column = resize.column.clone();
-                        self.state.config.column_widths.insert(column, new_width);
+                        self.state
+                            .config
+                            .column_widths
+                            .insert(resize.column.to_string(), new_width);
                     }
                 }
                 if self.pane_resize.tree_resizing {
@@ -398,7 +400,7 @@ impl XionApp {
                     .state
                     .config
                     .column_widths
-                    .get(&column)
+                    .get(column)
                     .copied()
                     .unwrap_or(150.0);
                 let start_x = self.cursor_position.map(|p| p.x).unwrap_or(0.0);
@@ -416,7 +418,7 @@ impl XionApp {
                 self.state
                     .config
                     .column_widths
-                    .insert(column, width.max(30.0));
+                    .insert(column.to_string(), width.max(30.0));
             }
             // ── Feature J: Shell Switcher ─────────────────────────────────────
             UiMessage::DropOnPath(path) => {

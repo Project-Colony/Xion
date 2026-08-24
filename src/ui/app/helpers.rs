@@ -3,6 +3,7 @@
 //! This module contains stateless helper functions used by the main application
 //! for formatting, layout calculations, tree building, and keyboard mapping.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -129,15 +130,28 @@ pub fn list_options_from_config(
 
 // ── Column spec ───────────────────────────────────────────────────────────────
 
-pub fn column_specs(columns: &[ViewColumn]) -> Vec<ColumnSpec> {
+/// Builds the column layout, applying any width the user dragged a handle to.
+///
+/// `widths` used to be write-only: dragging a resize handle stored a number in
+/// the config that nothing ever read back, so the column never moved.
+pub fn column_specs(columns: &[ViewColumn], widths: &HashMap<String, f32>) -> Vec<ColumnSpec> {
     let mut specs: Vec<ColumnSpec> = columns.iter().map(ColumnSpec::from_column).collect();
+
+    for spec in &mut specs {
+        if let Some(&width) = widths.get(spec.column.key()) {
+            spec.width = Length::Fixed(width);
+        }
+    }
 
     let has_fill = specs
         .iter()
         .any(|spec| matches!(spec.width, Length::Fill | Length::FillPortion(_)));
     if !has_fill {
-        if let Some(first) = specs.first_mut() {
-            first.width = Length::Fill;
+        // Something has to absorb the leftover space or the table stops short of
+        // the pane edge. The last column takes it, so a width the user chose for
+        // an earlier column survives.
+        if let Some(last) = specs.last_mut() {
+            last.width = Length::Fill;
         }
     }
 
@@ -694,7 +708,7 @@ mod tests {
 
     #[test]
     fn column_specs_ensures_fill() {
-        let specs = column_specs(&[ViewColumn::Name, ViewColumn::Size]);
+        let specs = column_specs(&[ViewColumn::Name, ViewColumn::Size], &HashMap::new());
         assert!(matches!(
             specs[0].width,
             Length::Fill | Length::FillPortion(_)
@@ -703,7 +717,25 @@ mod tests {
 
     #[test]
     fn column_specs_empty() {
-        assert!(column_specs(&[]).is_empty());
+        assert!(column_specs(&[], &HashMap::new()).is_empty());
+    }
+
+    #[test]
+    fn column_specs_apply_stored_width() {
+        let mut widths = HashMap::new();
+        widths.insert("Name".to_string(), 220.0);
+        let specs = column_specs(&[ViewColumn::Name, ViewColumn::Size], &widths);
+        assert!(matches!(specs[0].width, Length::Fixed(w) if w == 220.0));
+    }
+
+    #[test]
+    fn column_specs_fill_falls_on_the_last_column() {
+        // Resizing the only flexible column must not be undone by the fallback.
+        let mut widths = HashMap::new();
+        widths.insert("Name".to_string(), 220.0);
+        let specs = column_specs(&[ViewColumn::Name, ViewColumn::Size], &widths);
+        assert!(matches!(specs[0].width, Length::Fixed(_)));
+        assert!(matches!(specs[1].width, Length::Fill));
     }
 }
 

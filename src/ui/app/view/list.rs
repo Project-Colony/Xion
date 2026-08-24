@@ -37,7 +37,10 @@ impl XionApp {
             spacing,
             typography,
         } = ctx;
-        let column_specs = column_specs(&self.state.config.view.columns);
+        let column_specs = column_specs(
+            &self.state.config.view.columns,
+            &self.state.config.column_widths,
+        );
         let view_mode = self.state.config.view.mode;
         let row_height = self.state.config.view.row_height;
         let cx = RowCtx {

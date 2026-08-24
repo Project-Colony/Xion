@@ -63,8 +63,6 @@ impl XionApp {
         // Accordion collapsed state per section name
         let sidebar = self.render_sidebar(ctx);
 
-        let preview_body = self.render_preview_body(ctx, display_entries);
-
         let preview_progress = self.preview_anim_progress;
         let preview_visible = preview_progress > 0.001;
 
@@ -125,6 +123,10 @@ impl XionApp {
         }
 
         if preview_visible {
+            // Built here, not above: the panel is fully collapsed most of the
+            // time, and constructing it cost a scan of the entries plus a dozen
+            // allocations on every rebuild for something nothing drew.
+            let preview_body = self.render_preview_body(ctx, display_entries);
             let animated_width = self.pane_resize.preview_width * preview_progress;
 
             let preview_resize_bar: Element<'_, UiMessage> = mouse_area(

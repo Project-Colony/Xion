@@ -3,6 +3,7 @@
 //! Moved out of `render_sidebar`, which now only stacks what these return.
 //! The three shared helpers live here too, since nothing else uses them.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 use iced::widget::button::Status as ButtonStatus;
@@ -30,17 +31,16 @@ use crate::ui::app::types::*;
 /// One clickable sidebar entry.
 pub(super) fn sidebar_button<'a>(
     ctx: ViewCtx,
-    icon: &str,
-    label: &str,
+    icon: &'a str,
+    label: impl Into<Cow<'a, str>>,
     target: Option<PathBuf>,
 ) -> Element<'a, UiMessage> {
+    let label: Cow<'a, str> = label.into();
     let ViewCtx {
         colors,
         spacing,
         typography,
     } = ctx;
-    let icon = icon.to_string();
-    let label = label.to_string();
     let content: Element<'_, UiMessage> = row![
         text(icon).size(typography.body).font(typography.body_font),
         text(label).size(typography.body).font(typography.body_font)
@@ -115,7 +115,7 @@ pub(super) fn section_header<'a>(
             ..Default::default()
         },
     )
-    .on_press(UiMessage::ToggleSidebarSection(label.to_string()))
+    .on_press(UiMessage::ToggleSidebarSection(label))
     .into()
 }
 
@@ -316,7 +316,7 @@ impl XionApp {
             for (icon, label, path) in &user_folder_entries {
                 if path.is_some() {
                     quick_access =
-                        quick_access.push(sidebar_button(ctx, icon, label, path.clone()));
+                        quick_access.push(sidebar_button(ctx, icon, *label, path.clone()));
                 }
             }
         }
@@ -359,7 +359,7 @@ impl XionApp {
                     .on_press(UiMessage::RemoveFavorite(fav_path));
                     favorites_section = favorites_section.push(
                         row![
-                            sidebar_button(ctx, icons::FOLDER, &label, Some(favorite.clone()),),
+                            sidebar_button(ctx, icons::FOLDER, label, Some(favorite.clone())),
                             remove_btn,
                         ]
                         .align_y(Alignment::Center),

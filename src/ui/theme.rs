@@ -83,8 +83,24 @@ pub mod icons {
     pub const FILE_DB: &str = "\u{f01bc}"; // 󰆼 nf-md-database
 
     /// Returns the Nerd Font icon for a file based on its extension.
+    ///
+    /// The lowercase copy this used to allocate was made once per visible row,
+    /// on every rebuild of the widget tree, to look up a table of constants.
+    /// Extensions are ASCII in practice; a stack buffer covers every entry in
+    /// the table below (longest is `properties`, 10 bytes) and anything longer
+    /// cannot match anyway.
     pub fn icon_for_extension(ext: &str) -> &'static str {
-        match ext.to_ascii_lowercase().as_str() {
+        const MAX_EXTENSION: usize = 16;
+        if ext.len() > MAX_EXTENSION || !ext.is_ascii() {
+            return FILE;
+        }
+        let mut buffer = [0u8; MAX_EXTENSION];
+        buffer[..ext.len()].copy_from_slice(ext.as_bytes());
+        buffer[..ext.len()].make_ascii_lowercase();
+        // SAFETY-free: the bytes came from a `&str` and lowercasing ASCII keeps
+        // it valid UTF-8, so this cannot fail.
+        let lowered = std::str::from_utf8(&buffer[..ext.len()]).unwrap_or("");
+        match lowered {
             // Code
             "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "c" | "cpp" | "h" | "hpp" | "cs"
             | "java" | "go" | "rb" | "php" | "swift" | "kt" | "lua" | "zig" | "asm" | "sh"

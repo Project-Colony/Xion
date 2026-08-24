@@ -645,7 +645,7 @@ impl RecentsService {
 
 #[derive(Debug)]
 pub(super) struct ColumnResizeState {
-    pub(super) column: String,
+    pub(super) column: &'static str,
     pub(super) start_x: f32,
     pub(super) start_width: f32,
 }

@@ -295,7 +295,7 @@ pub enum UiMessage {
     AddressEditCancel,
     ToggleDarkMode,
     /// Fold/unfold a named sidebar section (accordion).
-    ToggleSidebarSection(String),
+    ToggleSidebarSection(&'static str),
     /// Switch between compact (22 px) and normal (32 px) list row height.
     ToggleCompactMode,
     TextPreviewLoaded {
@@ -395,9 +395,9 @@ pub enum UiMessage {
     NavigateToRecent,
     ClearRecents,
     // Feature H: Column Resizing
-    ColumnResizeStart(String),
+    ColumnResizeStart(&'static str),
     ColumnResizeEnd,
-    ColumnResized(String, f32),
+    ColumnResized(&'static str, f32),
     // Feature I: Terminal Tabs
     TerminalAddTab,
     TerminalCloseTab(usize),

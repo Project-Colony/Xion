@@ -304,7 +304,7 @@ impl XionApp {
             }
             // ── #12: External drag & drop from Windows Explorer ──────────
             UiMessage::ToggleSidebarSection(section) => {
-                if !self.sidebar_collapsed.remove(&section) {
+                if !self.sidebar_collapsed.remove(section) {
                     self.sidebar_collapsed.insert(section);
                 }
             }

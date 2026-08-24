@@ -39,24 +39,52 @@ impl XionApp {
 
         let selection = &self.state.navigation.selection;
 
-        // Count folders and files separately for status bar
-        let (dir_count, file_count) = {
-            let items_iter: Box<dyn Iterator<Item = &FsEntry>> =
-                if let Some(indices) = &filtered_indices {
-                    Box::new(indices.iter().filter_map(|&i| display_entries.get(i)))
-                } else {
-                    Box::new(display_entries.items.iter().flatten())
-                };
+        // Folder/file counts and the size of the selection, in a single pass.
+        // These used to be two independent walks of every loaded entry — plus a
+        // boxed trait-object iterator whose per-item dynamic dispatch defeated
+        // any chance of the counting loop being vectorised — repeated on every
+        // rebuild of the widget tree.
+        let want_selection_size = !selection.selected.is_empty();
+        // The counts describe the filtered view, but the selection may hold
+        // entries a filter is currently hiding and its reported size has to
+        // keep covering all of them — so the two only share a pass when no
+        // filter is active, which is the usual case.
+        let fuse_selection = want_selection_size && filtered_indices.is_none();
+        let (dir_count, file_count, mut selected_size) = {
             let mut dirs = 0usize;
             let mut files = 0usize;
-            for entry in items_iter {
-                match entry.entry_type {
-                    FsEntryType::Directory => dirs += 1,
-                    _ => files += 1,
+            let mut size = 0u64;
+            {
+                let mut tally = |entry: &FsEntry| {
+                    if entry.entry_type == FsEntryType::Directory {
+                        dirs += 1;
+                    } else {
+                        files += 1;
+                        if fuse_selection && selection.selected.contains(&entry.path) {
+                            size += entry.metadata.size;
+                        }
+                    }
+                };
+                match &filtered_indices {
+                    Some(indices) => indices
+                        .iter()
+                        .filter_map(|&i| display_entries.get(i))
+                        .for_each(&mut tally),
+                    None => display_entries.items.iter().flatten().for_each(&mut tally),
                 }
             }
-            (dirs, files)
+            (dirs, files, size)
         };
+        if want_selection_size && !fuse_selection {
+            selected_size = display_entries
+                .items
+                .iter()
+                .flatten()
+                .filter(|entry| entry.entry_type != FsEntryType::Directory)
+                .filter(|entry| selection.selected.contains(&entry.path))
+                .map(|entry| entry.metadata.size)
+                .sum();
+        }
         let entry_count_label = {
             let base = match (dir_count, file_count) {
                 (0, 0) => "aucun élément".to_string(),
@@ -95,22 +123,9 @@ impl XionApp {
             }
         };
 
-        let selection_part = if selection.selected.is_empty() {
+        let selection_part = if !want_selection_size {
             String::new()
         } else {
-            // One pass over the entries, testing membership in the selection
-            // set, instead of one full scan of the entries per selected path.
-            // Selecting everything in a 5 000-file directory was 25 million
-            // comparisons per rebuild.
-            let selected_size: u64 = display_entries
-                .items
-                .iter()
-                .flatten()
-                .filter(|entry| entry.entry_type != FsEntryType::Directory)
-                .filter(|entry| selection.selected.contains(&entry.path))
-                .map(|entry| entry.metadata.size)
-                .sum();
-
             let size_suffix = if selected_size > 0 {
                 format!(
                     " ({})",

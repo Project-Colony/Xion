@@ -38,6 +38,23 @@ pub enum ViewColumn {
     Modified,
 }
 
+impl ViewColumn {
+    /// Stable key under which this column's width is stored.
+    ///
+    /// Deliberately *not* the displayed label: widths used to be keyed by the
+    /// French header text ("Nom", "Taille", "Modifié") while the defaults below
+    /// were written in English, so three of the four defaults were never read
+    /// and those columns silently started at the 150px fallback.
+    pub fn key(&self) -> &'static str {
+        match self {
+            Self::Name => "Name",
+            Self::Type => "Type",
+            Self::Size => "Size",
+            Self::Modified => "Modified",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
     List,

@@ -128,7 +128,7 @@ pub struct XionApp {
     // Feature G: Recent Files
     recents: RecentsService,
     // UX: Sidebar accordion (collapsed section names)
-    sidebar_collapsed: HashSet<String>,
+    sidebar_collapsed: HashSet<&'static str>,
     // Feature H: Column Resizing
     column_resize_state: Option<ColumnResizeState>,
     // Feature K: Hex Viewer

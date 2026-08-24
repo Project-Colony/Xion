@@ -35,8 +35,7 @@ impl XionApp {
             ClipboardKind::Copy => "Copie",
             ClipboardKind::Cut => "Déplacement",
         };
-        self.clipboard.kind = Some(kind);
-        self.clipboard.items = items;
+        self.clipboard.set(kind, items);
         self.last_action = Some(format!(
             "{} : {} élément(s)",
             label,

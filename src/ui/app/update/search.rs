@@ -56,8 +56,12 @@ impl XionApp {
                             if self.search_index_cache.len() >= MAX_SEARCH_CACHE {
                                 self.search_index_cache.pop_front();
                             }
+                            // One allocation, two owners: the LRU entry and the
+                            // live index used to be two full copies of every
+                            // indexed entry.
+                            let index = std::sync::Arc::new(index);
                             self.search_index_cache
-                                .push_back((path.clone(), index.clone()));
+                                .push_back((path.clone(), std::sync::Arc::clone(&index)));
                             self.search.index = Some(index);
                             self.search.indexing = false;
                             self.update_search_index_matches();

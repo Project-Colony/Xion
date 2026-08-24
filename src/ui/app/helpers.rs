@@ -152,13 +152,32 @@ pub fn is_gif_preview(preview: &Thumbnail) -> bool {
         || preview.bytes.starts_with(b"GIF89a")
 }
 
+/// Longest animation kept in memory.
+///
+/// Every retained frame is an uncompressed RGBA buffer. Without a cap, a
+/// 500x500 GIF of 100 frames materialised 95 MiB of handles for one preview.
+const MAX_ANIMATED_FRAMES: usize = 60;
+
+/// Largest edge an animation frame is scaled to before becoming a handle.
+///
+/// Frames used to be converted at their source resolution even though the
+/// preview panel draws them a few hundred pixels wide.
+const MAX_ANIMATED_EDGE: u32 = 256;
+
 pub fn build_animated_preview(path: PathBuf, preview: &Thumbnail) -> Option<AnimatedPreview> {
     use ::image::AnimationDecoder;
     use ::image::codecs::gif::GifDecoder;
+    use ::image::imageops::FilterType;
     use std::io::Cursor;
 
     let decoder = GifDecoder::new(Cursor::new(preview.bytes.as_slice())).ok()?;
-    let frames = decoder.into_frames().collect_frames().ok()?;
+    // `collect_frames` would decode the whole animation before we could refuse
+    // any of it; taking from the iterator stops at the cap instead.
+    let frames: Vec<_> = decoder
+        .into_frames()
+        .take(MAX_ANIMATED_FRAMES)
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
     if frames.is_empty() {
         return None;
     }
@@ -168,6 +187,19 @@ pub fn build_animated_preview(path: PathBuf, preview: &Thumbnail) -> Option<Anim
         .map(|frame| {
             let delay = gif_frame_delay(&frame);
             let buffer = frame.into_buffer();
+            let (width, height) = buffer.dimensions();
+            // Scale down before allocating the handle, not after: the preview
+            // panel never draws these larger than a few hundred pixels.
+            let buffer = if width.max(height) > MAX_ANIMATED_EDGE {
+                ::image::imageops::resize(
+                    &buffer,
+                    (width * MAX_ANIMATED_EDGE / width.max(height)).max(1),
+                    (height * MAX_ANIMATED_EDGE / width.max(height)).max(1),
+                    FilterType::Triangle,
+                )
+            } else {
+                buffer
+            };
             let (width, height) = buffer.dimensions();
             let handle = iced::widget::image::Handle::from_rgba(width, height, buffer.into_raw());
             AnimatedFrame { handle, delay }
@@ -713,6 +745,81 @@ pub(super) fn read_file_capped(path: &std::path::Path, max_bytes: u64) -> Result
 pub(super) fn read_text_capped(path: &std::path::Path, max_bytes: u64) -> Result<String, String> {
     let bytes = read_file_capped(path, max_bytes)?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[cfg(test)]
+mod animated_preview_tests {
+    use super::*;
+
+    /// Encode a GIF of `frames` frames at `size` x `size`.
+    fn gif(frames: usize, size: u32) -> Vec<u8> {
+        use ::image::codecs::gif::GifEncoder;
+        use ::image::{Delay, Frame, RgbaImage};
+        use std::time::Duration;
+
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = GifEncoder::new(&mut bytes);
+            let made: Vec<Frame> = (0..frames)
+                .map(|index| {
+                    let shade = (index % 256) as u8;
+                    let image =
+                        RgbaImage::from_pixel(size, size, ::image::Rgba([shade, 0, 0, 255]));
+                    Frame::from_parts(
+                        image,
+                        0,
+                        0,
+                        Delay::from_saturating_duration(Duration::from_millis(40)),
+                    )
+                })
+                .collect();
+            encoder.encode_frames(made).unwrap();
+        }
+        bytes
+    }
+
+    /// Regression: every frame used to become an RGBA handle at source
+    /// resolution, with no cap. A 500x500 animation of 100 frames materialised
+    /// 95 MiB for one preview.
+    #[test]
+    fn frame_count_is_capped() {
+        let preview = Thumbnail::new(
+            gif(MAX_ANIMATED_FRAMES + 25, 8),
+            Some("image/gif".to_string()),
+        );
+        let animated = build_animated_preview(std::path::PathBuf::from("/tmp/a.gif"), &preview)
+            .expect("l'animation doit être construite");
+
+        assert_eq!(animated.frames.len(), MAX_ANIMATED_FRAMES);
+    }
+
+    #[test]
+    fn a_short_animation_keeps_all_its_frames() {
+        let preview = Thumbnail::new(gif(5, 8), Some("image/gif".to_string()));
+        let animated = build_animated_preview(std::path::PathBuf::from("/tmp/a.gif"), &preview)
+            .expect("l'animation doit être construite");
+
+        assert_eq!(animated.frames.len(), 5);
+    }
+
+    /// Frames larger than the preview panel are scaled before allocation.
+    #[test]
+    fn oversized_frames_are_scaled_down() {
+        let big = MAX_ANIMATED_EDGE * 2;
+        let preview = Thumbnail::new(gif(2, big), Some("image/gif".to_string()));
+        let animated = build_animated_preview(std::path::PathBuf::from("/tmp/a.gif"), &preview)
+            .expect("l'animation doit être construite");
+
+        // The handle carries its dimensions; a scaled frame is at most the cap.
+        for frame in &animated.frames {
+            if let iced::widget::image::Handle::Rgba { width, height, .. } = &frame.handle {
+                assert!(
+                    *width <= MAX_ANIMATED_EDGE && *height <= MAX_ANIMATED_EDGE,
+                    "trame non redimensionnée : {width}x{height}"
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]

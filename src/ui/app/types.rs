@@ -193,7 +193,26 @@ pub(super) enum ClipboardKind {
 #[derive(Debug, Default, Clone)]
 pub(super) struct ClipboardState {
     pub(super) kind: Option<ClipboardKind>,
+    /// Ordered, because file operations report their results in this order.
     pub(super) items: Vec<PathBuf>,
+    /// The same paths, for membership tests. Every visible row asks "am I cut?"
+    /// on every rebuild; against the Vec that was a linear scan per row, so a
+    /// 5 000-path cut cost 200 000 comparisons per frame.
+    lookup: std::collections::HashSet<PathBuf>,
+}
+
+impl ClipboardState {
+    /// Replace the contents, keeping the ordered list and the lookup in step.
+    pub(super) fn set(&mut self, kind: ClipboardKind, items: Vec<PathBuf>) {
+        self.lookup = items.iter().cloned().collect();
+        self.items = items;
+        self.kind = Some(kind);
+    }
+
+    /// Whether `path` is in the clipboard as a cut.
+    pub(super) fn is_cut(&self, path: &std::path::Path) -> bool {
+        matches!(self.kind, Some(ClipboardKind::Cut)) && self.lookup.contains(path)
+    }
 }
 
 // ── Rename dialog ─────────────────────────────────────────────────────────────
@@ -272,7 +291,9 @@ impl FileWatcherHandle {
 #[derive(Debug, Default)]
 pub(super) struct SearchState {
     pub(super) input: String,
-    pub(super) index: Option<SearchIndex>,
+    /// Shared: the LRU below holds the same allocation, so promoting a cached
+    /// index is a refcount bump instead of a full copy of every entry.
+    pub(super) index: Option<std::sync::Arc<SearchIndex>>,
     pub(super) index_path: Option<PathBuf>,
     pub(super) indexing: bool,
     pub(super) matches: Option<usize>,

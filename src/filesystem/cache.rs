@@ -4,7 +4,7 @@ use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::filesystem::{FsEntry, FsMetadata};
+use crate::filesystem::FsEntry;
 
 #[derive(Debug)]
 pub(crate) struct CacheEntry<V> {
@@ -93,31 +93,6 @@ where
                 self.entries.remove(&key);
             }
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct MetadataCache {
-    inner: TimedCache<PathBuf, FsMetadata>,
-}
-
-impl MetadataCache {
-    pub fn new(max_entries: usize, ttl: Duration) -> Self {
-        Self {
-            inner: TimedCache::new(max_entries, ttl),
-        }
-    }
-
-    pub fn get(&mut self, path: &Path) -> Option<&FsMetadata> {
-        self.inner.get(path)
-    }
-
-    pub fn insert(&mut self, path: PathBuf, metadata: FsMetadata) {
-        self.inner.insert(path, metadata);
-    }
-
-    pub fn clear(&mut self) {
-        self.inner.clear();
     }
 }
 
@@ -291,6 +266,8 @@ mod tests {
 #[cfg(test)]
 mod directory_cache_tests {
     use super::*;
+    // Only the tests build metadata now that MetadataCache is gone.
+    use crate::filesystem::FsMetadata;
     use crate::filesystem::{FsEntryType, ListOptions};
 
     fn entry(name: &str) -> FsEntry {

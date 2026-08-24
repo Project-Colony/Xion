@@ -289,13 +289,6 @@ impl SearchService {
                 break;
             }
 
-            let name_lower = entry.name.to_lowercase();
-            let extension_lower = entry
-                .path
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.to_lowercase());
-
             let is_dir = entry.entry_type == FsEntryType::Directory;
             let dir_path = if options.recursive && is_dir {
                 Some(entry.path.clone())
@@ -303,11 +296,7 @@ impl SearchService {
                 None
             };
 
-            output.push(SearchEntry {
-                entry,
-                name_lower,
-                extension_lower,
-            });
+            output.push(SearchEntry { entry });
 
             if let Some(dir_path) = dir_path {
                 if let Err(e) = self.index_dir_with_options(
@@ -344,12 +333,14 @@ impl SearchService {
         }
 
         if let Some(text) = normalized_text {
-            let haystack = if query.case_sensitive {
-                &entry.entry.name
+            let matches = if query.case_sensitive {
+                entry.entry.name.contains(text)
             } else {
-                &entry.name_lower
+                // `normalized_text` is already lowercase; fold the name as we
+                // read it rather than storing a lowercase copy of every name.
+                contains_lowercased(&entry.entry.name, text)
             };
-            if !haystack.contains(text) {
+            if !matches {
                 return false;
             }
         }
@@ -363,7 +354,12 @@ impl SearchService {
                     .and_then(|ext| ext.to_str())
                     .map(|ext| ext.to_string())
             } else {
-                entry.extension_lower.clone()
+                entry
+                    .entry
+                    .path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.to_lowercase())
             };
             let Some(entry_extension) = entry_extension else {
                 return false;
@@ -411,9 +407,48 @@ impl SearchService {
     }
 }
 
+/// One indexed entry.
+///
+/// It used to carry `name_lower` and `extension_lower`: byte-for-byte lowercase
+/// copies of data already in `entry`, 64 extra bytes of heap per entry — 40 % of
+/// the index — to spare a case fold at match time. The comparison now folds on
+/// the fly, which costs nothing to store.
 #[derive(Debug, Clone)]
 struct SearchEntry {
     entry: FsEntry,
-    name_lower: String,
-    extension_lower: Option<String>,
+}
+
+/// Case-insensitive `contains` with no allocation.
+///
+/// `needle` must already be lowercase. ASCII — nearly every file name — takes a
+/// byte scan; anything else folds through `char::to_lowercase` so `ÉCLAIR` still
+/// matches `éclair`. Mirrors the comparator the list filter uses.
+fn contains_lowercased(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    if haystack.is_ascii() && needle.is_ascii() {
+        let hay = haystack.as_bytes();
+        let need = needle.as_bytes();
+        if need.len() > hay.len() {
+            return false;
+        }
+        return hay
+            .windows(need.len())
+            .any(|window| window.eq_ignore_ascii_case(need));
+    }
+    haystack.char_indices().any(|(offset, _)| {
+        let mut folded = haystack[offset..].chars().flat_map(char::to_lowercase);
+        let mut wanted = needle.chars();
+        loop {
+            match wanted.next() {
+                None => return true,
+                Some(expected) => match folded.next() {
+                    None => return false,
+                    Some(actual) if actual != expected => return false,
+                    Some(_) => {}
+                },
+            }
+        }
+    })
 }

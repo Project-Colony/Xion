@@ -1,18 +1,14 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
-
-use tracing::warn;
 
 use crate::core::AppResult;
 use crate::filesystem::{
-    DirectoryCache, DirectoryKey, FileSystem, FsEntry, ListOptions, MetadataCache, Page,
-    PageRequest,
+    DirectoryCache, DirectoryKey, FileSystem, FsEntry, ListOptions, Page, PageRequest,
 };
 
 #[derive(Debug)]
 pub struct DirectoryLoader {
     directory_cache: DirectoryCache,
-    metadata_cache: MetadataCache,
     page_size: usize,
 }
 
@@ -20,7 +16,6 @@ impl DirectoryLoader {
     pub fn new(cache_size: usize, ttl: Duration, page_size: usize) -> Self {
         Self {
             directory_cache: DirectoryCache::new(cache_size, ttl),
-            metadata_cache: MetadataCache::new(cache_size * 4, ttl),
             page_size: page_size.max(1),
         }
     }
@@ -49,7 +44,6 @@ impl DirectoryLoader {
         // 100 000 files therefore re-ran a full `read_dir` plus a full sort for
         // every page: 834 complete listings for one pass down the list.
         let entries = filesystem.list_dir(path, key.options.clone())?;
-        self.cache_metadata(&entries);
         let result = Self::page_from(&entries, page);
         self.directory_cache.insert(key, entries);
 
@@ -83,7 +77,6 @@ impl DirectoryLoader {
 
     pub fn clear(&mut self) {
         self.directory_cache.clear();
-        self.metadata_cache.clear();
     }
 
     /// Invalidate every cached listing for a directory.
@@ -93,27 +86,14 @@ impl DirectoryLoader {
     pub fn invalidate(&mut self, path: &Path) {
         self.directory_cache.remove_path(path);
     }
-
-    pub fn prefetch_metadata(&mut self, filesystem: &dyn FileSystem, paths: &[PathBuf]) {
-        match filesystem.metadata_batch(paths) {
-            Ok(metadata) => {
-                for (path, metadata) in paths.iter().cloned().zip(metadata) {
-                    self.metadata_cache.insert(path, metadata);
-                }
-            }
-            Err(error) => {
-                warn!("prefetch_metadata failed: {error}");
-            }
-        }
-    }
-
-    fn cache_metadata(&mut self, entries: &[FsEntry]) {
-        for entry in entries {
-            self.metadata_cache
-                .insert(entry.path.clone(), entry.metadata.clone());
-        }
-    }
 }
+
+// `MetadataCache` used to live here, populated on every listing and cleared on
+// every invalidation — and never read once: `MetadataCache::get` had no caller
+// anywhere in the crate. A 10 000-entry listing paid 20 000 allocations to
+// clone a `PathBuf` and an `FsMetadata` that the `FsEntry` in the directory
+// cache already held, then threw them away. Removed rather than wired up: the
+// metadata is already one dereference away.
 
 #[cfg(test)]
 mod tests {

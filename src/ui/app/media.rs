@@ -13,6 +13,14 @@ use super::XionApp;
 
 impl XionApp {
     pub(in crate::ui::app) fn request_visible_thumbnails(&mut self) -> Task<UiMessage> {
+        // The only reader of `media.thumbnail_handles` is the grid tile
+        // builder, behind `matches!(view_mode, ViewMode::Grid)`. In list mode —
+        // the default — every decode was thrown away: up to 40 concurrent
+        // `spawn_blocking` image decodes per navigation, for pixels nothing
+        // would ever draw.
+        if !matches!(self.state.config.view.mode, crate::core::ViewMode::Grid) {
+            return Task::none();
+        }
         let thumbnail_size = self.state.config.view.thumbnail_size;
 
         // Resolve the on-screen rows first and copy out their paths: everything

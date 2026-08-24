@@ -172,7 +172,7 @@ impl XionApp {
             };
             // Move to back (most recently used)
             self.search_index_cache
-                .push_back((path.clone(), cached_index.clone()));
+                .push_back((path.clone(), std::sync::Arc::clone(&cached_index)));
             self.search.index = Some(cached_index);
             self.search.matches = None;
             self.search.index_path = Some(path);

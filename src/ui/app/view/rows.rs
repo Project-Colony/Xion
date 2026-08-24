@@ -22,7 +22,6 @@ use crate::ui::app::ColumnSpec;
 use crate::ui::app::helpers::{
     entry_type_label, format_entry_size, format_modified, truncate_name,
 };
-use crate::ui::app::types::*;
 
 /// Everything the row builders need beyond `&self`, resolved once per frame.
 ///
@@ -151,8 +150,7 @@ impl XionApp {
                                 .color(color)
                                 .into()
                         });
-                    let is_cut = matches!(self.clipboard.kind, Some(ClipboardKind::Cut))
-                        && self.clipboard.items.contains(&entry.path);
+                    let is_cut = self.clipboard.is_cut(&entry.path);
                     let mut name_row = row![self.entry_leading(cx, entry)]
                         .spacing(spacing.sm)
                         .align_y(Alignment::Center);
@@ -293,7 +291,7 @@ impl XionApp {
             );
         }
         name_row = name_row.push(
-            text(grid_name.into_owned())
+            text(grid_name)
                 .size(typography.caption)
                 .font(typography.caption_font),
         );

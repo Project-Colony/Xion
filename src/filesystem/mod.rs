@@ -9,7 +9,7 @@ pub mod watcher;
 pub use access::{
     EntryFilter, FileSystem, FsEntry, FsEntryType, ListOptions, LocalFileSystem, SortKey, SortOrder,
 };
-pub use cache::{DirectoryCache, DirectoryKey, MetadataCache, TimedCache};
+pub use cache::{DirectoryCache, DirectoryKey, TimedCache};
 pub use metadata::FsMetadata;
 pub use operations::{FileOperationKind, LocalFileOperations, OperationFailure, OperationReport};
 pub use paging::{Page, PageRequest};

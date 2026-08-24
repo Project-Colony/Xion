@@ -92,10 +92,41 @@ pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 /// let options = ListOptions::default();
 /// let ordering = compare_entries(&entry_a, &entry_b, &options);
 /// ```
-pub fn compare_entries(left: &FsEntry, right: &FsEntry, options: &ListOptions) -> Ordering {
+/// What ordering needs to know about an entry.
+///
+/// Two types get sorted by exactly the same rules: `FsEntry`, and the lighter
+/// stub the local listing builds before it has read any metadata. The
+/// comparator existed twice, once for each, differing only in how it reached
+/// the size and the date — which is to say, in nothing that ordering is about.
+pub trait Sortable {
+    fn entry_type(&self) -> FsEntryType;
+    fn name(&self) -> &str;
+    /// `None` when the metadata has not been read yet.
+    fn modified(&self) -> Option<std::time::SystemTime>;
+    /// `None` when the metadata has not been read yet.
+    fn size(&self) -> Option<u64>;
+}
+
+impl Sortable for FsEntry {
+    fn entry_type(&self) -> FsEntryType {
+        self.entry_type
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn modified(&self) -> Option<std::time::SystemTime> {
+        self.metadata.modified
+    }
+    fn size(&self) -> Option<u64> {
+        Some(self.metadata.size)
+    }
+}
+
+/// Orders two entries by the rules in `options`.
+pub fn compare<T: Sortable + ?Sized>(left: &T, right: &T, options: &ListOptions) -> Ordering {
     // Handle directories-first sorting
-    if options.directories_first && left.entry_type != right.entry_type {
-        return match (left.entry_type, right.entry_type) {
+    if options.directories_first && left.entry_type() != right.entry_type() {
+        return match (left.entry_type(), right.entry_type()) {
             (FsEntryType::Directory, _) => Ordering::Less,
             (_, FsEntryType::Directory) => Ordering::Greater,
             _ => Ordering::Equal,
@@ -104,9 +135,9 @@ pub fn compare_entries(left: &FsEntry, right: &FsEntry, options: &ListOptions) -
 
     // Sort by the specified key
     let ordering = match options.sort_by {
-        SortKey::Name => natural_cmp(&left.name, &right.name),
-        SortKey::Modified => left.metadata.modified.cmp(&right.metadata.modified),
-        SortKey::Size => left.metadata.size.cmp(&right.metadata.size),
+        SortKey::Name => natural_cmp(left.name(), right.name()),
+        SortKey::Modified => left.modified().cmp(&right.modified()),
+        SortKey::Size => left.size().cmp(&right.size()),
     };
 
     // Apply sort order
@@ -114,6 +145,10 @@ pub fn compare_entries(left: &FsEntry, right: &FsEntry, options: &ListOptions) -
         SortOrder::Asc => ordering,
         SortOrder::Desc => ordering.reverse(),
     }
+}
+
+pub fn compare_entries(left: &FsEntry, right: &FsEntry, options: &ListOptions) -> Ordering {
+    compare(left, right, options)
 }
 
 /// Checks if an entry passes the filter criteria.
@@ -217,6 +252,95 @@ pub fn filter_and_sort(entries: Vec<FsEntry>, options: &ListOptions) -> Vec<FsEn
 
 #[cfg(test)]
 mod tests {
+    /// Le comparateur existait en double, un par type. Rien ne garantissait
+    /// que les deux copies restent d'accord ; maintenant il n'y en a qu'un, et
+    /// ce test dit pourquoi c'était le bon choix.
+    #[test]
+    fn both_shapes_of_entry_order_the_same_way() {
+        use crate::filesystem::{FsMetadata, SortKey};
+        use std::time::{Duration, SystemTime};
+
+        /// Un `Sortable` minimal, dans l'esprit du stub que le listage local
+        /// construit avant d'avoir lu la moindre métadonnée.
+        struct Stub {
+            name: String,
+            entry_type: FsEntryType,
+            metadata: Option<FsMetadata>,
+        }
+        impl super::Sortable for Stub {
+            fn entry_type(&self) -> FsEntryType {
+                self.entry_type
+            }
+            fn name(&self) -> &str {
+                &self.name
+            }
+            fn modified(&self) -> Option<SystemTime> {
+                self.metadata.as_ref().and_then(|m| m.modified)
+            }
+            fn size(&self) -> Option<u64> {
+                self.metadata.as_ref().map(|m| m.size)
+            }
+        }
+
+        let base = SystemTime::UNIX_EPOCH;
+        let make = |name: &str, dir: bool, size: u64, secs: u64| {
+            let metadata = FsMetadata {
+                size,
+                modified: Some(base + Duration::from_secs(secs)),
+                ..FsMetadata::default()
+            };
+            let entry_type = if dir {
+                FsEntryType::Directory
+            } else {
+                FsEntryType::File
+            };
+            (
+                FsEntry {
+                    path: std::path::PathBuf::from(name),
+                    name: name.to_string(),
+                    entry_type,
+                    metadata: metadata.clone(),
+                },
+                Stub {
+                    name: name.to_string(),
+                    entry_type,
+                    metadata: Some(metadata),
+                },
+            )
+        };
+
+        let cases = [
+            make("fichier2.txt", false, 300, 20),
+            make("fichier10.txt", false, 100, 30),
+            make("dossier", true, 200, 10),
+            make("Archive.zip", false, 200, 10),
+        ];
+
+        for key in [SortKey::Name, SortKey::Size, SortKey::Modified] {
+            for order in [SortOrder::Asc, SortOrder::Desc] {
+                for directories_first in [true, false] {
+                    let options = ListOptions {
+                        sort_by: key,
+                        sort_order: order,
+                        directories_first,
+                        ..ListOptions::default()
+                    };
+                    for (left_entry, left_stub) in &cases {
+                        for (right_entry, right_stub) in &cases {
+                            assert_eq!(
+                                super::compare(left_entry, right_entry, &options),
+                                super::compare(left_stub, right_stub, &options),
+                                "{} vs {} ({key:?}, {order:?}, dossiers d'abord={directories_first})",
+                                left_entry.name,
+                                right_entry.name,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     use super::*;
     use crate::filesystem::FsMetadata;
     use std::path::PathBuf;

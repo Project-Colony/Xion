@@ -4,7 +4,6 @@
 //! operations and [`LocalFileSystem`] as the concrete implementation for
 //! local disk access.
 
-use std::cmp::Ordering;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -12,7 +11,6 @@ use std::thread;
 use crate::core::{AppResult, FilesystemConfig, XionError};
 use crate::filesystem::metadata::FsMetadata;
 use crate::filesystem::paging::{Page, PageRequest};
-use crate::filesystem::sorting::natural_cmp;
 
 #[derive(Debug, Clone)]
 pub struct FsEntry {
@@ -161,35 +159,6 @@ impl LocalFileSystem {
             _ => true,
         }
     }
-
-    fn compare_entry_stubs(options: &ListOptions, left: &EntryStub, right: &EntryStub) -> Ordering {
-        if options.directories_first && left.entry_type != right.entry_type {
-            return match (left.entry_type, right.entry_type) {
-                (FsEntryType::Directory, _) => Ordering::Less,
-                (_, FsEntryType::Directory) => Ordering::Greater,
-                _ => Ordering::Equal,
-            };
-        }
-
-        let ordering = match options.sort_by {
-            SortKey::Name => natural_cmp(&left.name, &right.name),
-            SortKey::Modified => left
-                .metadata
-                .as_ref()
-                .map(|metadata| metadata.modified)
-                .cmp(&right.metadata.as_ref().map(|metadata| metadata.modified)),
-            SortKey::Size => left
-                .metadata
-                .as_ref()
-                .map(|metadata| metadata.size)
-                .cmp(&right.metadata.as_ref().map(|metadata| metadata.size)),
-        };
-
-        match options.sort_order {
-            SortOrder::Asc => ordering,
-            SortOrder::Desc => ordering.reverse(),
-        }
-    }
 }
 
 impl FileSystem for LocalFileSystem {
@@ -301,7 +270,7 @@ impl FileSystem for LocalFileSystem {
             }
         }
 
-        entries.sort_by(|left, right| Self::compare_entry_stubs(&options, left, right));
+        entries.sort_by(|left, right| crate::filesystem::sorting::compare(left, right, &options));
 
         let total = entries.len();
         let offset = page.offset.min(total);
@@ -536,12 +505,34 @@ fn ensure_long_path(path: &Path) -> std::borrow::Cow<'_, Path> {
     std::borrow::Cow::Borrowed(path)
 }
 
+/// An entry as `read_dir` gives it, before any `stat`.
+///
+/// `metadata` is `None` until the listing decides it needs it — which it only
+/// does for the page it is about to return, or for everything when the sort key
+/// requires it.
 #[derive(Debug)]
 struct EntryStub {
     path: PathBuf,
     name: String,
     entry_type: FsEntryType,
     metadata: Option<FsMetadata>,
+}
+
+impl crate::filesystem::sorting::Sortable for EntryStub {
+    fn entry_type(&self) -> FsEntryType {
+        self.entry_type
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn modified(&self) -> Option<std::time::SystemTime> {
+        self.metadata
+            .as_ref()
+            .and_then(|metadata| metadata.modified)
+    }
+    fn size(&self) -> Option<u64> {
+        self.metadata.as_ref().map(|metadata| metadata.size)
+    }
 }
 
 #[cfg(test)]

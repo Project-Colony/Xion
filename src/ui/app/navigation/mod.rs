@@ -109,9 +109,18 @@ impl XionApp {
 /// Case-insensitive `contains`, allocating nothing.
 ///
 /// `needle` must already be lowercase — callers lowercase the query once, not
-/// once per entry. Comparison goes through `char::to_lowercase` rather than
-/// `eq_ignore_ascii_case`, so `Éclair` still matches `éclair`; an ASCII-only
-/// shortcut would quietly break every accented file name.
+/// once per entry.
+///
+/// Two paths, and the split is measured rather than assumed
+/// (`cargo run --release --example bench_frame`):
+///
+/// * Both sides ASCII — nearly every file name — takes a byte-wise scan. On
+///   50 000 entries that is about half the time of the previous
+///   `to_lowercase().contains()`, with no allocation.
+/// * Anything else falls back to folding through `char::to_lowercase`, which is
+///   what keeps `ÉCLAIR` matching `éclair`. That path is slower than allocating
+///   a lowercase copy would be, so it is deliberately reserved for the rare case
+///   instead of being used for everything.
 pub(super) fn contains_lowercased(haystack: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return true;
@@ -119,6 +128,18 @@ pub(super) fn contains_lowercased(haystack: &str, needle: &str) -> bool {
     if haystack.is_empty() {
         return false;
     }
+
+    if haystack.is_ascii() && needle.is_ascii() {
+        let hay = haystack.as_bytes();
+        let need = needle.as_bytes();
+        if need.len() > hay.len() {
+            return false;
+        }
+        return hay
+            .windows(need.len())
+            .any(|window| window.eq_ignore_ascii_case(need));
+    }
+
     haystack
         .char_indices()
         .any(|(offset, _)| starts_with_lowercased(&haystack[offset..], needle))
@@ -312,6 +333,25 @@ mod tests {
         assert!(contains_lowercased("ÉCLAIR.txt", "éclair"));
         assert!(contains_lowercased("Déjà-Vu", "jà-v"));
         assert!(contains_lowercased("STRASSE", "strasse"));
+    }
+
+    /// The ASCII path and the Unicode fallback must agree wherever both apply.
+    #[test]
+    fn both_matching_paths_agree() {
+        for (haystack, needle) in [
+            ("Rapport Final.PDF", "final"),
+            ("Rapport Final.PDF", "zzz"),
+            ("a", "a"),
+            ("abc", "c"),
+        ] {
+            assert_eq!(
+                contains_lowercased(haystack, needle),
+                haystack
+                    .char_indices()
+                    .any(|(offset, _)| starts_with_lowercased(&haystack[offset..], needle)),
+                "désaccord sur ({haystack:?}, {needle:?})"
+            );
+        }
     }
 
     #[test]

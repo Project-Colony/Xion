@@ -94,7 +94,7 @@ pub trait FileSystem {
         let entries = self.list_dir(path, options)?;
         Ok(page.apply(entries))
     }
-    fn metadata_batch(&self, paths: &[PathBuf]) -> AppResult<Vec<FsMetadata>> {
+    fn metadata_batch(&self, paths: &[&Path]) -> AppResult<Vec<FsMetadata>> {
         paths.iter().map(|path| self.metadata(path)).collect()
     }
 }
@@ -285,21 +285,19 @@ impl FileSystem for LocalFileSystem {
         }
 
         if needs_full_metadata {
-            let paths = entries
-                .iter()
-                .map(|entry| entry.path.clone())
-                .collect::<Vec<_>>();
-            let mut metadata_iter = if paths.is_empty() {
-                Vec::new().into_iter()
-            } else {
-                self.metadata_batch(&paths)?.into_iter()
+            // Borrowed paths, not copies: sorting a 100 000-entry directory by
+            // size used to clone every `PathBuf` in it — one heap allocation
+            // apiece — purely to hand the batch something it only reads.
+            let metadata = {
+                let paths: Vec<&Path> = entries.iter().map(|entry| entry.path.as_path()).collect();
+                self.metadata_batch(&paths)?
             };
-            for entry in &mut entries {
-                entry.metadata = Some(
-                    metadata_iter
-                        .next()
-                        .ok_or_else(|| XionError::InvalidPath(entry.path.clone()))?,
-                );
+            if metadata.len() != entries.len() {
+                let path = entries[metadata.len().min(entries.len() - 1)].path.clone();
+                return Err(XionError::InvalidPath(path));
+            }
+            for (entry, metadata) in entries.iter_mut().zip(metadata) {
+                entry.metadata = Some(metadata);
             }
         }
 
@@ -308,32 +306,32 @@ impl FileSystem for LocalFileSystem {
         let total = entries.len();
         let offset = page.offset.min(total);
         let end = offset.saturating_add(page.limit).min(total);
-        let slice = &entries[offset..end];
 
-        let missing_paths: Vec<PathBuf> = slice
-            .iter()
-            .filter(|entry| entry.metadata.is_none())
-            .map(|entry| entry.path.clone())
-            .collect();
-
-        let mut missing_iter = if missing_paths.is_empty() {
-            Vec::new().into_iter()
-        } else {
-            self.metadata_batch(&missing_paths)?.into_iter()
+        let missing = {
+            let missing_paths: Vec<&Path> = entries[offset..end]
+                .iter()
+                .filter(|entry| entry.metadata.is_none())
+                .map(|entry| entry.path.as_path())
+                .collect();
+            self.metadata_batch(&missing_paths)?
         };
+        let mut missing_iter = missing.into_iter();
 
-        let mut items = Vec::with_capacity(slice.len());
-        for entry in slice {
-            let metadata = match entry.metadata.as_ref() {
-                Some(metadata) => metadata.clone(),
+        // Draining the page moves the stubs into the result. Building the page
+        // used to clone the path and the name of every row it returned, with
+        // the originals dropped on the next line.
+        let mut items = Vec::with_capacity(end - offset);
+        for entry in entries.drain(offset..end) {
+            let metadata = match entry.metadata {
+                Some(metadata) => metadata,
                 None => missing_iter
                     .next()
                     .ok_or_else(|| XionError::InvalidPath(entry.path.clone()))?,
             };
 
             items.push(FsEntry {
-                path: entry.path.clone(),
-                name: entry.name.clone(),
+                path: entry.path,
+                name: entry.name,
                 entry_type: entry.entry_type,
                 metadata,
             });
@@ -355,7 +353,7 @@ impl FileSystem for LocalFileSystem {
     /// the `stat` calls themselves. Threads now share one scope and write into
     /// disjoint slices, which also removes the `Mutex` (and its unreachable
     /// poison-recovery branch) from the hot path.
-    fn metadata_batch(&self, paths: &[PathBuf]) -> AppResult<Vec<FsMetadata>> {
+    fn metadata_batch(&self, paths: &[&Path]) -> AppResult<Vec<FsMetadata>> {
         if paths.is_empty() {
             return Ok(Vec::new());
         }
@@ -733,7 +731,10 @@ mod tests {
             metadata_batch_size: 8,
             metadata_parallelism: 4,
         });
-        let metadata = filesystem.metadata_batch(&paths).expect("metadata batch");
+        let borrowed: Vec<&Path> = paths.iter().map(PathBuf::as_path).collect();
+        let metadata = filesystem
+            .metadata_batch(&borrowed)
+            .expect("metadata batch");
 
         assert_eq!(metadata.len(), paths.len());
         for (index, entry) in metadata.iter().enumerate() {
@@ -750,7 +751,7 @@ mod tests {
 
         let filesystem = LocalFileSystem::new();
         let metadata = filesystem
-            .metadata_batch(&[missing, present])
+            .metadata_batch(&[missing.as_path(), present.as_path()])
             .expect("metadata batch");
 
         assert_eq!(metadata.len(), 2);

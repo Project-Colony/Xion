@@ -140,6 +140,31 @@ fn main() -> std::io::Result<()> {
         100.0 * parent_bytes as f64 / (parent_bytes + name_bytes) as f64
     );
 
+    // The search index: one entry per file, plus whatever it stores alongside.
+    {
+        use xion::services::{SearchIndexOptions, SearchService};
+        let before = live_mb();
+        let index = SearchService
+            .build_index_with_options(
+                &filesystem,
+                dir.path(),
+                SearchIndexOptions {
+                    include_hidden: false,
+                    recursive: false,
+                    max_entries: 0,
+                },
+                ListOptions::default(),
+            )
+            .unwrap();
+        let after = live_mb();
+        println!(
+            "\n  Index de recherche ({count} entrées)        : {:.2} Mo, soit {:.0} octets/entrée",
+            after - before,
+            (after - before) * 1_048_576.0 / count as f64
+        );
+        drop(index);
+    }
+
     drop(entries);
     let end = live_mb();
     println!("\n  après tout libérer : {end:.2} Mo");

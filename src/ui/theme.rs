@@ -105,8 +105,8 @@ pub mod icons {
     /// The lowercase copy this used to allocate was made once per visible row,
     /// on every rebuild of the widget tree, to look up a table of constants.
     /// Extensions are ASCII in practice; a stack buffer covers every entry in
-    /// the table below (longest is `properties`, 10 bytes) and anything longer
-    /// cannot match anyway.
+    /// the table below (longest is `gitattributes`, 13 bytes) and anything
+    /// longer cannot match, so it takes the same `FILE` the match arm would.
     pub fn icon_for_extension(ext: &str) -> &'static str {
         const MAX_EXTENSION: usize = 16;
         if ext.len() > MAX_EXTENSION || !ext.is_ascii() {
@@ -226,6 +226,32 @@ impl Default for UiColors {
             address_file: Color::from_rgb8(186, 120, 40),
             address_not_found: Color::from_rgb8(176, 72, 72),
         }
+    }
+}
+
+#[cfg(test)]
+mod icon_tests {
+    use super::icons::*;
+
+    #[test]
+    fn case_is_ignored() {
+        assert_eq!(icon_for_extension("RS"), icon_for_extension("rs"));
+        assert_eq!(icon_for_extension("PnG"), icon_for_extension("png"));
+    }
+
+    #[test]
+    fn the_longest_entry_in_the_table_still_fits_the_buffer() {
+        // Si quelqu'un ajoute une extension plus longue que le tampon, elle
+        // tomberait silencieusement sur l'icône générique. Ce test le dit.
+        assert_ne!(icon_for_extension("gitattributes"), FILE);
+    }
+
+    #[test]
+    fn anything_too_long_or_non_ascii_falls_back_like_the_match_arm() {
+        assert_eq!(icon_for_extension("uneextensionbeaucouptroplongue"), FILE);
+        assert_eq!(icon_for_extension("é"), FILE);
+        assert_eq!(icon_for_extension(""), FILE);
+        assert_eq!(icon_for_extension("inconnue"), FILE);
     }
 }
 

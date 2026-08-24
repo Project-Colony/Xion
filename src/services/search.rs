@@ -2,9 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use crate::core::AppResult;
-use crate::filesystem::{
-    EntryFilter, FileSystem, FsEntry, FsEntryType, ListOptions, Page, PageRequest, SortKey,
-};
+use crate::filesystem::{EntryFilter, FileSystem, FsEntry, FsEntryType, ListOptions, SortKey};
 
 /// Maximum directory recursion depth to prevent stack overflow on deeply nested
 /// or circular filesystem structures.
@@ -96,53 +94,6 @@ impl SearchService {
         filesystem.list_dir(path, options)
     }
 
-    pub fn search_in_dir_paged(
-        &self,
-        filesystem: &dyn FileSystem,
-        path: &Path,
-        query: &str,
-        page: PageRequest,
-    ) -> AppResult<Page<FsEntry>> {
-        let options = ListOptions {
-            show_hidden: false,
-            sort_by: SortKey::Name,
-            ..ListOptions::default()
-        }
-        .with_name_query(query);
-
-        filesystem.list_dir_paged(path, options, page)
-    }
-
-    pub fn search_files_only(
-        &self,
-        filesystem: &dyn FileSystem,
-        path: &Path,
-        query: &str,
-    ) -> AppResult<Vec<FsEntry>> {
-        let options = ListOptions {
-            filter: EntryFilter::OnlyFiles,
-            ..ListOptions::default()
-        }
-        .with_name_query(query);
-
-        filesystem.list_dir(path, options)
-    }
-
-    pub fn build_index(
-        &self,
-        filesystem: &dyn FileSystem,
-        root: &Path,
-        options: SearchIndexOptions,
-    ) -> AppResult<SearchIndex> {
-        let list_options = ListOptions {
-            show_hidden: options.include_hidden,
-            sort_by: SortKey::Name,
-            ..ListOptions::default()
-        };
-
-        self.build_index_with_options(filesystem, root, options, list_options)
-    }
-
     pub fn build_index_with_options(
         &self,
         filesystem: &dyn FileSystem,
@@ -165,72 +116,28 @@ impl SearchService {
         })
     }
 
-    pub fn search_index(&self, index: &SearchIndex, query: &SearchQuery) -> Vec<FsEntry> {
-        let (normalized_text, normalized_extensions) = Self::normalize_query(query);
-        index
-            .entries
-            .iter()
-            .filter(|entry| {
-                Self::matches_query(
-                    entry,
-                    query,
-                    normalized_text.as_ref(),
-                    &normalized_extensions,
-                )
-            })
-            .map(|entry| entry.entry.clone())
-            .collect()
+    pub fn count_index_matches(&self, index: &SearchIndex, query: &SearchQuery) -> usize {
+        Self::matching(index, query).count()
     }
 
-    pub fn search_index_paged(
-        &self,
-        index: &SearchIndex,
-        query: &SearchQuery,
-        page: PageRequest,
-    ) -> Page<FsEntry> {
+    /// The entries of `index` that satisfy `query`.
+    ///
+    /// The query is normalised once, here, rather than once per caller: this
+    /// same `filter` used to be written out three times, and only two of the
+    /// three were ever called.
+    fn matching<'a>(
+        index: &'a SearchIndex,
+        query: &'a SearchQuery,
+    ) -> impl Iterator<Item = &'a SearchEntry> + 'a {
         let (normalized_text, normalized_extensions) = Self::normalize_query(query);
-
-        // Single pass: skip, collect page, then count remaining
-        let mut items = Vec::with_capacity(page.limit);
-        let mut total = 0usize;
-        for entry in &index.entries {
-            if !Self::matches_query(
+        index.entries.iter().filter(move |entry| {
+            Self::matches_query(
                 entry,
                 query,
                 normalized_text.as_ref(),
                 &normalized_extensions,
-            ) {
-                continue;
-            }
-            if total >= page.offset && items.len() < page.limit {
-                items.push(entry.entry.clone());
-            }
-            total += 1;
-        }
-
-        let offset = page.offset.min(total);
-        Page {
-            items,
-            total,
-            offset,
-            limit: page.limit,
-        }
-    }
-
-    pub fn count_index_matches(&self, index: &SearchIndex, query: &SearchQuery) -> usize {
-        let (normalized_text, normalized_extensions) = Self::normalize_query(query);
-        index
-            .entries
-            .iter()
-            .filter(|entry| {
-                Self::matches_query(
-                    entry,
-                    query,
-                    normalized_text.as_ref(),
-                    &normalized_extensions,
-                )
-            })
-            .count()
+            )
+        })
     }
 
     fn normalize_query(query: &SearchQuery) -> (Option<String>, Vec<String>) {

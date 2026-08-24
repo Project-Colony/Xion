@@ -17,25 +17,29 @@ Document relu contre `src/services/search.rs` et `src/ui/app/state.rs` le
 Structure sans état (`#[derive(Debug, Default)] pub struct SearchService;`),
 donc utilisable comme `SearchService` ou `SearchService::default()`.
 
-Huit méthodes publiques, réparties en deux familles.
+Trois méthodes publiques, réparties en deux familles.
+
+Il y en avait huit. Cinq — `search_in_dir_paged`, `search_files_only`,
+`build_index`, `search_index`, `search_index_paged` — n'étaient appelées de
+nulle part : ni par l'interface, ni par les tests, ni par les exemples. Elles
+ne décrivaient donc pas une capacité du logiciel, seulement une intention. Les
+trois qui restent sont celles qui tournent réellement.
 
 **Recherche directe, sans index** — relit le dossier à chaque appel :
 
-| Méthode                | Rôle                                              |
-| ---------------------- | ------------------------------------------------- |
-| `search_in_dir`        | filtre par nom dans un dossier                    |
-| `search_in_dir_paged`  | idem, paginé                                      |
-| `search_files_only`    | idem, restreint aux fichiers                      |
+| Méthode          | Rôle                           |
+| ---------------- | ------------------------------ |
+| `search_in_dir`  | filtre par nom dans un dossier |
 
 **Recherche sur index** — construit une fois, interrogé plusieurs fois :
 
-| Méthode                    | Rôle                                          |
-| -------------------------- | --------------------------------------------- |
-| `build_index`              | indexe une racine avec des `ListOptions` par défaut |
-| `build_index_with_options` | idem, en imposant les `ListOptions`           |
-| `search_index`             | filtre l'index, renvoie un `Vec<FsEntry>`     |
-| `search_index_paged`       | filtre et pagine en une seule passe           |
-| `count_index_matches`      | compte sans matérialiser les résultats        |
+| Méthode                    | Rôle                                   |
+| -------------------------- | -------------------------------------- |
+| `build_index_with_options` | indexe une racine, `ListOptions` imposées |
+| `count_index_matches`      | compte sans matérialiser les résultats |
+
+Le filtre lui-même vit dans `SearchService::matching`, une seule fois : les
+trois interrogations d'index en portaient chacune leur copie.
 
 La récursion est bornée par `MAX_SEARCH_DEPTH = 32`
 (`src/services/search.rs`), pour éviter un débordement de pile sur une
@@ -86,7 +90,7 @@ use xion::services::{SearchIndexOptions, SearchQuery, SearchService};
 let filesystem = LocalFileSystem::new();
 let service = SearchService;
 
-let index = service.build_index(
+let index = service.build_index_with_options(
     &filesystem,
     std::path::Path::new("/tmp"),
     SearchIndexOptions {
@@ -95,6 +99,7 @@ let index = service.build_index(
         // Sans cette ligne : E0063, le champ `max_entries` manque.
         ..SearchIndexOptions::default()
     },
+    ListOptions::default(),
 )?;
 
 let query = SearchQuery {
@@ -105,7 +110,7 @@ let query = SearchQuery {
     ..SearchQuery::default()
 };
 
-let results = service.search_index(&index, &query);
+let matches = service.count_index_matches(&index, &query);
 ```
 
 Ce bloc n'est compilé par aucun test : `cargo test --doc` ne voit pas les
@@ -143,15 +148,13 @@ Il n'y a donc plus rien à écrire côté worker : le code existe.
 couverture est `search_service_text_filter` dans `tests/integration_tests.rs`,
 qui exerce `search_in_dir` et pas les chemins d'index.
 
-Non couvert aujourd'hui : `max_entries`, `MAX_SEARCH_DEPTH`, le cumul des
-filtres, la pagination de `search_index_paged` et la cohérence entre
-`count_index_matches` et `search_index`.
+Non couvert aujourd'hui : `max_entries`, `MAX_SEARCH_DEPTH` et le cumul des
+filtres.
 
 ## Avancement
 
-- [x] Index réutilisable en mémoire — `build_index`, `build_index_with_options`.
+- [x] Index réutilisable en mémoire — `build_index_with_options`.
 - [x] Filtres composables — `SearchQuery`.
-- [x] Pagination — `search_index_paged`.
 - [x] Indexation asynchrone côté UI — `XionApp::start_search_indexing`.
 - [x] Cache LRU des index — `MAX_SEARCH_CACHE = 8`.
 - [x] Recherche plein texte récursive — `UiMessage::FullTextSearchSubmit`.

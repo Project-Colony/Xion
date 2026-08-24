@@ -20,6 +20,7 @@ use super::widgets::chrome_style;
 use super::widgets::hover_button_style;
 use super::widgets::selectable_button_style;
 use crate::ui::app::helpers::column_specs;
+use crate::ui::app::navigation::entry_index_for;
 use crate::ui::app::types::*;
 
 impl XionApp {
@@ -41,13 +42,7 @@ impl XionApp {
         } = ctx;
         let view_mode = cx.view_mode;
         let row_height = cx.row_height;
-        let entry_index_for = |display_index: usize| -> Option<usize> {
-            if let Some(indices) = filtered_indices {
-                indices.get(display_index).copied()
-            } else {
-                Some(display_index)
-            }
-        };
+        let filter_slice = filtered_indices.as_ref().map(|indices| indices.as_slice());
 
         let list_content = if let Some(message) = &self.error {
             column![
@@ -93,7 +88,8 @@ impl XionApp {
                     }
 
                     for display_index in window.start..window.end {
-                        let Some(actual_index) = entry_index_for(display_index) else {
+                        let Some(actual_index) = entry_index_for(filter_slice, display_index)
+                        else {
                             continue;
                         };
                         let entry = display_entries.get(actual_index);
@@ -168,7 +164,8 @@ impl XionApp {
                                 );
                                 continue;
                             }
-                            let Some(actual_index) = entry_index_for(display_index) else {
+                            let Some(actual_index) = entry_index_for(filter_slice, display_index)
+                            else {
                                 continue;
                             };
                             let entry = display_entries.get(actual_index);

@@ -10,6 +10,7 @@ use super::XionApp;
 
 mod buffers;
 mod filtering;
+pub(in crate::ui::app) use filtering::entry_index_for;
 mod focus;
 mod rubber_band;
 

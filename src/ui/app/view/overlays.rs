@@ -17,39 +17,20 @@ use super::XionApp;
 
 // ── Helper: modal overlay pattern ────────────────────────────────────────────
 
-/// Renders a dismiss-layer + centered modal content.
+/// A dismiss layer with the modal content centred on top of it.
+///
+/// `width` pins the dialog; `None` lets it size to its content. This existed
+/// twice, the two copies differing by that one call to `.width()`.
 fn modal_overlay<'a>(
     content: impl Into<Element<'a, UiMessage>>,
     dismiss: UiMessage,
     colors: UiColors,
+    width: Option<f32>,
 ) -> Element<'a, UiMessage> {
-    let modal = container(content).style(surface_style(colors, RADIUS.lg));
-    let dismiss_layer =
-        mouse_area(container(row![]).width(Length::Fill).height(Length::Fill)).on_press(dismiss);
-    stack![
-        opaque(dismiss_layer),
-        container(column![
-            vertical_space(),
-            row![horizontal_space(), opaque(modal), horizontal_space()],
-            vertical_space(),
-        ])
-        .width(Length::Fill)
-        .height(Length::Fill)
-    ]
-    .into()
-}
-
-/// Like [`modal_overlay`] but wraps the styled container in a fixed-width outer
-/// container.
-fn modal_overlay_sized<'a>(
-    content: impl Into<Element<'a, UiMessage>>,
-    dismiss: UiMessage,
-    colors: UiColors,
-    width: f32,
-) -> Element<'a, UiMessage> {
-    let modal = container(content)
-        .width(Length::Fixed(width))
-        .style(surface_style(colors, RADIUS.lg));
+    let mut modal = container(content).style(surface_style(colors, RADIUS.lg));
+    if let Some(width) = width {
+        modal = modal.width(Length::Fixed(width));
+    }
     let dismiss_layer =
         mouse_area(container(row![]).width(Length::Fill).height(Length::Fill)).on_press(dismiss);
     stack![
@@ -159,7 +140,7 @@ impl XionApp {
                     .spacing(spacing.sm)
                     .padding(spacing.lg);
 
-                modal_overlay(modal_content, UiMessage::CloseProperties, colors)
+                modal_overlay(modal_content, UiMessage::CloseProperties, colors, None)
             });
         modal_opt.unwrap_or_else(|| container(row![]).into())
     }
@@ -269,7 +250,7 @@ impl XionApp {
                 .spacing(spacing.sm),
             );
 
-            modal_overlay(modal_content, UiMessage::BulkRenameCancel, colors)
+            modal_overlay(modal_content, UiMessage::BulkRenameCancel, colors, None)
         });
         modal_opt.unwrap_or_else(|| container(row![]).into())
     }
@@ -291,7 +272,7 @@ impl XionApp {
                 ]
                 .padding(spacing.lg);
 
-                modal_overlay(loading_content, UiMessage::CloseDiff, colors)
+                modal_overlay(loading_content, UiMessage::CloseDiff, colors, None)
             } else {
                 let diff_rows: Vec<Element<'_, UiMessage>> = diff
                     .lines
@@ -361,7 +342,7 @@ impl XionApp {
                 .spacing(spacing.sm)
                 .padding(spacing.md);
 
-                modal_overlay_sized(modal_content, UiMessage::CloseDiff, colors, 700.0)
+                modal_overlay(modal_content, UiMessage::CloseDiff, colors, Some(700.0))
             }
         } else {
             container(row![]).into()
@@ -442,7 +423,7 @@ impl XionApp {
             .spacing(spacing.sm)
             .padding(spacing.md);
 
-            modal_overlay_sized(modal_content, UiMessage::CloseHexView, colors, 600.0)
+            modal_overlay(modal_content, UiMessage::CloseHexView, colors, Some(600.0))
         } else {
             container(row![]).into()
         }
@@ -527,7 +508,7 @@ impl XionApp {
             .spacing(spacing.sm)
             .padding(spacing.md);
 
-            modal_overlay_sized(modal_content, UiMessage::CloseGrep, colors, 650.0)
+            modal_overlay(modal_content, UiMessage::CloseGrep, colors, Some(650.0))
         } else {
             container(row![]).into()
         }
@@ -617,7 +598,12 @@ impl XionApp {
             .spacing(spacing.sm)
             .padding(spacing.md);
 
-            modal_overlay_sized(modal_content, UiMessage::ClosePermissions, colors, 600.0)
+            modal_overlay(
+                modal_content,
+                UiMessage::ClosePermissions,
+                colors,
+                Some(600.0),
+            )
         } else {
             container(row![]).into()
         }
@@ -678,6 +664,6 @@ impl XionApp {
         .spacing(spacing.md)
         .padding(spacing.md);
 
-        modal_overlay_sized(modal_content, UiMessage::ConfirmCancel, colors, 420.0)
+        modal_overlay(modal_content, UiMessage::ConfirmCancel, colors, Some(420.0))
     }
 }

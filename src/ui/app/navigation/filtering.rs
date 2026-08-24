@@ -65,7 +65,24 @@ impl XionApp {
             .collect::<Vec<_>>();
         Some(indices)
     }
+}
 
+/// Translates a display row into an index in the loaded entries.
+///
+/// `None` when a filter is active and the row is past its end. The view and the
+/// rubber-band selection each carried their own copy of this closure, which is
+/// how they could disagree about which row a coordinate belonged to.
+pub(in crate::ui::app) fn entry_index_for(
+    filtered_indices: Option<&[usize]>,
+    display_index: usize,
+) -> Option<usize> {
+    match filtered_indices {
+        Some(indices) => indices.get(display_index).copied(),
+        None => Some(display_index),
+    }
+}
+
+impl XionApp {
     pub(in crate::ui::app) fn normalized_search_query(&self) -> Option<String> {
         let trimmed = self.search.input.trim();
         if trimmed.is_empty() {

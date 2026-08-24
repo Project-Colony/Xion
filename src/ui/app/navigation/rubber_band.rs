@@ -2,6 +2,7 @@
 //!
 //! Moved verbatim out of the single `impl XionApp` block in `mod.rs`.
 
+use super::entry_index_for;
 use crate::core::ViewMode;
 use crate::ui::SelectionKind;
 use crate::ui::app::XionApp;
@@ -121,13 +122,7 @@ impl XionApp {
         let tokens = UiTokens::for_theme(&self.state.config.theme);
         let list_padding = tokens.spacing.md;
         let content_width = (bounds.width - list_padding * 2.0).max(1.0);
-        let entry_index_for = |display_index: usize| -> Option<usize> {
-            if let Some(indices) = &filtered_indices {
-                indices.get(display_index).copied()
-            } else {
-                Some(display_index)
-            }
-        };
+        let filter_slice = filtered_indices.as_deref();
         let mut selected = Vec::new();
 
         match view_mode {
@@ -135,7 +130,7 @@ impl XionApp {
                 let window = self.list_virtual_window_for(total_entries);
                 let row_height = self.state.config.view.row_height;
                 for display_index in window.start..window.end {
-                    let Some(actual_index) = entry_index_for(display_index) else {
+                    let Some(actual_index) = entry_index_for(filter_slice, display_index) else {
                         continue;
                     };
                     let Some(entry) = display_entries.get(actual_index) else {
@@ -170,7 +165,8 @@ impl XionApp {
                         if display_index >= total_entries {
                             continue;
                         }
-                        let Some(actual_index) = entry_index_for(display_index) else {
+                        let Some(actual_index) = entry_index_for(filter_slice, display_index)
+                        else {
                             continue;
                         };
                         let Some(entry) = display_entries.get(actual_index) else {

@@ -268,22 +268,6 @@ fn map_event_to_message(
     }
 }
 
-fn detect_archive_type(path: &std::path::Path) -> ArchiveType {
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    let path_str = path.to_string_lossy().to_lowercase();
-    if ext == "7z" {
-        ArchiveType::SevenZ
-    } else if ext == "tgz" || path_str.ends_with(".tar.gz") {
-        ArchiveType::TarGz
-    } else {
-        ArchiveType::Zip
-    }
-}
-
 pub fn run(start_path: Option<PathBuf>) -> iced::Result {
     if let Some(path) = start_path {
         if let Ok(mut guard) = CLI_START_PATH.lock() {

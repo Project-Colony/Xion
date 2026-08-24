@@ -538,6 +538,29 @@ pub(super) enum ArchiveType {
     SevenZ,
 }
 
+impl ArchiveType {
+    /// The archive format of `path`, or `None` if it is not one we handle.
+    ///
+    /// This test used to exist in five places with four different answers. The
+    /// context menu's copy looked only at the extension, so `archive.tar.gz`
+    /// (extension `gz`) was never recognised — its `.tar.gz` fallback sat
+    /// behind an `unwrap_or_else` that a `Some(false)` never reaches. And
+    /// `detect_archive_type` answered `Zip` for anything it did not recognise,
+    /// which is a guess, not an answer.
+    pub(super) fn detect(path: &Path) -> Option<Self> {
+        // `.tar.gz` is two extensions, so it is matched on the file name.
+        let name = path.file_name()?.to_str()?.to_ascii_lowercase();
+        if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
+            return Some(Self::TarGz);
+        }
+        match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+            "zip" => Some(Self::Zip),
+            "7z" => Some(Self::SevenZ),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct ArchiveBrowserState {
     pub(super) archive_path: PathBuf,
@@ -809,4 +832,62 @@ pub(super) struct ConfirmDialog {
     pub(super) message: String,
     pub(super) confirm_label: String,
     pub(super) action: ConfirmedAction,
+}
+
+#[cfg(test)]
+mod archive_type_tests {
+    use super::*;
+
+    /// Regression: the context menu tested only the extension, so a `.tar.gz`
+    /// — whose extension is `gz` — was never recognised as an archive.
+    #[test]
+    fn tar_gz_is_recognised() {
+        assert_eq!(
+            ArchiveType::detect(Path::new("/tmp/sauvegarde.tar.gz")),
+            Some(ArchiveType::TarGz)
+        );
+        assert_eq!(
+            ArchiveType::detect(Path::new("/tmp/sauvegarde.TAR.GZ")),
+            Some(ArchiveType::TarGz)
+        );
+        assert_eq!(
+            ArchiveType::detect(Path::new("/tmp/sauvegarde.tgz")),
+            Some(ArchiveType::TarGz)
+        );
+    }
+
+    #[test]
+    fn zip_and_sevenz_are_recognised() {
+        assert_eq!(
+            ArchiveType::detect(Path::new("a.zip")),
+            Some(ArchiveType::Zip)
+        );
+        assert_eq!(
+            ArchiveType::detect(Path::new("a.ZIP")),
+            Some(ArchiveType::Zip)
+        );
+        assert_eq!(
+            ArchiveType::detect(Path::new("a.7z")),
+            Some(ArchiveType::SevenZ)
+        );
+    }
+
+    /// Regression: an unknown extension used to be answered `Zip`, a guess that
+    /// sent the ZIP reader at a file that is not one.
+    #[test]
+    fn anything_else_is_not_an_archive() {
+        for name in [
+            "notes.txt",
+            "image.png",
+            "sans-extension",
+            "archive.gz",
+            ".gitignore",
+        ] {
+            assert_eq!(
+                ArchiveType::detect(Path::new(name)),
+                None,
+                "{name} ne devrait pas être vu comme une archive"
+            );
+        }
+    }
 }

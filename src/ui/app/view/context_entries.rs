@@ -34,21 +34,8 @@ impl XionApp {
             .selection
             .focused
             .as_ref()
-            .and_then(|p| p.extension())
-            .and_then(|e| e.to_str())
-            .map(|e| {
-                let e = e.to_ascii_lowercase();
-                e == "zip" || e == "7z" || e == "tgz"
-            })
-            .unwrap_or_else(|| {
-                self.state
-                    .navigation
-                    .selection
-                    .focused
-                    .as_ref()
-                    .map(|p| p.to_string_lossy().to_lowercase().ends_with(".tar.gz"))
-                    .unwrap_or(false)
-            });
+            .and_then(|path| ArchiveType::detect(path))
+            .is_some();
         // `Path::is_file()`/`is_dir()` are syscalls, and these ran on every
         // rebuild of the widget tree — several times a second, and blocking for
         // seconds at a time on a dead network share. The entry type is already

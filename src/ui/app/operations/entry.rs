@@ -38,14 +38,7 @@ impl XionApp {
                 return self.navigate_to(entry.path.clone());
             }
             // Feature 10 / M: Open archives in archive browser
-            let ext = entry
-                .path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            let path_str = entry.path.to_string_lossy().to_lowercase();
-            if ext == "zip" || ext == "7z" || ext == "tgz" || path_str.ends_with(".tar.gz") {
+            if ArchiveType::detect(&entry.path).is_some() {
                 // Record in recents
                 self.recents.record(entry.path.clone());
                 return self.open_archive(entry.path.clone());

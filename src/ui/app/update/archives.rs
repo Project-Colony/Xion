@@ -10,7 +10,7 @@ use crate::ui::UiMessage;
 use crate::ui::app::types::*;
 
 use super::{ArchiveFormat, Flow};
-use crate::ui::app::{XionApp, detect_archive_type};
+use crate::ui::app::XionApp;
 
 impl XionApp {
     /// Returns `Err(message)` when the message belongs to another domain,
@@ -26,7 +26,10 @@ impl XionApp {
                 inner_path,
                 entries,
             } => {
-                let archive_type = detect_archive_type(&archive_path);
+                let Some(archive_type) = ArchiveType::detect(&archive_path) else {
+                    self.last_action = Some("Format d'archive non reconnu".to_string());
+                    return Ok(Flow::Continue);
+                };
                 self.archive_browser = Some(ArchiveBrowserState {
                     archive_path,
                     inner_path,

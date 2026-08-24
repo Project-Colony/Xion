@@ -10,6 +10,7 @@ mod context_menu;
 mod dual_pane;
 mod header;
 mod list;
+mod list_body;
 mod main_area;
 mod menu_items;
 mod overlays;

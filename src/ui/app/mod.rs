@@ -292,23 +292,32 @@ pub fn run(start_path: Option<PathBuf>) -> iced::Result {
 
     let result = iced::application(XionApp::new, XionApp::update, XionApp::view)
         .title(|state: &XionApp| format!("Xion — {}", state.state.route.display_label()))
-        .theme(|_: &XionApp| Theme::Light)
+        // A plain, resizable, centred window — the shape every desktop file
+        // manager uses. Not maximised: the user's window manager decides that,
+        // and a file manager that seizes the whole screen on launch is a
+        // nuisance.
+        .window(iced::window::Settings {
+            size: iced::Size::new(1180.0, 720.0),
+            min_size: Some(iced::Size::new(720.0, 460.0)),
+            position: iced::window::Position::Centered,
+            resizable: true,
+            decorations: true,
+            maximized: false,
+            fullscreen: false,
+            ..iced::window::Settings::default()
+        })
+        // Follows the configured theme. This was hard-coded to `Light`, so
+        // picking Dark left every default-styled widget bright.
+        .theme(|state: &XionApp| {
+            if state.state.config.theme.is_dark() {
+                Theme::Dark
+            } else {
+                Theme::Light
+            }
+        })
         .font(fonts::REGULAR)
-        .font(fonts::ITALIC)
-        .font(fonts::THIN)
-        .font(fonts::THIN_ITALIC)
-        .font(fonts::EXTRA_LIGHT)
-        .font(fonts::EXTRA_LIGHT_ITALIC)
-        .font(fonts::LIGHT)
         .font(fonts::LIGHT_ITALIC)
-        .font(fonts::MEDIUM)
-        .font(fonts::MEDIUM_ITALIC)
         .font(fonts::SEMI_BOLD)
-        .font(fonts::SEMI_BOLD_ITALIC)
-        .font(fonts::BOLD)
-        .font(fonts::BOLD_ITALIC)
-        .font(fonts::EXTRA_BOLD)
-        .font(fonts::EXTRA_BOLD_ITALIC)
         .default_font(Font::with_name(FONT_NAME))
         .subscription(XionApp::subscription)
         .exit_on_close_request(false)

@@ -9,38 +9,23 @@ use iced::{Color, Font};
 /// Font name used throughout the application.
 pub const FONT_NAME: &str = "JetBrainsMono Nerd Font";
 
-/// Embedded font data for JetBrains Mono Nerd Font variants.
+/// Embedded font data.
+///
+/// Only the three variants `UiTypography` actually selects are shipped. The
+/// other thirteen Nerd Font weights used to be embedded and registered too:
+/// 13 x 2.36 Mo of binary that iced parsed into its font database at startup
+/// and no widget ever asked for. Adding a weight here means adding it to
+/// `UiTypography` as well, or it is dead again.
 pub mod fonts {
+    /// `UiTypography::body_font` — Weight::Normal.
     pub const REGULAR: &[u8] =
         include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Regular.ttf");
-    pub const ITALIC: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Italic.ttf");
-    pub const THIN: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Thin.ttf");
-    pub const THIN_ITALIC: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-ThinItalic.ttf");
-    pub const EXTRA_LIGHT: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-ExtraLight.ttf");
-    pub const EXTRA_LIGHT_ITALIC: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-ExtraLightItalic.ttf");
-    pub const LIGHT: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Light.ttf");
-    pub const LIGHT_ITALIC: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-LightItalic.ttf");
-    pub const MEDIUM: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Medium.ttf");
-    pub const MEDIUM_ITALIC: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-MediumItalic.ttf");
+    /// `UiTypography::title_font` — Weight::Semibold.
     pub const SEMI_BOLD: &[u8] =
         include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-SemiBold.ttf");
-    pub const SEMI_BOLD_ITALIC: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-SemiBoldItalic.ttf");
-    pub const BOLD: &[u8] = include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Bold.ttf");
-    pub const BOLD_ITALIC: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-BoldItalic.ttf");
-    pub const EXTRA_BOLD: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-ExtraBold.ttf");
-    pub const EXTRA_BOLD_ITALIC: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-ExtraBoldItalic.ttf");
+    /// `UiTypography::caption_font` — Weight::Light + Style::Italic.
+    pub const LIGHT_ITALIC: &[u8] =
+        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-LightItalic.ttf");
 }
 
 /// Nerd Font icons used in the UI.

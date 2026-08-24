@@ -224,6 +224,13 @@ impl XionApp {
     #[doc(hidden)]
     pub fn new_for_test() -> Self {
         let config = crate::core::AppConfig::default();
+        // Integration tests drive `update()` with messages that persist the
+        // config (SetTheme, ToggleCompactMode, SetShell, tab reordering...).
+        // Left on the default path, a test run rewrites the developer's real
+        // ~/.config/xion/config.toml. Point the manager at a throwaway file
+        // instead; the process id keeps parallel test binaries apart.
+        let config_path =
+            std::env::temp_dir().join(format!("xion-test-{}-config.toml", std::process::id()));
         let state = AppState::new(config);
         let start_path = state.route.key();
         let mut history = HistoryService::default();
@@ -274,7 +281,7 @@ impl XionApp {
             last_action: None,
             address_input,
             search: SearchState::default(),
-            config_manager: crate::core::ConfigManager::new(),
+            config_manager: crate::core::ConfigManager::with_path(config_path),
             favorites,
             tab_manager: TabManager::new(tabs, 0),
             clipboard: ClipboardState::default(),

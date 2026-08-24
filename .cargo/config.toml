@@ -1,0 +1,20 @@
+[build]
+# Cap parallel codegen. Cargo defaults to one job per logical CPU, which on a
+# 16-core machine means 16 rustc processes each able to hold a gigabyte or more
+# — enough to push the box into swap while the editor and the app are running.
+# Leaving headroom costs a little wall-clock and keeps the machine usable.
+jobs = 6
+
+# Build paths leak into the binary: every `panic!` and `#[track_caller]` site
+# embeds its source path, so a release build currently contains ~1 070 copies of
+# the builder's home directory — username and directory layout included.
+#
+# Not fixed here because the fix needs the actual paths, which differ per
+# machine, and cargo does not expand variables in this file. Set it in whatever
+# builds the artefacts you ship:
+#
+#   export CARGO_BUILD_RUSTFLAGS="\
+#     --remap-path-prefix=$CARGO_HOME/registry/src/=deps/ \
+#     --remap-path-prefix=$PWD=xion"
+#
+# Worth about 87 kB of .rodata as well.

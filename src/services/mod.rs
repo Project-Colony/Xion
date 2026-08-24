@@ -24,7 +24,9 @@ pub mod virtualization;
 pub use favorites::FavoritesService;
 pub use history::HistoryService;
 pub use loader::DirectoryLoader;
-pub use network::{FtpEntry, NetworkDiscoveryService, NetworkResource};
+#[cfg(feature = "ftp")]
+pub use network::FtpEntry;
+pub use network::{NetworkDiscoveryService, NetworkResource};
 pub use search::{SearchIndex, SearchIndexOptions, SearchQuery, SearchService};
 pub use thumbnails::{
     PreviewImageService, Thumbnail, ThumbnailService, generate_pdf_thumbnail, generate_preview,

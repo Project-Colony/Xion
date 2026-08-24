@@ -10,16 +10,40 @@ license = "MIT"
 keywords = ["file-explorer", "gui", "iced", "filesystem"]
 categories = ["gui", "filesystem"]
 
+[features]
+# `XionApp::new_for_test` and the `*_for_test` accessors are compiled out of
+# release builds: they only exist under `cfg(test)` or this feature. Integration
+# tests live outside the crate, where `cfg(test)` does not apply, so the
+# self dev-dependency below turns the feature on for them alone.
+test-util = []
+
+# Remote FTP browsing. Unreachable from the UI today; see the note on suppaftp.
+ftp = ["dep:suppaftp"]
+
 [dependencies]
+# Le même tampon partagé que celui qu'iced attend pour ses images : garder les
+# octets d'une vignette dans un `Bytes` évite d'en donner une copie au handle.
+bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-directories = "5.0"
-iced = { version = "0.14", features = ["image", "wgpu", "tokio"] }
+directories = "6.0"
+# `image-without-codecs` rather than `image`: the latter turns on image's own
+# default feature set, which re-enabled every codec the line below deliberately
+# refuses (exr, avif, qoi...). They were compiled and linked regardless.
+iced = { version = "0.14", features = ["image-without-codecs", "wgpu", "tokio"] }
 tokio = { version = "1", features = ["rt", "time", "sync", "process", "io-util"] }
-image = { version = "0.25", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
-notify = "6.1"
+# No "tiff": it was the only thing pulling tiff -> zune-jpeg 0.4, a SECOND
+# complete JPEG decoder alongside the zune-jpeg 0.5 that image itself uses.
+image = { version = "0.25", default-features = false, features = [
+    "bmp",
+    "gif",
+    "jpeg",
+    "png",
+    "webp",
+] }
+notify = "8"
 serde = { version = "1.0", features = ["derive"] }
-sysinfo = "0.30"
-toml = "0.8"
+sysinfo = "0.39"
+toml = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 trash = "5"
@@ -28,25 +52,62 @@ syntect = { version = "5", default-features = false, features = ["default-syntax
 git2 = { version = "0.19", default-features = false }
 walkdir = "2"
 zip = "2"
+# `zip` tire bzip2 pour les archives compressées ainsi ; par défaut celui-ci
+# compile la bibliothèque C. Le backend Rust pur enlève la seule dépendance C
+# de la chaîne d'archives, donc une compilation croisée vers Windows n'a plus
+# besoin d'une chaîne d'outils MSVC pour ce morceau. L'unification des features
+# de Cargo applique ce choix à l'arête zip → bzip2.
+bzip2 = { version = "0.5", default-features = false, features = ["libbz2-rs-sys"] }
 pdf-extract = "0.7"
 tar = "0.4"
 flate2 = "1"
 sevenz-rust = "0.6"
 ignore = "0.4"
 encoding_rs = "0.8"
-suppaftp = { version = "6", features = ["native-tls"] }
+# Optional, and off by default. `list_ftp_directory` has no caller anywhere in
+# src/ui/: nothing in the interface can reach it. Enabling it by default cost
+# twelve crates including the whole openssl chain — and a build dependency on
+# the system OpenSSL — for code that never runs. Turn it back on with
+# `--features ftp` once there is a command that calls it.
+suppaftp = { version = "6", features = ["native-tls"], optional = true }
 mdns-sd = "0.11"
+portable-pty = "0.9.0"
+vte = "0.15.0"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_NetworkManagement_WNet", "Win32_Foundation"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_WNet",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
+[dev-dependencies]
+# Tests must never touch the user's real config directory or home; every test
+# that needs a filesystem gets a tempdir that cleans itself up.
+tempfile = "3"
+# A package may dev-depend on itself: this is what turns `test-util` on for
+# tests/ without ever enabling it for the shipped binary.
+xion = { path = ".", features = ["test-util"] }
+
+# Deliberately NOT under [target.'cfg(windows)'.build-dependencies]: build
+# dependencies are resolved for the HOST, so gating them on Windows would make
+# the crate unavailable exactly when cross-compiling Linux -> Windows. build.rs
+# gates the call itself on CARGO_CFG_TARGET_OS instead.
 [build-dependencies]
 embed-resource = "3"
 
 [profile.release]
 lto = true
 codegen-units = 1
-panic = "abort"
+# No `panic = "abort"`: pdf-extract, zip, sevenz-rust, image and syntect all
+# parse attacker-supplied files inside `spawn_blocking`, and none of them
+# promises to be panic-free. Aborting turned a malformed thumbnail into the loss
+# of every tab, the terminal session and any running copy; unwinding lets tokio
+# surface the panic as a JoinError and the preview simply fails.
 strip = true
 
 [profile.dev]

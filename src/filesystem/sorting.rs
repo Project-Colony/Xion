@@ -22,7 +22,9 @@ pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
                 let mut a_num: u64 = 0;
                 while let Some(&c) = a_chars.peek() {
                     if c.is_ascii_digit() {
-                        a_num = a_num.saturating_mul(10).saturating_add(c.to_digit(10).unwrap_or(0) as u64);
+                        a_num = a_num
+                            .saturating_mul(10)
+                            .saturating_add(c.to_digit(10).unwrap_or(0) as u64);
                         a_chars.next();
                     } else {
                         break;
@@ -31,7 +33,9 @@ pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
                 let mut b_num: u64 = 0;
                 while let Some(&c) = b_chars.peek() {
                     if c.is_ascii_digit() {
-                        b_num = b_num.saturating_mul(10).saturating_add(c.to_digit(10).unwrap_or(0) as u64);
+                        b_num = b_num
+                            .saturating_mul(10)
+                            .saturating_add(c.to_digit(10).unwrap_or(0) as u64);
                         b_chars.next();
                     } else {
                         break;
@@ -51,10 +55,21 @@ pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
                     Some(c) => c,
                     None => return std::cmp::Ordering::Greater,
                 };
-                // Compare lowercase chars without allocating a Vec
-                let mut a_lower = ac.to_lowercase();
-                let mut b_lower = bc.to_lowercase();
-                match a_lower.by_ref().cmp(b_lower.by_ref()) {
+                // ASCII fast path: `char::to_lowercase` builds a three-slot
+                // state machine per character and compares it through an
+                // iterator, which is pure overhead for the file names that make
+                // up almost every listing. `to_ascii_lowercase` is used rather
+                // than the usual `| 0x20` trick because the mask also rewrites
+                // punctuation ('_' would sort after 'a') and would silently
+                // change the ordering of non-alphabetic names.
+                let ordering = if ac.is_ascii() && bc.is_ascii() {
+                    ac.to_ascii_lowercase().cmp(&bc.to_ascii_lowercase())
+                } else {
+                    let mut a_lower = ac.to_lowercase();
+                    let mut b_lower = bc.to_lowercase();
+                    a_lower.by_ref().cmp(b_lower.by_ref())
+                };
+                match ordering {
                     std::cmp::Ordering::Equal => continue,
                     ord => return ord,
                 }
@@ -168,7 +183,10 @@ fn apply_permutation<T>(data: &mut [T], indices: &mut [usize]) {
         while indices[i] != i {
             let target = indices[i];
             if target >= data.len() {
-                tracing::warn!("apply_permutation: index corrompu {target} >= {}", data.len());
+                tracing::warn!(
+                    "apply_permutation: index corrompu {target} >= {}",
+                    data.len()
+                );
                 break;
             }
             data.swap(i, target);
@@ -286,6 +304,42 @@ mod tests {
 
         assert!(!matches_filter(&file, &options));
         assert!(matches_filter(&dir, &options));
+    }
+
+    #[test]
+    fn natural_cmp_ascii_fast_path_matches_char_to_lowercase() {
+        for left in 33u8..127 {
+            for right in 33u8..127 {
+                let (left, right) = (left as char, right as char);
+                if left.is_ascii_digit() && right.is_ascii_digit() {
+                    continue; // numeric branch, compared by value not by char
+                }
+                assert_eq!(
+                    natural_cmp(&left.to_string(), &right.to_string()),
+                    left.to_lowercase().cmp(right.to_lowercase()),
+                    "désaccord sur {left:?} vs {right:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn natural_cmp_keeps_punctuation_before_letters() {
+        // `| 0x20` would map '_' (0x5F) to 0x7F and sort it after every letter.
+        assert_eq!(natural_cmp("_alpha", "alpha"), Ordering::Less);
+        assert_eq!(natural_cmp("[a]", "aa"), Ordering::Less);
+    }
+
+    #[test]
+    fn natural_cmp_still_folds_non_ascii_case() {
+        assert_eq!(natural_cmp("École", "école"), Ordering::Equal);
+        assert_eq!(natural_cmp("Ärger", "ärger"), Ordering::Equal);
+    }
+
+    #[test]
+    fn natural_cmp_orders_numbers_by_value() {
+        assert_eq!(natural_cmp("file2", "file10"), Ordering::Less);
+        assert_eq!(natural_cmp("file10", "file2"), Ordering::Greater);
     }
 
     #[test]

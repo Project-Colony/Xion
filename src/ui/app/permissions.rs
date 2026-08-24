@@ -21,16 +21,30 @@ pub(super) fn parse_icacls_output(text: &str) -> Vec<AclEntry> {
             let perms_str = line.get(colon_pos + 1..).unwrap_or("");
             let allow = !perms_str.contains("(DENY)");
             let mut permissions = Vec::new();
-            if perms_str.contains("(F)")  { permissions.push("Contrôle total".to_string()); }
-            if perms_str.contains("(M)")  { permissions.push("Modification".to_string()); }
-            if perms_str.contains("(RX)") { permissions.push("Lecture & Exécution".to_string()); }
+            if perms_str.contains("(F)") {
+                permissions.push("Contrôle total".to_string());
+            }
+            if perms_str.contains("(M)") {
+                permissions.push("Modification".to_string());
+            }
+            if perms_str.contains("(RX)") {
+                permissions.push("Lecture & Exécution".to_string());
+            }
             if perms_str.contains("(R)") && !perms_str.contains("(RX)") {
                 permissions.push("Lecture".to_string());
             }
-            if perms_str.contains("(W)")  { permissions.push("Écriture".to_string()); }
-            if perms_str.contains("(D)")  { permissions.push("Suppression".to_string()); }
+            if perms_str.contains("(W)") {
+                permissions.push("Écriture".to_string());
+            }
+            if perms_str.contains("(D)") {
+                permissions.push("Suppression".to_string());
+            }
             if !principal.is_empty() && !permissions.is_empty() {
-                entries.push(AclEntry { principal, allow, permissions });
+                entries.push(AclEntry {
+                    principal,
+                    allow,
+                    permissions,
+                });
             }
         }
     }

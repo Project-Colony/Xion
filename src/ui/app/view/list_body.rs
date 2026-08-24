@@ -1,0 +1,310 @@
+//! The scrollable body of the file list, and the clickable column header above
+//! it.
+//!
+//! Moved out of `render_list`, which now only assembles what these return.
+
+use iced::widget::space::vertical as vertical_space;
+use iced::widget::{button, column, container, mouse_area, row};
+use iced::{Alignment, Background, Element, Length, mouse};
+
+use crate::core::{SortOrderConfig, ViewMode};
+use crate::ui::UiMessage;
+
+use super::XionApp;
+use super::rows::RowCtx;
+use super::widgets::RADIUS;
+use super::widgets::ViewCtx;
+use super::widgets::body_text;
+use super::widgets::caption_text;
+use super::widgets::chrome_style;
+use super::widgets::hover_button_style;
+use super::widgets::selectable_button_style;
+use super::widgets::title_text;
+use crate::ui::app::helpers::column_specs;
+use crate::ui::app::navigation::entry_index_for;
+use crate::ui::app::types::*;
+
+impl XionApp {
+    /// The rows or tiles themselves: the error state, the empty state, the
+    /// loading state, and the virtualised window of real entries.
+    pub(super) fn render_list_content<'a>(
+        &'a self,
+        ctx: ViewCtx,
+        cx: RowCtx<'_>,
+        display_entries: &'a PagedEntries,
+        filtered_indices: &Option<Vec<usize>>,
+        total_entries: usize,
+        is_filtered: bool,
+    ) -> Element<'a, UiMessage> {
+        let ViewCtx {
+            colors,
+            spacing,
+            typography,
+        } = ctx;
+        let view_mode = cx.view_mode;
+        let row_height = cx.row_height;
+        let filter_slice = filtered_indices.as_ref().map(|indices| indices.as_slice());
+
+        let list_content = if let Some(message) = &self.error {
+            column![
+                title_text(typography, "Impossible de charger le dossier"),
+                body_text(typography, message),
+                button(body_text(typography, "Réessayer"),).on_press(UiMessage::Refresh)
+            ]
+            .spacing(spacing.sm)
+        } else if total_entries == 0 && !self.is_loading {
+            if is_filtered {
+                column![body_text(typography, "Aucun résultat")]
+            } else {
+                column![body_text(typography, "Dossier vide")]
+            }
+        } else if total_entries == 0 {
+            column![]
+        } else {
+            match view_mode {
+                ViewMode::List => {
+                    let window = self.list_virtual_window_for(total_entries);
+                    let mut list = column![];
+
+                    if window.padding_top > 0.0 {
+                        list =
+                            list.push(vertical_space().height(Length::Fixed(window.padding_top)));
+                    }
+
+                    for display_index in window.start..window.end {
+                        let Some(actual_index) = entry_index_for(filter_slice, display_index)
+                        else {
+                            continue;
+                        };
+                        let entry = display_entries.get(actual_index);
+                        if let Some(entry) = entry {
+                            let is_selected = self
+                                .state
+                                .navigation
+                                .selection
+                                .selected
+                                .contains(&entry.path);
+                            let is_focused = self
+                                .state
+                                .navigation
+                                .selection
+                                .focused
+                                .as_ref()
+                                .map(|path| path == &entry.path)
+                                .unwrap_or(false);
+                            let message = UiMessage::SelectEntry {
+                                path: entry.path.clone(),
+                                kind: self.selection_kind_from_modifiers(),
+                            };
+                            let context_path = entry.path.clone();
+                            let pressed_path = entry.path.clone();
+                            list = list.push(
+                                mouse_area(
+                                    button(self.list_row(cx, entry))
+                                        .padding([spacing.xs, spacing.sm])
+                                        .height(Length::Fixed(row_height))
+                                        .style(selectable_button_style(
+                                            colors,
+                                            is_selected,
+                                            is_focused,
+                                            RADIUS.md,
+                                        ))
+                                        .on_press(message),
+                                )
+                                .on_press(UiMessage::EntryPressed(pressed_path))
+                                .on_right_press(UiMessage::OpenContextMenuForEntry(context_path)),
+                            );
+                        } else {
+                            list = list.push(self.loading_row(cx));
+                        }
+                    }
+
+                    if window.padding_bottom > 0.0 {
+                        list = list
+                            .push(vertical_space().height(Length::Fixed(window.padding_bottom)));
+                    }
+
+                    list
+                }
+                ViewMode::Grid => {
+                    let grid = self.grid_window_for(total_entries);
+                    let mut list = column![];
+                    let tile_height = self.state.config.view.grid_row_height;
+
+                    if grid.window.padding_top > 0.0 {
+                        list = list
+                            .push(vertical_space().height(Length::Fixed(grid.window.padding_top)));
+                    }
+
+                    for row_index in grid.window.start..grid.window.end {
+                        let mut tile_row = row![].spacing(spacing.md);
+                        for column_index in 0..grid.columns {
+                            let display_index = row_index * grid.columns + column_index;
+                            if display_index >= grid.total {
+                                tile_row = tile_row.push(
+                                    container(row![])
+                                        .width(Length::FillPortion(1))
+                                        .height(Length::Fixed(tile_height)),
+                                );
+                                continue;
+                            }
+                            let Some(actual_index) = entry_index_for(filter_slice, display_index)
+                            else {
+                                continue;
+                            };
+                            let entry = display_entries.get(actual_index);
+                            let tile_element: Element<'_, UiMessage> = match entry {
+                                Some(entry) => {
+                                    let is_selected = self
+                                        .state
+                                        .navigation
+                                        .selection
+                                        .selected
+                                        .contains(&entry.path);
+                                    let is_focused = self
+                                        .state
+                                        .navigation
+                                        .selection
+                                        .focused
+                                        .as_ref()
+                                        .map(|path| path == &entry.path)
+                                        .unwrap_or(false);
+                                    let message = UiMessage::SelectEntry {
+                                        path: entry.path.clone(),
+                                        kind: self.selection_kind_from_modifiers(),
+                                    };
+                                    let context_path = entry.path.clone();
+                                    let pressed_path = entry.path.clone();
+                                    mouse_area(
+                                        container(
+                                            button(self.grid_tile(cx, entry))
+                                                .width(Length::Fill)
+                                                .height(Length::Fill)
+                                                .padding(spacing.sm)
+                                                .style(selectable_button_style(
+                                                    colors,
+                                                    is_selected,
+                                                    is_focused,
+                                                    RADIUS.lg,
+                                                ))
+                                                .on_press(message),
+                                        )
+                                        .width(Length::FillPortion(1))
+                                        .height(Length::Fixed(tile_height)),
+                                    )
+                                    .on_press(UiMessage::EntryPressed(pressed_path))
+                                    .on_right_press(UiMessage::OpenContextMenuForEntry(
+                                        context_path,
+                                    ))
+                                    .into()
+                                }
+                                None => container(row![])
+                                    .width(Length::FillPortion(1))
+                                    .height(Length::Fixed(tile_height))
+                                    .into(),
+                            };
+                            tile_row = tile_row.push(tile_element);
+                        }
+                        list = list.push(tile_row);
+                    }
+
+                    if grid.window.padding_bottom > 0.0 {
+                        list = list.push(
+                            vertical_space().height(Length::Fixed(grid.window.padding_bottom)),
+                        );
+                    }
+
+                    list
+                }
+            }
+        };
+
+        list_content.into()
+    }
+
+    /// The sortable column header. Absent in grid mode and while the list is
+    /// empty.
+    pub(super) fn render_list_header(&self, ctx: ViewCtx, visible: bool) -> Element<'_, UiMessage> {
+        let ViewCtx {
+            colors,
+            spacing,
+            typography,
+        } = ctx;
+        let column_specs = column_specs(
+            &self.state.config.view.columns,
+            &self.state.config.column_widths,
+        );
+        let row_height = self.state.config.view.row_height;
+        let list_header_visible = visible;
+
+        let list_header: Element<'_, UiMessage> = if list_header_visible {
+            let mut header_row = row![].spacing(spacing.md).align_y(Alignment::Center);
+            for spec in &column_specs {
+                let is_active_sort = spec
+                    .sort_key
+                    .is_some_and(|key| key == self.state.config.list.sort_key);
+                let sort_indicator = if is_active_sort {
+                    match self.state.config.list.sort_order {
+                        SortOrderConfig::Asc => "↑",
+                        SortOrderConfig::Desc => "↓",
+                    }
+                } else {
+                    ""
+                };
+                let label = if sort_indicator.is_empty() {
+                    std::borrow::Cow::Borrowed(spec.label)
+                } else {
+                    std::borrow::Cow::Owned(format!("{} {}", spec.label, sort_indicator))
+                };
+                let header_text = caption_text(typography, label);
+                let cell: Element<'_, UiMessage> = if let Some(sort_key) = spec.sort_key {
+                    button(header_text)
+                        .padding([spacing.xs, spacing.sm])
+                        .style(hover_button_style(colors, colors.text_primary, None))
+                        .on_press(UiMessage::ChangeSort(sort_key))
+                        .into()
+                } else {
+                    container(header_text)
+                        .padding([spacing.xs, spacing.sm])
+                        .into()
+                };
+                header_row = header_row.push(container(cell).width(spec.width).align_x(spec.align));
+                // Feature H: resize handle between columns
+                let col_name = spec.column.key();
+                let is_resizing = self
+                    .column_resize_state
+                    .as_ref()
+                    .is_some_and(|r| r.column == col_name);
+                let handle_color = if is_resizing {
+                    colors.accent
+                } else {
+                    colors.border
+                };
+                header_row = header_row.push(
+                    mouse_area(
+                        container(row![])
+                            .width(Length::Fixed(4.0))
+                            .height(Length::Fill)
+                            .style(move |_| iced::widget::container::Style {
+                                background: Some(Background::Color(handle_color)),
+                                ..Default::default()
+                            }),
+                    )
+                    .on_press(UiMessage::ColumnResizeStart(col_name))
+                    .on_release(UiMessage::ColumnResizeEnd)
+                    .interaction(mouse::Interaction::ResizingHorizontally),
+                );
+            }
+
+            container(header_row)
+                .padding([spacing.xs, spacing.sm])
+                .height(Length::Fixed(row_height))
+                .style(chrome_style(colors, RADIUS.md))
+                .into()
+        } else {
+            container(row![]).into()
+        };
+
+        list_header
+    }
+}

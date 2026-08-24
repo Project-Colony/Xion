@@ -25,8 +25,14 @@ pub fn highlight_text(path: &Path, content: &str, dark_mode: bool) -> Option<Vec
     let ts = get_theme_set();
     let ext = path.extension()?.to_str()?;
     let syntax = ss.find_syntax_by_extension(ext)?;
-    let theme_name = if dark_mode { "base16-ocean.dark" } else { "InspiredGitHub" };
-    let theme = ts.themes.get(theme_name)
+    let theme_name = if dark_mode {
+        "base16-ocean.dark"
+    } else {
+        "InspiredGitHub"
+    };
+    let theme = ts
+        .themes
+        .get(theme_name)
         .or_else(|| ts.themes.values().next())?;
     let mut h = HighlightLines::new(syntax, theme);
 
@@ -34,16 +40,24 @@ pub fn highlight_text(path: &Path, content: &str, dark_mode: bool) -> Option<Vec
     for line in content.lines().take(500) {
         match h.highlight_line(line, ss) {
             Ok(ranges) => {
-                let spans = ranges.iter().map(|(style, text)| {
-                    let c = style.foreground;
-                    let rgba = ((c.r as u32) << 24) | ((c.g as u32) << 16) | ((c.b as u32) << 8) | (c.a as u32);
-                    (rgba, text.to_string())
-                }).collect();
+                let spans = ranges
+                    .iter()
+                    .map(|(style, text)| {
+                        let c = style.foreground;
+                        let rgba = ((c.r as u32) << 24)
+                            | ((c.g as u32) << 16)
+                            | ((c.b as u32) << 8)
+                            | (c.a as u32);
+                        (rgba, text.to_string())
+                    })
+                    .collect();
                 lines.push(HighlightedLine { spans });
             }
             Err(_) => {
                 // Skip this line but continue highlighting the rest
-                lines.push(HighlightedLine { spans: vec![(0xFF_FF_FF_FF, line.to_string())] });
+                lines.push(HighlightedLine {
+                    spans: vec![(0xFF_FF_FF_FF, line.to_string())],
+                });
             }
         }
     }

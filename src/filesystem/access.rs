@@ -7,10 +7,7 @@
 use std::cmp::Ordering;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use std::thread;
-
-use tracing::warn;
 
 use crate::core::{AppResult, FilesystemConfig, XionError};
 use crate::filesystem::metadata::FsMetadata;
@@ -33,27 +30,27 @@ pub enum FsEntryType {
     Other,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SortKey {
     Name,
     Modified,
     Size,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SortOrder {
     Asc,
     Desc,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EntryFilter {
     All,
     OnlyDirectories,
     OnlyFiles,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ListOptions {
     pub show_hidden: bool,
     pub sort_by: SortKey,
@@ -97,7 +94,7 @@ pub trait FileSystem {
         let entries = self.list_dir(path, options)?;
         Ok(page.apply(entries))
     }
-    fn metadata_batch(&self, paths: &[PathBuf]) -> AppResult<Vec<FsMetadata>> {
+    fn metadata_batch(&self, paths: &[&Path]) -> AppResult<Vec<FsMetadata>> {
         paths.iter().map(|path| self.metadata(path)).collect()
     }
 }
@@ -126,16 +123,27 @@ impl LocalFileSystem {
         }
     }
 
+    /// Unix convention only: a leading dot hides the entry.
+    #[cfg(not(target_os = "windows"))]
     fn is_hidden(name: &str) -> bool {
         name.starts_with('.')
     }
 
+    /// Windows marks hidden entries with an attribute, and the dot convention
+    /// does not apply there: Explorer shows `.gitignore` and `.env`, so hiding
+    /// them made the default listing differ from every other Windows tool.
+    ///
+    /// The attribute comes from the directory entry itself. Reading it through
+    /// `fs::metadata(path)` reopened every file (one `CreateFileW` per entry,
+    /// enough to stall a 20 000-file listing on OneDrive) and followed symlinks,
+    /// which reported a broken link as visible whatever its own attributes said.
     #[cfg(target_os = "windows")]
-    fn is_hidden_windows(path: &std::path::Path) -> bool {
+    fn is_hidden_windows(entry: &fs::DirEntry) -> bool {
         use std::os::windows::fs::MetadataExt;
         const FILE_ATTRIBUTE_HIDDEN: u32 = 0x0002;
-        std::fs::metadata(path)
-            .map(|m| m.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0)
+        entry
+            .metadata()
+            .map(|metadata| metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0)
             .unwrap_or(false)
     }
 
@@ -209,22 +217,13 @@ impl FileSystem for LocalFileSystem {
         let mut entries = Vec::new();
         let long_path = ensure_long_path(path);
 
-        // Build gitignore matcher if enabled
+        // The chain is rooted on `long_path`, like the entries it is matched
+        // against: mixing a `\\?\`-prefixed entry with an unprefixed root makes
+        // the matcher reject the path outright.
         let gitignore = if options.respect_gitignore {
-            let mut builder = ignore::gitignore::GitignoreBuilder::new(path);
-            let gitignore_path = path.join(".gitignore");
-            if gitignore_path.exists() {
-                let _ = builder.add(&gitignore_path);
-            }
-            match builder.build() {
-                Ok(gi) => Some(gi),
-                Err(e) => {
-                    tracing::warn!("Gitignore: erreur de parsing: {e}");
-                    None
-                }
-            }
+            build_gitignore_chain(long_path.as_ref())
         } else {
-            None
+            Vec::new()
         };
 
         for entry in fs::read_dir(long_path.as_ref())? {
@@ -239,16 +238,18 @@ impl FileSystem for LocalFileSystem {
 
             if !options.show_hidden {
                 #[cfg(target_os = "windows")]
-                let hidden = Self::is_hidden(&name) || Self::is_hidden_windows(&entry.path());
+                let hidden = Self::is_hidden_windows(&entry);
                 #[cfg(not(target_os = "windows"))]
                 let hidden = Self::is_hidden(&name);
-                if hidden { continue; }
+                if hidden {
+                    continue;
+                }
             }
 
             // Filter gitignored entries
-            if let Some(gi) = &gitignore {
+            if !gitignore.is_empty() {
                 let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
-                if gi.matched_path_or_any_parents(&entry.path(), is_dir).is_ignore() {
+                if is_gitignored(&gitignore, &entry.path(), is_dir) {
                     continue;
                 }
             }
@@ -284,21 +285,19 @@ impl FileSystem for LocalFileSystem {
         }
 
         if needs_full_metadata {
-            let paths = entries
-                .iter()
-                .map(|entry| entry.path.clone())
-                .collect::<Vec<_>>();
-            let mut metadata_iter = if paths.is_empty() {
-                Vec::new().into_iter()
-            } else {
-                self.metadata_batch(&paths)?.into_iter()
+            // Borrowed paths, not copies: sorting a 100 000-entry directory by
+            // size used to clone every `PathBuf` in it — one heap allocation
+            // apiece — purely to hand the batch something it only reads.
+            let metadata = {
+                let paths: Vec<&Path> = entries.iter().map(|entry| entry.path.as_path()).collect();
+                self.metadata_batch(&paths)?
             };
-            for entry in &mut entries {
-                entry.metadata = Some(
-                    metadata_iter
-                        .next()
-                        .ok_or_else(|| XionError::InvalidPath(entry.path.clone()))?,
-                );
+            if metadata.len() != entries.len() {
+                let path = entries[metadata.len().min(entries.len() - 1)].path.clone();
+                return Err(XionError::InvalidPath(path));
+            }
+            for (entry, metadata) in entries.iter_mut().zip(metadata) {
+                entry.metadata = Some(metadata);
             }
         }
 
@@ -307,32 +306,32 @@ impl FileSystem for LocalFileSystem {
         let total = entries.len();
         let offset = page.offset.min(total);
         let end = offset.saturating_add(page.limit).min(total);
-        let slice = &entries[offset..end];
 
-        let missing_paths: Vec<PathBuf> = slice
-            .iter()
-            .filter(|entry| entry.metadata.is_none())
-            .map(|entry| entry.path.clone())
-            .collect();
-
-        let mut missing_iter = if missing_paths.is_empty() {
-            Vec::new().into_iter()
-        } else {
-            self.metadata_batch(&missing_paths)?.into_iter()
+        let missing = {
+            let missing_paths: Vec<&Path> = entries[offset..end]
+                .iter()
+                .filter(|entry| entry.metadata.is_none())
+                .map(|entry| entry.path.as_path())
+                .collect();
+            self.metadata_batch(&missing_paths)?
         };
+        let mut missing_iter = missing.into_iter();
 
-        let mut items = Vec::with_capacity(slice.len());
-        for entry in slice {
-            let metadata = match entry.metadata.as_ref() {
-                Some(metadata) => metadata.clone(),
+        // Draining the page moves the stubs into the result. Building the page
+        // used to clone the path and the name of every row it returned, with
+        // the originals dropped on the next line.
+        let mut items = Vec::with_capacity(end - offset);
+        for entry in entries.drain(offset..end) {
+            let metadata = match entry.metadata {
+                Some(metadata) => metadata,
                 None => missing_iter
                     .next()
                     .ok_or_else(|| XionError::InvalidPath(entry.path.clone()))?,
             };
 
             items.push(FsEntry {
-                path: entry.path.clone(),
-                name: entry.name.clone(),
+                path: entry.path,
+                name: entry.name,
                 entry_type: entry.entry_type,
                 metadata,
             });
@@ -346,112 +345,194 @@ impl FileSystem for LocalFileSystem {
         })
     }
 
-    fn metadata_batch(&self, paths: &[PathBuf]) -> AppResult<Vec<FsMetadata>> {
+    /// Reads metadata for every path, spreading the `stat` calls over threads.
+    ///
+    /// The previous version re-entered `thread::scope` for every 256 paths and
+    /// asked `available_parallelism()` again each time: sorting 100 000 files by
+    /// size spawned and joined ~1 500 OS threads, whose creation cost rivalled
+    /// the `stat` calls themselves. Threads now share one scope and write into
+    /// disjoint slices, which also removes the `Mutex` (and its unreachable
+    /// poison-recovery branch) from the hot path.
+    fn metadata_batch(&self, paths: &[&Path]) -> AppResult<Vec<FsMetadata>> {
         if paths.is_empty() {
             return Ok(Vec::new());
         }
 
-        let mut metadata = Vec::with_capacity(paths.len());
-        for chunk in paths.chunks(self.metadata_batch_size.max(1)) {
-            let mut batch_metadata = self.metadata_batch_chunk(chunk)?;
-            metadata.append(&mut batch_metadata);
+        let mut results = vec![FsMetadata::default(); paths.len()];
+        let thread_count = self.batch_thread_count(paths.len());
+
+        if thread_count <= 1 {
+            for (slot, path) in results.iter_mut().zip(paths) {
+                *slot = read_metadata_or_default(path);
+            }
+            return Ok(results);
         }
-        Ok(metadata)
-    }
-}
 
-impl LocalFileSystem {
-    fn metadata_batch_chunk(&self, paths: &[PathBuf]) -> AppResult<Vec<FsMetadata>> {
-        let available_threads = thread::available_parallelism()
-            .map(|count| count.get())
-            .unwrap_or(1);
-        let thread_count = self
-            .metadata_parallelism
-            .min(available_threads)
-            .max(1);
         let chunk_size = paths.len().div_ceil(thread_count).max(1);
-        let mut initial_results = Vec::with_capacity(paths.len());
-        initial_results.resize_with(paths.len(), || None);
-        let results = Arc::new(Mutex::new(initial_results));
-
         thread::scope(|scope| {
-            for (chunk_index, chunk) in paths.chunks(chunk_size).enumerate() {
-                let results = Arc::clone(&results);
+            for (slots, chunk) in results.chunks_mut(chunk_size).zip(paths.chunks(chunk_size)) {
                 scope.spawn(move || {
-                    for (index, path) in chunk.iter().enumerate() {
-                        let result = fs::metadata(path)
-                            .map(FsMetadata::from_metadata)
-                            .map_err(XionError::from);
-                        match results.lock() {
-                            Ok(mut guard) => {
-                                guard[chunk_index * chunk_size + index] = Some(result);
-                            }
-                            Err(poisoned) => {
-                                // Mutex was poisoned by a panic in another thread.
-                                // Log warning and recover by accessing the data anyway.
-                                warn!(
-                                    path = %path.display(),
-                                    "Mutex poisoned during metadata batch, recovering"
-                                );
-                                let mut guard = poisoned.into_inner();
-                                guard[chunk_index * chunk_size + index] = Some(result);
-                            }
-                        }
+                    for (slot, path) in slots.iter_mut().zip(chunk) {
+                        *slot = read_metadata_or_default(path);
                     }
                 });
             }
         });
 
-        // Safety: thread::scope guarantees all spawned threads have joined at this point,
-        // so the Arc should have exactly one strong reference remaining.
-        let results = Arc::try_unwrap(results)
-            .map_err(|_| XionError::Io(std::io::Error::other(
-                "batch metadata operation failed: arc still has multiple owners (should not happen after thread::scope)",
-            )))?
-            .into_inner()
-            .map_err(|_| XionError::Io(std::io::Error::other(
-                "batch metadata operation failed: mutex poisoned",
-            )))?;
+        Ok(results)
+    }
+}
 
-        let mut metadata = Vec::with_capacity(paths.len());
-        for (i, result) in results.into_iter().enumerate() {
-            match result {
-                Some(Ok(value)) => metadata.push(value),
-                Some(Err(_)) => {
-                    // Inaccessible file (system file, locked, etc.) — use fallback metadata
-                    metadata.push(FsMetadata::default());
-                }
-                None => return Err(XionError::Io(std::io::Error::other(
-                    format!("batch metadata operation failed: missing result slot at index {i}"),
-                ))),
+impl LocalFileSystem {
+    /// `metadata_batch_size` is now the minimum amount of work worth handing to
+    /// a thread rather than a resubmission boundary, so small listings stay on
+    /// the calling thread and never pay for a spawn.
+    fn batch_thread_count(&self, path_count: usize) -> usize {
+        let available_threads = thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(1);
+        let useful_threads = path_count.div_ceil(self.metadata_batch_size.max(1)).max(1);
+        self.metadata_parallelism
+            .min(available_threads)
+            .min(useful_threads)
+            .max(1)
+    }
+}
+
+/// Inaccessible entries (system files, locked files, broken links) keep the
+/// listing going with fallback metadata instead of failing the whole page.
+fn read_metadata_or_default(path: &Path) -> FsMetadata {
+    match fs::metadata(path) {
+        Ok(metadata) => FsMetadata::from_metadata(metadata),
+        Err(_) => FsMetadata::default(),
+    }
+}
+
+/// Builds the gitignore matchers that apply to `directory`, closest first.
+///
+/// Only `directory/.gitignore` used to be loaded, so turning the option on and
+/// walking into `repo/src` ignored nothing: the rules live in the repository
+/// root, which was never consulted, and neither was `.git/info/exclude`.
+fn build_gitignore_chain(directory: &Path) -> Vec<ignore::gitignore::Gitignore> {
+    let mut chain = Vec::new();
+    for ancestor in directory.ancestors() {
+        if ancestor.as_os_str().is_empty() {
+            break;
+        }
+        let mut builder = ignore::gitignore::GitignoreBuilder::new(ancestor);
+
+        let ignore_file = ancestor.join(".gitignore");
+        if ignore_file.is_file()
+            && let Some(error) = builder.add(&ignore_file)
+        {
+            tracing::warn!("Gitignore: {} illisible: {error}", ignore_file.display());
+        }
+
+        // `.git` is a directory in a plain clone and a file in a worktree or a
+        // submodule, so `exists()` rather than `is_dir()` marks the repo root.
+        let repository_root = ancestor.join(".git").exists();
+        if repository_root {
+            let exclude = ancestor.join(".git").join("info").join("exclude");
+            if exclude.is_file()
+                && let Some(error) = builder.add(&exclude)
+            {
+                tracing::warn!("Gitignore: {} illisible: {error}", exclude.display());
             }
         }
 
-        Ok(metadata)
+        match builder.build() {
+            // An empty matcher costs a lookup per entry and can never match.
+            Ok(matcher) if !matcher.is_empty() => chain.push(matcher),
+            Ok(_) => {}
+            Err(error) => tracing::warn!(
+                "Gitignore: erreur de parsing dans {}: {error}",
+                ancestor.display()
+            ),
+        }
+
+        if repository_root {
+            break;
+        }
     }
+    chain
 }
 
-#[cfg(windows)]
-fn ensure_long_path(path: &std::path::Path) -> std::borrow::Cow<'_, std::path::Path> {
-    let s = path.to_string_lossy();
-    if s.len() > 240 && !s.starts_with("\\\\?\\") && path.is_absolute() {
-        if s.starts_with("\\\\") {
-            // UNC path: \\server\share -> \\?\UNC\server\share
-            std::borrow::Cow::Owned(std::path::PathBuf::from(
-                format!("\\\\?\\UNC\\{}", s.strip_prefix("\\\\").unwrap_or(&s))
-            ))
-        } else {
-            std::borrow::Cow::Owned(std::path::PathBuf::from(
-                format!("\\\\?\\{}", s)
-            ))
+/// Applies the chain closest first, as git does: a nested `.gitignore` — and
+/// its negated (`!`) patterns — overrides what its ancestors decided.
+fn is_gitignored(chain: &[ignore::gitignore::Gitignore], path: &Path, is_dir: bool) -> bool {
+    for matcher in chain {
+        let matched = matcher.matched_path_or_any_parents(path, is_dir);
+        if matched.is_ignore() {
+            return true;
         }
-    } else {
-        std::borrow::Cow::Borrowed(path)
+        if matched.is_whitelist() {
+            return false;
+        }
     }
+    false
+}
+
+/// Number of UTF-16 units above which a path gets the `\\?\` prefix.
+///
+/// `MAX_PATH` counts UTF-16 units, but the threshold used to be applied to the
+/// UTF-8 length of the path: an accented path was converted hundreds of bytes
+/// too early while a plain ASCII one could still overflow. The margin below 260
+/// also covers the child names appended to a directory path while listing it —
+/// the old check looked only at the directory, so a 230-character folder never
+/// got the prefix even though every file inside it was over the limit.
+#[cfg(windows)]
+const LONG_PATH_THRESHOLD: usize = 200;
+
+#[cfg(windows)]
+fn ensure_long_path(path: &Path) -> std::borrow::Cow<'_, Path> {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use std::path::{Component, Prefix};
+
+    let wide_len = path.as_os_str().encode_wide().count();
+    if wide_len <= LONG_PATH_THRESHOLD {
+        return std::borrow::Cow::Borrowed(path);
+    }
+
+    // `\\?\` turns off Win32 path normalisation, so `.`, `..` and `/` have to be
+    // resolved first or the converted path stops referring to the same file.
+    let absolute = match std::path::absolute(path) {
+        Ok(absolute) => absolute,
+        Err(error) => {
+            tracing::warn!(
+                "Chemin long: normalisation de {} impossible: {error}",
+                path.display()
+            );
+            return std::borrow::Cow::Borrowed(path);
+        }
+    };
+
+    let prefix = match absolute.components().next() {
+        Some(Component::Prefix(prefix)) => prefix.kind(),
+        // Relative or device-relative: no verbatim form applies.
+        _ => return std::borrow::Cow::Borrowed(path),
+    };
+
+    // Building through UTF-16 rather than `to_string_lossy` keeps unpaired
+    // surrogates intact instead of replacing them with U+FFFD.
+    let wide: Vec<u16> = absolute.as_os_str().encode_wide().collect();
+    let converted: Vec<u16> = match prefix {
+        Prefix::Disk(_) => r"\\?\".encode_utf16().chain(wide).collect(),
+        // \\server\share -> \\?\UNC\server\share
+        Prefix::UNC(_, _) => r"\\?\UNC\"
+            .encode_utf16()
+            .chain(wide.iter().copied().skip(2))
+            .collect(),
+        // Already verbatim, or a device path that must not be rewritten.
+        _ => return std::borrow::Cow::Borrowed(path),
+    };
+
+    std::borrow::Cow::Owned(std::path::PathBuf::from(std::ffi::OsString::from_wide(
+        &converted,
+    )))
 }
 
 #[cfg(not(windows))]
-fn ensure_long_path(path: &std::path::Path) -> std::borrow::Cow<'_, std::path::Path> {
+fn ensure_long_path(path: &Path) -> std::borrow::Cow<'_, Path> {
     std::borrow::Cow::Borrowed(path)
 }
 
@@ -465,7 +546,9 @@ struct EntryStub {
 
 #[cfg(test)]
 mod tests {
-    use super::{EntryFilter, FileSystem, ListOptions, LocalFileSystem, PageRequest};
+    use super::{
+        EntryFilter, FileSystem, FilesystemConfig, ListOptions, LocalFileSystem, PageRequest,
+    };
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -514,15 +597,180 @@ mod tests {
         assert_eq!(files_only.len(), 2);
 
         let query_only = fs
-            .list_dir(
-                &root,
-                ListOptions::default().with_name_query("alp"),
-            )
+            .list_dir(&root, ListOptions::default().with_name_query("alp"))
             .expect("list dir query");
         assert_eq!(query_only.len(), 1);
         assert_eq!(query_only[0].name, "alpha.txt");
 
         fs::remove_dir_all(&root).expect("cleanup");
+    }
+
+    #[test]
+    fn gitignore_rules_come_from_the_repository_root() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let repo = root.path();
+        fs::create_dir_all(repo.join(".git")).expect("create .git");
+        fs::write(repo.join(".gitignore"), "*.log\ntarget/\n").expect("write .gitignore");
+        let src = repo.join("src");
+        fs::create_dir_all(&src).expect("create src");
+        write_file(&src.join("main.rs"), "fn main() {}");
+        write_file(&src.join("debug.log"), "noise");
+
+        let filesystem = LocalFileSystem::new();
+        let options = ListOptions {
+            respect_gitignore: true,
+            ..ListOptions::default()
+        };
+        let names: Vec<String> = filesystem
+            .list_dir(&src, options)
+            .expect("list src")
+            .iter()
+            .map(|entry| entry.name.clone())
+            .collect();
+
+        // Before, only src/.gitignore was read, so the root rules were ignored
+        // as soon as the user walked one level down.
+        assert_eq!(names, vec!["main.rs"]);
+    }
+
+    #[test]
+    fn gitignore_honours_git_info_exclude() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let repo = root.path();
+        fs::create_dir_all(repo.join(".git").join("info")).expect("create .git/info");
+        fs::write(
+            repo.join(".git").join("info").join("exclude"),
+            "secret.txt\n",
+        )
+        .expect("write exclude");
+        write_file(&repo.join("secret.txt"), "hidden by exclude");
+        write_file(&repo.join("public.txt"), "visible");
+
+        let filesystem = LocalFileSystem::new();
+        let options = ListOptions {
+            respect_gitignore: true,
+            ..ListOptions::default()
+        };
+        let names: Vec<String> = filesystem
+            .list_dir(repo, options)
+            .expect("list repo")
+            .iter()
+            .map(|entry| entry.name.clone())
+            .collect();
+
+        assert_eq!(names, vec!["public.txt"]);
+    }
+
+    #[test]
+    fn nested_gitignore_can_whitelist_a_parent_rule() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let repo = root.path();
+        fs::create_dir_all(repo.join(".git")).expect("create .git");
+        fs::write(repo.join(".gitignore"), "*.log\n").expect("write .gitignore");
+        let src = repo.join("src");
+        fs::create_dir_all(&src).expect("create src");
+        fs::write(src.join(".gitignore"), "!debug.log\n").expect("write nested .gitignore");
+        write_file(&src.join("debug.log"), "kept");
+        write_file(&src.join("other.log"), "dropped");
+
+        let filesystem = LocalFileSystem::new();
+        let options = ListOptions {
+            respect_gitignore: true,
+            show_hidden: true,
+            ..ListOptions::default()
+        };
+        let names: Vec<String> = filesystem
+            .list_dir(&src, options)
+            .expect("list src")
+            .iter()
+            .map(|entry| entry.name.clone())
+            .collect();
+
+        assert!(
+            names.contains(&"debug.log".to_string()),
+            "obtenu: {names:?}"
+        );
+        assert!(
+            !names.contains(&"other.log".to_string()),
+            "obtenu: {names:?}"
+        );
+    }
+
+    #[test]
+    fn gitignore_disabled_keeps_every_entry() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let repo = root.path();
+        fs::create_dir_all(repo.join(".git")).expect("create .git");
+        fs::write(repo.join(".gitignore"), "*.log\n").expect("write .gitignore");
+        write_file(&repo.join("debug.log"), "noise");
+
+        let filesystem = LocalFileSystem::new();
+        let names: Vec<String> = filesystem
+            .list_dir(repo, ListOptions::default())
+            .expect("list repo")
+            .iter()
+            .map(|entry| entry.name.clone())
+            .collect();
+
+        assert_eq!(names, vec!["debug.log"]);
+    }
+
+    #[test]
+    fn metadata_batch_keeps_input_order_across_threads() {
+        let root = tempfile::tempdir().expect("tempdir");
+        // More paths than one batch, so the parallel path is exercised.
+        let paths: Vec<PathBuf> = (0..64usize)
+            .map(|index| {
+                let path = root.path().join(format!("file_{index}.bin"));
+                write_file(&path, &"x".repeat(index));
+                path
+            })
+            .collect();
+
+        let filesystem = LocalFileSystem::from_config(FilesystemConfig {
+            metadata_batch_size: 8,
+            metadata_parallelism: 4,
+        });
+        let borrowed: Vec<&Path> = paths.iter().map(PathBuf::as_path).collect();
+        let metadata = filesystem
+            .metadata_batch(&borrowed)
+            .expect("metadata batch");
+
+        assert_eq!(metadata.len(), paths.len());
+        for (index, entry) in metadata.iter().enumerate() {
+            assert_eq!(entry.size, index as u64, "décalage à l'index {index}");
+        }
+    }
+
+    #[test]
+    fn metadata_batch_falls_back_on_unreadable_paths() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let present = root.path().join("present.txt");
+        write_file(&present, "abc");
+        let missing = root.path().join("missing.txt");
+
+        let filesystem = LocalFileSystem::new();
+        let metadata = filesystem
+            .metadata_batch(&[missing.as_path(), present.as_path()])
+            .expect("metadata batch");
+
+        assert_eq!(metadata.len(), 2);
+        assert_eq!(
+            metadata[0].size, 0,
+            "chemin absent -> métadonnées par défaut"
+        );
+        assert_eq!(metadata[1].size, 3);
+    }
+
+    #[test]
+    fn metadata_batch_on_empty_input_spawns_nothing() {
+        let filesystem = LocalFileSystem::new();
+        assert!(
+            filesystem
+                .metadata_batch(&[])
+                .expect("empty batch")
+                .is_empty()
+        );
     }
 
     #[test]

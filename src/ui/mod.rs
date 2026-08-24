@@ -76,14 +76,14 @@ pub struct ArchiveEntry {
 
 #[derive(Debug, Clone)]
 pub struct HighlightedLine {
-    pub spans: Vec<(u32, String)>,  // (RGBA color, text)
+    pub spans: Vec<(u32, String)>, // (RGBA color, text)
 }
 
 pub mod app;
 pub mod theme;
 
-pub use app::{run, XionApp};
-pub use theme::{fonts, icons, layout, timing, UiColors, UiSpacing, UiTokens, UiTypography};
+pub use app::{XionApp, run};
+pub use theme::{UiColors, UiSpacing, UiTokens, UiTypography, fonts, icons, layout, timing};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneKind {
@@ -246,6 +246,11 @@ pub enum UiMessage {
     PageLoaded {
         path: PathBuf,
         page_index: usize,
+        /// Snapshot of `loading_generation` when the page was requested.
+        ///
+        /// The path alone is not enough: navigating away and back to the same
+        /// directory used to let a stale in-flight page overwrite the fresh one.
+        generation: u64,
         result: Result<Page<FsEntry>, String>,
     },
     ThumbnailLoaded {
@@ -275,7 +280,12 @@ pub enum UiMessage {
     PreviewResizeStart,
     PreviewResizeEnd,
     DropOnPath(PathBuf),
-    FileOperationFinished(OperationReport),
+    /// A file operation finished.
+    ///
+    /// Carries the id assigned when it started: the undo context used to be a
+    /// single global slot, so two overlapping operations crossed wires and the
+    /// second result consumed the first one's undo entry.
+    FileOperationFinished(u64, OperationReport),
     OperationProgressTick,
     NewFolder,
     NewFolderCreated(Result<PathBuf, String>),
@@ -285,7 +295,7 @@ pub enum UiMessage {
     AddressEditCancel,
     ToggleDarkMode,
     /// Fold/unfold a named sidebar section (accordion).
-    ToggleSidebarSection(String),
+    ToggleSidebarSection(&'static str),
     /// Switch between compact (22 px) and normal (32 px) list row height.
     ToggleCompactMode,
     TextPreviewLoaded {
@@ -304,7 +314,10 @@ pub enum UiMessage {
     TrashCompleted(Result<(), String>),
     // Feature 3: Properties dialog
     OpenProperties(PathBuf),
-    PropertiesHashComputed { path: PathBuf, hash: String },
+    PropertiesHashComputed {
+        path: PathBuf,
+        hash: String,
+    },
     CloseProperties,
     // Feature 4: Color themes
     SetTheme(crate::core::ThemeConfig),
@@ -317,21 +330,45 @@ pub enum UiMessage {
     BulkRenameCancel,
     BulkRenameCompleted(Result<usize, String>),
     // Feature 6: Syntax highlighting
-    TextHighlightComplete { path: PathBuf, lines: Vec<HighlightedLine> },
+    TextHighlightComplete {
+        path: PathBuf,
+        lines: Vec<HighlightedLine>,
+    },
     // Feature 7: Git status
-    GitStatusLoaded { root: PathBuf, statuses: std::collections::HashMap<PathBuf, GitFileStatus> },
+    GitStatusLoaded {
+        root: PathBuf,
+        statuses: std::collections::HashMap<PathBuf, GitFileStatus>,
+    },
     // Feature 8: Disk usage
-    DirSizeLoaded { path: PathBuf, bytes: u64 },
+    DirSizeLoaded {
+        path: PathBuf,
+        bytes: u64,
+    },
     // Feature 10: Archive browser
-    ArchiveListLoaded { archive_path: PathBuf, inner_path: String, entries: Vec<ArchiveEntry> },
-    ArchiveFolderOpen { inner_path: String },
+    ArchiveListLoaded {
+        archive_path: PathBuf,
+        inner_path: String,
+        entries: Vec<ArchiveEntry>,
+    },
+    ArchiveFolderOpen {
+        inner_path: String,
+    },
     CloseArchiveBrowser,
-    ExtractArchiveEntry { archive: PathBuf, inner_path: String, dest_dir: PathBuf },
+    ExtractArchiveEntry {
+        archive: PathBuf,
+        inner_path: String,
+        dest_dir: PathBuf,
+    },
     ExtractComplete(Result<PathBuf, String>),
     // Feature 11: Dual pane
     ToggleDualPane,
     PaneBNavigate(PathBuf),
-    PaneBLoaded { path: PathBuf, entries: Vec<crate::filesystem::FsEntry> },
+    PaneBLoaded {
+        path: PathBuf,
+        entries: Vec<crate::filesystem::FsEntry>,
+        /// Entries the directory holds beyond the ones loaded.
+        truncated: usize,
+    },
     PaneBActivate(PathBuf),
     SwitchActivePane,
     // Feature A: Compress to ZIP / TAR.GZ / 7Z
@@ -343,7 +380,11 @@ pub enum UiMessage {
     OpenWith(std::path::PathBuf),
     // Feature C: File Diff
     OpenDiff,
-    DiffLoaded { path_a: std::path::PathBuf, path_b: std::path::PathBuf, lines: Vec<DiffLine> },
+    DiffLoaded {
+        path_a: std::path::PathBuf,
+        path_b: std::path::PathBuf,
+        lines: Vec<DiffLine>,
+    },
     CloseDiff,
     // Feature D: Multi-selection properties
     SelectionSizeComputed(u64),
@@ -356,9 +397,9 @@ pub enum UiMessage {
     NavigateToRecent,
     ClearRecents,
     // Feature H: Column Resizing
-    ColumnResizeStart(String),
+    ColumnResizeStart(&'static str),
     ColumnResizeEnd,
-    ColumnResized(String, f32),
+    ColumnResized(&'static str, f32),
     // Feature I: Terminal Tabs
     TerminalAddTab,
     TerminalCloseTab(usize),
@@ -367,7 +408,10 @@ pub enum UiMessage {
     SetShell(crate::core::ShellConfig),
     // Feature K: Hex Viewer
     OpenHexView(std::path::PathBuf),
-    HexViewLoaded { path: std::path::PathBuf, data: Vec<u8> },
+    HexViewLoaded {
+        path: std::path::PathBuf,
+        data: Vec<u8>,
+    },
     CloseHexView,
     HexViewScroll(usize),
     // Feature L: Encoding detection (handled in TextPreviewLoaded, no extra message)
@@ -384,8 +428,21 @@ pub enum UiMessage {
     CloseGrep,
     // Feature P: NTFS Permissions
     OpenPermissions(std::path::PathBuf),
-    PermissionsLoaded { path: std::path::PathBuf, entries: Vec<AclEntry>, error: Option<String> },
+    PermissionsLoaded {
+        path: std::path::PathBuf,
+        entries: Vec<AclEntry>,
+        error: Option<String>,
+    },
     ClosePermissions,
+    /// The user accepted the pending confirmation dialog.
+    /// Window geometry changed; the pty needs the new size so `less` and
+    /// `git log` wrap where the panel actually ends.
+    WindowResized(f32, f32),
+    /// Ctrl-C for the integrated terminal.
+    TerminalInterrupt,
+    ConfirmAccept,
+    /// The user dismissed the pending confirmation dialog.
+    ConfirmCancel,
     // Feature Q: Undo
     Undo,
     UndoCompleted(Result<String, String>),
@@ -436,10 +493,18 @@ pub enum SelectionKind {
 
 #[derive(Debug, Clone)]
 pub enum KeyboardCommand {
-    MoveUp { extend: bool },
-    MoveDown { extend: bool },
-    MoveHome { extend: bool },
-    MoveEnd { extend: bool },
+    MoveUp {
+        extend: bool,
+    },
+    MoveDown {
+        extend: bool,
+    },
+    MoveHome {
+        extend: bool,
+    },
+    MoveEnd {
+        extend: bool,
+    },
     Activate,
     Back,
     Forward,
@@ -449,7 +514,10 @@ pub enum KeyboardCommand {
     ToggleContextMenu,
     CyclePaneFocus,
     Rename,
+    /// Delete key: moves the selection to the trash, where it can be recovered.
     Delete,
+    /// Shift+Delete: permanent deletion, always behind a confirmation.
+    DeletePermanently,
     NewFolder,
     FocusSearch,
     NewTab,

@@ -38,6 +38,23 @@ pub enum ViewColumn {
     Modified,
 }
 
+impl ViewColumn {
+    /// Stable key under which this column's width is stored.
+    ///
+    /// Deliberately *not* the displayed label: widths used to be keyed by the
+    /// French header text ("Nom", "Taille", "Modifié") while the defaults below
+    /// were written in English, so three of the four defaults were never read
+    /// and those columns silently started at the 150px fallback.
+    pub fn key(&self) -> &'static str {
+        match self {
+            Self::Name => "Name",
+            Self::Type => "Type",
+            Self::Size => "Size",
+            Self::Modified => "Modified",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
     List,
@@ -63,6 +80,21 @@ pub enum ThemeConfig {
     Nord,
     Solarized,
     HighContrast,
+}
+
+impl ThemeConfig {
+    /// Whether this theme uses a dark palette.
+    ///
+    /// `AppConfig::dark_mode` is derived from the theme, but the test was
+    /// duplicated verbatim in the UI update handlers and nowhere in the config
+    /// loader, so a hand-edited file could carry `theme = "Nord"` with
+    /// `dark_mode = false` and keep a light syntax highlighter on a dark UI.
+    pub fn is_dark(&self) -> bool {
+        matches!(
+            self,
+            Self::Dark | Self::Nord | Self::Solarized | Self::HighContrast
+        )
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -259,4 +291,24 @@ pub struct AppConfigLoad {
     pub config: AppConfig,
     pub source: ConfigSource,
     pub warnings: Vec<ConfigWarning>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppConfig, ThemeConfig};
+
+    #[test]
+    fn theme_is_dark_covers_every_variant() {
+        assert!(!ThemeConfig::Light.is_dark());
+        assert!(ThemeConfig::Dark.is_dark());
+        assert!(ThemeConfig::Nord.is_dark());
+        assert!(ThemeConfig::Solarized.is_dark());
+        assert!(ThemeConfig::HighContrast.is_dark());
+    }
+
+    #[test]
+    fn default_config_keeps_dark_mode_and_theme_in_sync() {
+        let config = AppConfig::default();
+        assert_eq!(config.dark_mode, config.theme.is_dark());
+    }
 }

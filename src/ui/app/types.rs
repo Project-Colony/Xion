@@ -156,6 +156,36 @@ pub(super) fn format_gigabytes(bytes: u64) -> u64 {
     ((bytes as f64) / BYTES_PER_GB).round() as u64
 }
 
+/// Cached gvfs mount list, on the same terms as the disk cache above: the view
+/// tree is rebuilt many times a second and this is a `read_dir` syscall.
+///
+/// Three seconds rather than ten: plugging in a phone or mounting a share is a
+/// deliberate act, and waiting ten seconds to see it appear reads as a bug.
+const GVFS_CACHE_TTL: Duration = Duration::from_secs(3);
+
+type GvfsCacheData = Option<(Instant, Vec<crate::services::gvfs::GvfsMount>)>;
+
+thread_local! {
+    static GVFS_CACHE: RefCell<GvfsCacheData> = const { RefCell::new(None) };
+}
+
+/// Locations mounted by gvfs — SMB shares, SFTP, phones, mounted archives.
+pub(super) fn gvfs_mounts() -> Vec<crate::services::gvfs::GvfsMount> {
+    GVFS_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let needs_refresh = cache
+            .as_ref()
+            .is_none_or(|(fetched_at, _)| fetched_at.elapsed() > GVFS_CACHE_TTL);
+        if needs_refresh {
+            *cache = Some((Instant::now(), crate::services::gvfs::mounts()));
+        }
+        cache
+            .as_ref()
+            .map(|(_, list)| list.clone())
+            .unwrap_or_default()
+    })
+}
+
 /// Returns all mounted drives with their usage info, using the shared disk cache.
 pub(super) fn all_drives() -> Vec<(PathBuf, DiskUsage)> {
     DISK_CACHE.with(|cache| {

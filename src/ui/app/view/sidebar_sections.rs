@@ -370,6 +370,20 @@ impl XionApp {
                     );
                 }
             }
+            // Locations gvfs has mounted: SMB shares, SFTP, phones, cameras,
+            // Google Drive, an archive opened as a folder. `gvfsd-fuse` exposes
+            // each of them as an ordinary directory, so they navigate through
+            // exactly the same code path as a local one.
+            for mount in gvfs_mounts() {
+                let icon = match mount.scheme.as_str() {
+                    "mtp" | "gphoto2" => icons::DEVICE,
+                    "archive" => icons::FILE_ARCHIVE,
+                    _ => icons::NETWORK,
+                };
+                drive_section =
+                    drive_section.push(sidebar_button(ctx, icon, mount.label, Some(mount.path)));
+            }
+
             drive_section = drive_section.push(sidebar_button(
                 ctx,
                 icons::NETWORK,

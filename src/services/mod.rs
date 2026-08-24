@@ -13,6 +13,7 @@
 //! - [`VirtualList`] - Virtual list calculations for efficient rendering
 
 pub mod favorites;
+pub mod gvfs;
 pub mod highlight;
 pub mod history;
 pub mod loader;

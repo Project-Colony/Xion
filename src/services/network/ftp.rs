@@ -1,8 +1,5 @@
 //! Listing a remote directory over FTP.
 
-use crate::filesystem::FsMetadata;
-use std::time::SystemTime;
-
 /// #4: FTP directory listing over FTPS.
 ///
 /// The session is upgraded with AUTH TLS *before* the credentials are sent and

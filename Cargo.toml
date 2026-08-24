@@ -52,6 +52,12 @@ syntect = { version = "5", default-features = false, features = ["default-syntax
 git2 = { version = "0.19", default-features = false }
 walkdir = "2"
 zip = "2"
+# `zip` tire bzip2 pour les archives compressées ainsi ; par défaut celui-ci
+# compile la bibliothèque C. Le backend Rust pur enlève la seule dépendance C
+# de la chaîne d'archives, donc une compilation croisée vers Windows n'a plus
+# besoin d'une chaîne d'outils MSVC pour ce morceau. L'unification des features
+# de Cargo applique ce choix à l'arête zip → bzip2.
+bzip2 = { version = "0.5", default-features = false, features = ["libbz2-rs-sys"] }
 pdf-extract = "0.7"
 tar = "0.4"
 flate2 = "1"

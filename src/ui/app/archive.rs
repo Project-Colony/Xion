@@ -565,6 +565,37 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&occupied).unwrap(), "précieux");
     }
 
+    /// The bzip2 backend is pure Rust rather than the bundled C library, so
+    /// that cross-compiling to Windows needs no MSVC toolchain for this link in
+    /// the chain. Nothing else covered that path: every other archive test uses
+    /// deflate, tar or 7z.
+    #[test]
+    fn a_bzip2_compressed_zip_round_trips() {
+        use std::io::Write;
+
+        let root = tempfile::tempdir().unwrap();
+        let archive_path = root.path().join("compressé.zip");
+        let contenu = "vérification du backend bzip2 en Rust pur\n".repeat(64);
+
+        let file = std::fs::File::create(&archive_path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        writer
+            .start_file(
+                "note.txt",
+                zip::write::FileOptions::<()>::default()
+                    .compression_method(zip::CompressionMethod::Bzip2),
+            )
+            .unwrap();
+        writer.write_all(contenu.as_bytes()).unwrap();
+        writer.finish().unwrap();
+
+        let dest = root.path().join("sortie");
+        std::fs::create_dir_all(&dest).unwrap();
+        let extracted = extract_zip_entry(&archive_path, "note.txt", &dest).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&extracted).unwrap(), contenu);
+    }
+
     /// A symlink planted inside the destination must not become a way out.
     #[cfg(unix)]
     #[test]

@@ -162,8 +162,7 @@ impl XionApp {
                             }
                             hasher.update(&buf[..n]);
                         }
-                        let result = hasher.finalize();
-                        Some((hash_path, format!("{:x}", result)))
+                        Some((hash_path, hex_digest(&hasher.finalize())))
                     })
                     .await
                     .ok()
@@ -287,5 +286,57 @@ impl XionApp {
     pub(in crate::ui::app) fn shell_reveal(path: &std::path::Path) -> Result<(), String> {
         crate::platform::reveal_in_file_manager(path)
             .map_err(|error| format!("Affichage impossible de {} : {error}", path.display()))
+    }
+}
+
+/// Le condensé en hexadécimal minuscule, octet par octet.
+///
+/// Écrit ici plutôt que par `format!("{:x}", digest)` : sha2 0.11 rend un
+/// `Array` là où 0.10 rendait un `GenericArray`, et ce type n'implémente plus
+/// `LowerHex`. La mise en forme relevait donc d'un détail d'implémentation de
+/// la caisse et non d'un contrat — l'écrire ici la met hors de portée de la
+/// prochaine version majeure.
+///
+/// Le `02` n'est pas décoratif : sans lui, un octet inférieur à 16 s'écrirait
+/// sur un seul caractère et tout le condensé serait faux à partir de là.
+fn hex_digest(digest: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        let _ = write!(hex, "{byte:02x}");
+    }
+    hex
+}
+
+#[cfg(test)]
+mod hash_tests {
+    use super::hex_digest;
+
+    /// Le piège de cette mise en forme : un octet sous 16 tient sur un seul
+    /// caractère si on oublie le remplissage, et décale tout ce qui suit.
+    #[test]
+    fn small_bytes_keep_their_leading_zero() {
+        assert_eq!(hex_digest(&[0x00, 0x0f, 0xff]), "000fff");
+        assert_eq!(hex_digest(&[0x01]), "01");
+    }
+
+    #[test]
+    fn an_empty_digest_gives_an_empty_string() {
+        assert_eq!(hex_digest(&[]), "");
+    }
+
+    /// Le condensé complet d'une entrée connue, comparé à ce que `sha256sum`
+    /// produit pour la même. C'est ce test qui dirait qu'un changement de
+    /// version majeure de sha2 a modifié le résultat, et pas seulement son
+    /// type.
+    #[test]
+    fn the_digest_matches_what_sha256sum_produces() {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(b"xion");
+        assert_eq!(
+            hex_digest(&hasher.finalize()),
+            "ad2d9184dcbd60391cf5bdf6f0b12746502726f7e7fdcbce54530e39720aa7c6"
+        );
     }
 }

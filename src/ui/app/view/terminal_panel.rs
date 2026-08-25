@@ -42,18 +42,10 @@ impl XionApp {
         // reçoit les frappes quand il a le focus et prévient le pseudo-terminal
         // de sa taille. Il remplace le texte défilant et le champ de saisie —
         // taper se fait maintenant dans le terminal, comme dans tout terminal.
-        // Pas pendant que le panneau glisse : le widget prévient le
-        // pseudo-terminal de sa taille dès qu'elle change, donc le rendre à
-        // chaque image de l'animation envoyait une dizaine de redimensionnements
-        // successifs — et le shell redessine son invite à chacun. C'était les
-        // cinq invites empilées à l'ouverture.
-        let panel_settled = term_progress > 0.999;
-
         let output_area: Element<'_, UiMessage> = match self
             .terminal
             .active_ref()
             .and_then(|tab| tab.terminal.as_ref())
-            .filter(|_| panel_settled)
         {
             Some(terminal) => {
                 container(iced_term::TerminalView::show(terminal).map(UiMessage::TerminalEvent))

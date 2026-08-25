@@ -1843,8 +1843,7 @@ dependencies = [
 [[package]]
 name = "iced_term"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1e287970417db55e0b395a966f061f10c7d3b03fd146d0b8806678d8c063103"
+source = "git+https://github.com/Harzu/iced_term?rev=1df60bb08a6a0ffcf3dfc1a74ee568947fc48cb8#1df60bb08a6a0ffcf3dfc1a74ee568947fc48cb8"
 dependencies = [
  "alacritty_terminal",
  "anyhow",

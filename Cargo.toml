@@ -44,7 +44,25 @@ wgpu = { version = "27", default-features = false, features = ["std"] }
 # exacte de Xion. Le modèle écrit à la main ici ne savait pas positionner un
 # curseur en deux dimensions, donc tout programme plein écran — claude, vim,
 # htop, lazygit — empilait ses redessins au lieu de les recouvrir.
-iced_term = "0.8"
+#
+# Épinglé sur une révision amont plutôt que sur 0.8.0, à cause d'un défaut que
+# 0.8.0 porte et qui rendait le terminal inutilisable ici :
+# https://github.com/Harzu/iced_term/issues/67
+#
+# `TerminalSize::default()` déclare `layout_width: 80.0` et `layout_height: 50.0`
+# — des pixels — avec des cellules de 1×1. Dès que la mesure de police réelle
+# arrive sans que la taille du panneau ne soit encore connue, la grille tombe à
+# `80/8 = 10` colonnes sur `50/18 = 2` lignes. Sur dix colonnes, une invite zsh
+# enroule à chaque frappe et zle redessine sans fin : les caractères semblaient
+# se dupliquer alors que le shell recevait exactement ce qu'on tapait.
+#
+# Le correctif (PR #70) réinitialise l'état du widget quand l'identifiant du
+# terminal change ; sans lui, changer d'interpréteur ou d'onglet créait un
+# terminal que le widget ne redimensionnait jamais. La révision apporte aussi
+# #69 (interblocage sur l'envoi d'événements) et #89 (Ctrl+U envoyait « Q »).
+#
+# À repasser sur une version publiée dès qu'elle sort.
+iced_term = { git = "https://github.com/Harzu/iced_term", rev = "1df60bb08a6a0ffcf3dfc1a74ee568947fc48cb8" }
 tokio = { version = "1", features = ["rt", "time", "sync", "process", "io-util"] }
 # No "tiff": it was the only thing pulling tiff -> zune-jpeg 0.4, a SECOND
 # complete JPEG decoder alongside the zune-jpeg 0.5 that image itself uses.

@@ -48,11 +48,12 @@ impl XionApp {
                     self.terminal_anim_target = 1.0;
                     let cwd = self.current_directory();
                     self.terminal.active().cwd = Some(cwd);
-                    self.start_active_terminal();
+                    self.start_active_terminal(tasks);
                 }
             }
             UiMessage::TerminalEvent(event) => {
                 let iced_term::Event::BackendCall(id, command) = event;
+
                 let Some(tab) = self
                     .terminal
                     .tabs
@@ -97,7 +98,7 @@ impl XionApp {
                 self.terminal.active_tab = self.terminal.tabs.len() - 1;
                 let cwd = self.current_directory();
                 self.terminal.active().cwd = Some(cwd);
-                self.start_active_terminal();
+                self.start_active_terminal(tasks);
             }
             UiMessage::TerminalCloseTab(index) => {
                 if self.terminal.tabs.len() > 1 && index < self.terminal.tabs.len() {
@@ -114,7 +115,7 @@ impl XionApp {
                     // Un onglet ouvert alors que le panneau était replié n'a pas
                     // encore de shell : c'est en y venant qu'il en mérite un.
                     if self.terminal_anim_target > 0.5 {
-                        self.start_active_terminal();
+                        self.start_active_terminal(tasks);
                     }
                 }
             }
@@ -156,7 +157,7 @@ impl XionApp {
                 // première commande tapée répondait « terminal non démarré »
                 // sans que rien n'explique pourquoi.
                 if self.terminal_anim_target > 0.5 {
-                    self.start_active_terminal();
+                    self.start_active_terminal(tasks);
                 }
             }
             UiMessage::WindowResized(width, height) => {
@@ -165,7 +166,6 @@ impl XionApp {
             other => return Err(other),
         }
 
-        let _ = tasks;
         Ok(Flow::Continue)
     }
 
@@ -182,7 +182,7 @@ impl XionApp {
     ///
     /// Ne fait rien quand un émulateur vit déjà : rouvrir le panneau ou revenir
     /// sur un onglet ne doit pas abandonner le programme qui y tourne.
-    fn start_active_terminal(&mut self) {
+    fn start_active_terminal(&mut self, tasks: &mut Vec<Task<UiMessage>>) {
         if self
             .terminal
             .active_ref()
@@ -226,22 +226,123 @@ impl XionApp {
                 program,
                 args,
                 working_directory: Some(working_directory),
-                ..Default::default()
+                env: terminal_environment(),
             },
         };
 
         let id = NEXT_TERMINAL_ID.fetch_add(1, Ordering::Relaxed);
         match iced_term::Terminal::new(id, settings) {
-            Ok(terminal) => {
+            Ok(mut terminal) => {
+                // Donner tout de suite une taille plausible, en pixels.
+                //
+                // `TerminalSize::default()` de la caisse déclare une zone de
+                // 80×50 *pixels* avec des cellules de 1×1. À la première
+                // synchronisation de police — que `handle` déclenche à chaque
+                // commande — la vraie mesure des cellules arrive alors que la
+                // zone vaut encore 80×50 pixels, et la grille tombe à
+                // `80/8 = 10` colonnes sur `50/18 = 2` lignes. Sur dix colonnes
+                // une invite zsh enroule à chaque frappe et zle redessine sans
+                // fin : les caractères paraissaient se dupliquer alors que le
+                // shell recevait exactement ce qu'on lui envoyait.
+                //
+                // L'estimation n'a pas besoin d'être juste, seulement d'être du
+                // bon ordre : le widget publiera la mesure exacte dès qu'il
+                // sera dans l'arbre, et le noyau ne prévient le shell que
+                // lorsque les dimensions changent réellement.
+                let (window_width, _) = self.window_size;
+                terminal.handle(iced_term::Command::ProxyToBackend(
+                    iced_term::BackendCommand::Resize(
+                        Some(iced::Size {
+                            width: window_width.max(200.0),
+                            height: crate::ui::theme::layout::TERMINAL_DEFAULT_HEIGHT,
+                        }),
+                        None,
+                    ),
+                ));
+
+                let widget_id = terminal.widget_id().clone();
                 let tab = self.terminal.active();
                 tab.notice = None;
                 tab.terminal = Some(terminal);
+
+                // Sans ça il fallait cliquer dans la grille avant que la
+                // moindre touche y parvienne : le widget ignore le clavier tant
+                // qu'il n'a pas le focus. C'est ce que fait l'exemple officiel
+                // de la caisse à chaque création de panneau.
+                tasks.push(iced_term::TerminalView::focus(widget_id));
             }
             Err(error) => self
                 .terminal
                 .push_notice(format!("Le terminal n'a pas démarré : {error}")),
         }
     }
+}
+
+/// L'environnement du shell : ce qu'il doit savoir du terminal qui l'héberge.
+///
+/// **C'est la correction du dédoublement des caractères.** `alacritty_terminal`
+/// fournit `setup_env()`, qui pose `TERM` et `COLORTERM` — mais `iced_term` ne
+/// l'appelle jamais. Le shell héritait donc du `TERM` de Xion, c'est-à-dire de
+/// *rien* quand Xion est lancé depuis le bureau plutôt que depuis un terminal.
+///
+/// Sans `TERM`, zsh se croit sur un terminal incapable de déplacer son curseur.
+/// Pour recolorer sa ligne après chaque frappe, il ne revient donc pas au début :
+/// il la réécrit à la suite. D'où `ééccrriiss` pour « écris » — et d'où la
+/// sortie de `echo hello`, elle, parfaitement propre : afficher du texte ne
+/// demande aucun positionnement.
+fn terminal_environment() -> std::collections::HashMap<String, String> {
+    let mut env = std::collections::HashMap::new();
+    env.insert("TERM".to_string(), terminfo_name().to_string());
+    // L'émulateur rend en couleurs vraies ; sans cette variable, les programmes
+    // qui la consultent se rabattent sur 256 couleurs.
+    env.insert("COLORTERM".to_string(), "truecolor".to_string());
+    env
+}
+
+/// Le nom terminfo à annoncer.
+///
+/// Le même choix qu'alacritty : sa propre entrée quand la machine l'a, sinon le
+/// repli universel. Annoncer `alacritty` sur un système qui n'a pas l'entrée
+/// serait pire que ne rien annoncer — le shell chercherait des capacités
+/// introuvables.
+fn terminfo_name() -> &'static str {
+    if terminfo_exists("alacritty") {
+        "alacritty"
+    } else {
+        "xterm-256color"
+    }
+}
+
+/// Cherche une entrée terminfo là où la bibliothèque C la chercherait.
+///
+/// Les entrées sont rangées sous un dossier nommé d'après la première lettre,
+/// littérale sur la plupart des systèmes et en hexadécimal sur ceux qui suivent
+/// la convention ncurses récente. Les deux sont donc essayées.
+fn terminfo_exists(name: &str) -> bool {
+    let first = match name.chars().next() {
+        Some(letter) => letter,
+        None => return false,
+    };
+    let directories = [format!("{first}"), format!("{:x}", first as usize)];
+
+    let mut roots: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(explicit) = std::env::var_os("TERMINFO") {
+        roots.push(std::path::PathBuf::from(explicit));
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        roots.push(std::path::Path::new(&home).join(".terminfo"));
+    }
+    roots.extend(
+        ["/usr/share/terminfo", "/lib/terminfo", "/usr/lib/terminfo"]
+            .into_iter()
+            .map(std::path::PathBuf::from),
+    );
+
+    roots.iter().any(|root| {
+        directories
+            .iter()
+            .any(|directory| root.join(directory).join(name).exists())
+    })
 }
 
 /// Le fond et le texte du terminal, pris au thème Colony actif.
@@ -279,6 +380,41 @@ mod tests {
         assert_eq!(hex(Color::BLACK), "#000000");
         assert_eq!(hex(Color::WHITE), "#FFFFFF");
         assert_eq!(hex(Color::from_rgb(1.0, 0.0, 0.0)), "#FF0000");
+    }
+
+    /// Le shell doit savoir sur quel terminal il parle.
+    ///
+    /// Sans `TERM`, zsh se croit incapable de déplacer son curseur et réécrit sa
+    /// ligne à la suite au lieu de la redessiner : chaque caractère apparaissait
+    /// deux fois. La caisse ne pose pas cette variable — c'est à l'hôte de le
+    /// faire, et rien ne le rappelle.
+    #[test]
+    fn the_shell_is_told_which_terminal_it_speaks_to() {
+        let env = super::terminal_environment();
+        let term = env.get("TERM").expect("TERM doit être transmis au shell");
+        assert!(
+            !term.trim().is_empty(),
+            "un TERM vide vaut un TERM absent pour le shell"
+        );
+        assert_eq!(env.get("COLORTERM").map(String::as_str), Some("truecolor"));
+    }
+
+    /// Et ce nom doit exister dans la base du système, sans quoi le shell
+    /// cherche des capacités introuvables — pire que de ne rien annoncer.
+    #[test]
+    fn the_announced_terminfo_entry_exists_on_this_machine() {
+        let name = super::terminfo_name();
+        assert!(
+            super::terminfo_exists(name),
+            "« {name} » est annoncé mais absent de la base terminfo"
+        );
+    }
+
+    /// Le repli universel doit rester atteignable : c'est lui qui sauve les
+    /// machines sans l'entrée d'alacritty.
+    #[test]
+    fn an_unknown_entry_is_not_claimed_to_exist() {
+        assert!(!super::terminfo_exists("ce-terminal-nexiste-pas"));
     }
 
     /// Une composante hors bornes ne doit pas déborder l'octet.

@@ -56,6 +56,7 @@ impl XionApp {
                 self.state.config.theme.variant = variant.to_string();
                 self.state.config.dark_mode =
                     crate::ui::theme::resolves_dark(&self.state.config.theme);
+                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
                 // Le surligneur garde des couleurs calculées pour l'ancien
                 // thème tant qu'on ne le vide pas.
                 self.cached_highlighted_preview = None;
@@ -70,16 +71,19 @@ impl XionApp {
                 } else {
                     Some(key.to_string())
                 };
+                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
                 self.config_manager.save(&self.state.config);
             }
             UiMessage::ToggleHighContrast => {
                 self.state.config.theme.high_contrast = !self.state.config.theme.high_contrast;
+                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
                 self.config_manager.save(&self.state.config);
             }
             // Feature 4: Color themes
             UiMessage::SetTheme(theme) => {
                 self.state.config.dark_mode = crate::ui::theme::resolves_dark(&theme);
                 self.state.config.theme = theme;
+                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
                 // Invalidate syntax highlight cache so it's regenerated with the new theme colors
                 self.cached_highlighted_preview = None;
                 self.config_manager.save(&self.state.config);
@@ -524,6 +528,7 @@ impl XionApp {
                     next.variant = variant.to_string();
                     self.state.config.dark_mode = crate::ui::theme::resolves_dark(&next);
                     self.state.config.theme = next;
+                    crate::ui::theme::sync_colony_globals(&self.state.config.theme);
                     self.cached_highlighted_preview = None;
                     self.config_manager.save(&self.state.config);
                 } else {

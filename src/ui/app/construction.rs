@@ -250,6 +250,10 @@ impl XionApp {
         if let Some(error) = watcher_error {
             app.last_action = Some(format!("Observateur FS indisponible: {error}"));
         }
+        // Les widgets partagés lisent un état global ; sans ça ils se rendent
+        // dans la palette de repli et en anglais.
+        crate::ui::theme::sync_colony_locale();
+        crate::ui::theme::sync_colony_globals(&app.state.config.theme);
         app.sync_watcher();
         let task = app.refresh_entries();
         (app, task)

@@ -230,6 +230,47 @@ impl UiTypography {
     }
 }
 
+/// Pose l'état global que les widgets partagés de `colony-ui` consultent.
+///
+/// Xion calcule ses propres couleurs en pur — `UiColors::from_colony` reçoit sa
+/// palette en argument, et rien dans la vue ne lit d'état global. Mais les
+/// widgets de la caisse, eux, n'acceptent aucune palette : `theme_picker` et
+/// `accent_picker` s'habillent par `Palette::BG_CARD()` et consorts, qui
+/// délèguent tous à `active_palette()`, un `RwLock` statique.
+///
+/// Sans cet appel, ils se rendaient en gruvbox sombre **quel que soit le thème
+/// choisi** — le sélecteur de thème affichait donc ses vignettes dans un thème
+/// que l'utilisateur venait justement de quitter.
+///
+/// À n'appeler que depuis `update` ou au démarrage. Depuis `view`, ce serait une
+/// écriture de verrou à chaque reconstruction de l'arbre de widgets, et la vue
+/// muterait un état global.
+pub fn sync_colony_globals(theme: &crate::core::ThemeChoice) {
+    let (family, variant) = theme.keys();
+    colony_ui::set_active_theme(family, variant);
+    colony_ui::set_high_contrast(theme.high_contrast);
+    colony_ui::set_active_accent(
+        theme
+            .accent
+            .as_deref()
+            .and_then(colony_ui::accent_key_to_color),
+    );
+}
+
+/// Aligne la langue des widgets partagés sur celle de la session.
+///
+/// `colony_ui::i18n` démarre en anglais et ne détecte rien tout seul : sa
+/// documentation laisse ce choix à l'hôte. Sans cet appel, les cartes du
+/// sélecteur affichaient « Dark mode » et « Light mode » au milieu d'une
+/// interface française.
+pub fn sync_colony_locale() {
+    let tag = std::env::var("LC_ALL")
+        .or_else(|_| std::env::var("LC_MESSAGES"))
+        .or_else(|_| std::env::var("LANG"))
+        .unwrap_or_default();
+    colony_ui::i18n::set_locale(colony_ui::i18n::Locale::from_tag(&tag));
+}
+
 /// Whether a theme choice resolves to a dark palette.
 ///
 /// Derived from the background's luminance rather than from the catalogue's
@@ -585,5 +626,67 @@ mod colony_palette_tests {
             (luminance(colors.text_primary) - luminance(colors.panel_background)).abs() >= 0.2,
             "le repli doit rester lisible"
         );
+    }
+}
+
+#[cfg(test)]
+mod colony_globals_tests {
+    use crate::core::ThemeChoice;
+
+    /// Les widgets partagés n'acceptent aucune palette : ils lisent
+    /// `active_palette()`. Sans synchronisation, le sélecteur de thème
+    /// s'affichait dans la palette de repli — donc dans un thème que
+    /// l'utilisateur venait justement de quitter.
+    #[test]
+    fn syncing_makes_the_shared_widgets_follow_the_choice() {
+        let choice = ThemeChoice {
+            family: "solarized".to_string(),
+            variant: "light".to_string(),
+            high_contrast: false,
+            accent: None,
+        };
+        super::sync_colony_globals(&choice);
+        assert_eq!(
+            colony_ui::active_palette().bg_card,
+            colony_ui::resolve("solarized", "light").bg_card,
+            "la palette globale doit suivre le choix"
+        );
+    }
+
+    /// Le rehaussement de contraste doit atteindre les widgets partagés aussi,
+    /// pas seulement les couleurs que Xion calcule pour lui-même.
+    #[test]
+    fn high_contrast_reaches_the_shared_widgets() {
+        let mut choice = ThemeChoice {
+            family: "gruvbox".to_string(),
+            variant: "dark".to_string(),
+            high_contrast: false,
+            accent: None,
+        };
+        super::sync_colony_globals(&choice);
+        let plain = colony_ui::active_palette().text_primary;
+
+        choice.high_contrast = true;
+        super::sync_colony_globals(&choice);
+        let boosted = colony_ui::active_palette().text_primary;
+
+        assert_ne!(plain, boosted);
+        super::sync_colony_globals(&ThemeChoice::default());
+    }
+
+    /// Un accent choisi remplace celui du thème ; `None` le rend au thème.
+    #[test]
+    fn the_chosen_accent_overrides_the_theme_one() {
+        let mut choice = ThemeChoice::default();
+        super::sync_colony_globals(&choice);
+        let theme_accent = colony_ui::effective_accent();
+
+        choice.accent = Some("violet".to_string());
+        super::sync_colony_globals(&choice);
+        assert_ne!(colony_ui::effective_accent(), theme_accent);
+
+        choice.accent = None;
+        super::sync_colony_globals(&choice);
+        assert_eq!(colony_ui::effective_accent(), theme_accent);
     }
 }

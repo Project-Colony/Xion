@@ -362,6 +362,25 @@ mod tests {
         assert_eq!(choices[0].config, ShellConfig::System);
     }
 
+    /// Chaque interpréteur proposé doit réellement démarrer.
+    ///
+    /// C'est le test qui manquait à la version précédente : le bouton « PS »
+    /// s'affichait sous Linux en ne pouvant rien lancer, et rien ne le disait.
+    /// Proposer un choix, c'est promettre qu'il fonctionne.
+    #[test]
+    fn every_offered_shell_actually_starts() {
+        let cwd = std::env::temp_dir();
+        for choice in available_shells() {
+            let started = spawn_shell_process(&choice.config, &cwd);
+            assert!(
+                started.is_ok(),
+                "« {} » est proposé mais ne démarre pas : {:?}",
+                choice.label,
+                started.err()
+            );
+        }
+    }
+
     /// Aucune entrée ne doit se répéter, sans quoi le même programme aurait
     /// deux boutons — le cas de quelqu'un dont le shell de connexion est bash.
     #[test]

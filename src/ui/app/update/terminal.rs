@@ -246,10 +246,27 @@ impl XionApp {
                 }
             }
             UiMessage::SetShell(shell) => {
-                self.state.config.terminal_shell = shell;
-                // Kill current process so next open uses new shell
+                self.state.config.terminal_shell = shell.clone();
+                // Le processus en cours parle l'ancien interpréteur : il part.
                 self.terminal.active().process = None;
                 self.config_manager.save(&self.state.config);
+
+                // Et il faut le remplacer immédiatement. Le commentaire
+                // d'origine disait « so next open uses new shell », mais on ne
+                // change d'interpréteur que panneau ouvert : il n'y a pas de
+                // prochaine ouverture. Le terminal restait donc muet, et la
+                // première commande tapée répondait « terminal non démarré »
+                // sans que rien n'explique pourquoi.
+                if self.terminal_anim_target > 0.5 {
+                    let cwd = self
+                        .terminal
+                        .active_ref()
+                        .cwd
+                        .clone()
+                        .or_else(|| self.state.route.local_path().cloned())
+                        .unwrap_or_else(|| std::path::PathBuf::from("."));
+                    tasks.push(spawn_shell_task(shell, cwd));
+                }
             }
             // ── Feature K: Hex Viewer ─────────────────────────────────────────
             UiMessage::WindowResized(width, height) => {

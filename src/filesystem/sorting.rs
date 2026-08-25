@@ -124,13 +124,25 @@ impl Sortable for FsEntry {
 
 /// Orders two entries by the rules in `options`.
 pub fn compare<T: Sortable + ?Sized>(left: &T, right: &T, options: &ListOptions) -> Ordering {
-    // Handle directories-first sorting
-    if options.directories_first && left.entry_type() != right.entry_type() {
-        return match (left.entry_type(), right.entry_type()) {
-            (FsEntryType::Directory, _) => Ordering::Less,
-            (_, FsEntryType::Directory) => Ordering::Greater,
-            _ => Ordering::Equal,
-        };
+    // Les dossiers d'abord — mais seulement quand exactement l'un des deux en
+    // est un.
+    //
+    // La condition portait sur `entry_type() != entry_type()`, donc elle se
+    // déclenchait aussi entre un fichier et un lien symbolique, où le `match`
+    // retombait sur `Equal` sans jamais regarder la clé de tri. La transitivité
+    // y passait : `a` == lien `b`, lien `b` == `c`, mais `a` < `c`. Rust le
+    // détecte et fait paniquer le tri — rencontré à l'ouverture d'un dossier
+    // contenant un lien à côté de fichiers ordinaires.
+    if options.directories_first {
+        let left_is_dir = left.entry_type() == FsEntryType::Directory;
+        let right_is_dir = right.entry_type() == FsEntryType::Directory;
+        if left_is_dir != right_is_dir {
+            return if left_is_dir {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            };
+        }
     }
 
     // Sort by the specified key
@@ -252,6 +264,70 @@ pub fn filter_and_sort(entries: Vec<FsEntry>, options: &ListOptions) -> Vec<FsEn
 
 #[cfg(test)]
 mod tests {
+    /// Reproduit la panique « comparison function does not correctly implement
+    /// a total order », rencontrée à l'ouverture d'un dossier contenant un lien
+    /// symbolique à côté de fichiers ordinaires.
+    ///
+    /// Avec « dossiers d'abord », le court-circuit se déclenchait dès que les
+    /// deux types différaient — donc aussi entre un fichier et un lien, où il
+    /// renvoyait `Equal` sans jamais regarder le nom. La transitivité y passe :
+    /// `a` == lien `b`, lien `b` == `c`, mais `a` < `c`.
+    #[test]
+    fn mixing_files_and_symlinks_keeps_a_total_order() {
+        use crate::filesystem::FsMetadata;
+
+        let make = |name: &str, entry_type: FsEntryType| FsEntry {
+            path: std::path::PathBuf::from(name),
+            name: name.to_string(),
+            entry_type,
+            metadata: FsMetadata::default(),
+        };
+        let options = ListOptions {
+            sort_by: SortKey::Name,
+            directories_first: true,
+            ..ListOptions::default()
+        };
+
+        let a = make("a.txt", FsEntryType::File);
+        let b = make("b.txt", FsEntryType::Symlink);
+        let c = make("c.txt", FsEntryType::File);
+
+        // Deux entrées qui ne sont pas des dossiers se départagent par leur clé
+        // de tri, quel que soit leur type.
+        assert_eq!(super::compare(&a, &b, &options), Ordering::Less);
+        assert_eq!(super::compare(&b, &c, &options), Ordering::Less);
+        assert_eq!(super::compare(&a, &c, &options), Ordering::Less);
+
+        // Et un vrai tri sur les quatre types ne doit pas paniquer.
+        let mut entries: Vec<FsEntry> = Vec::new();
+        for (index, entry_type) in [
+            FsEntryType::File,
+            FsEntryType::Symlink,
+            FsEntryType::Other,
+            FsEntryType::Directory,
+        ]
+        .into_iter()
+        .cycle()
+        .take(64)
+        .enumerate()
+        {
+            entries.push(make(&format!("entree-{index:02}"), entry_type));
+        }
+        entries.sort_by(|left, right| super::compare(left, right, &options));
+
+        // Les dossiers restent groupés en tête.
+        let first_non_dir = entries
+            .iter()
+            .position(|e| e.entry_type != FsEntryType::Directory)
+            .unwrap_or(entries.len());
+        assert!(
+            entries[first_non_dir..]
+                .iter()
+                .all(|e| e.entry_type != FsEntryType::Directory),
+            "un dossier s'est retrouvé après un non-dossier"
+        );
+    }
+
     /// Le comparateur existait en double, un par type. Rien ne garantissait
     /// que les deux copies restent d'accord ; maintenant il n'y en a qu'un, et
     /// ce test dit pourquoi c'était le bon choix.

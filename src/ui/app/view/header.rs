@@ -102,11 +102,12 @@ impl XionApp {
 
         let mut header_column = column![bar].spacing(spacing.xs);
 
-        // A window with one tab has no use for a tab strip; the folder it shows
-        // is already named in the address bar and in the window title.
-        if self.tab_manager.count() > 1 {
-            header_column = header_column.push(self.render_tab_strip(ctx));
-        }
+        // Toujours visible. Je l'avais masquée tant qu'il n'y avait qu'un onglet,
+        // pour gagner trente pixels — mais elle porte le seul « + » de
+        // l'interface, donc masquer la barre supprimait le seul moyen visible
+        // d'ouvrir un second onglet. Un raccourci clavier existe ; il ne se
+        // découvre pas.
+        header_column = header_column.push(self.render_tab_strip(ctx));
 
         let header = container(header_column)
             .padding(iced::Padding {

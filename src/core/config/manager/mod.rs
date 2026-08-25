@@ -282,24 +282,40 @@ fn migrate_legacy_config_dir(legacy: &Path, target: &Path) -> bool {
         return true;
     }
 
-    // Sinon on copie, et on ne supprime l'original que si tout est passé :
-    // perdre la configuration de quelqu'un pour un déménagement de dossier
-    // serait un très mauvais échange.
+    // Sinon on copie. Séparé pour être testable : sur un même système de
+    // fichiers le renommage réussit toujours, donc ce repli n'est jamais
+    // atteint depuis ici et son défaut passait inaperçu.
+    copy_directory_across_devices(legacy, target)
+}
+
+/// Copie un dossier plat, et ne supprime l'original que si tout est passé.
+///
+/// Sert quand `rename` échoue, c'est-à-dire quand les deux dossiers ne sont pas
+/// sur le même système de fichiers — un `~/.config` monté à part, par exemple.
+///
+/// Ne sait copier que des fichiers. Un sous-dossier compte donc comme un échec,
+/// et c'est le point : la version précédente le sautait en laissant le drapeau
+/// à vrai, si bien que `remove_dir_all` l'emportait juste après. Supprimé sans
+/// avoir été copié, alors que le code annonçait le contraire.
+fn copy_directory_across_devices(legacy: &Path, target: &Path) -> bool {
     if fs::create_dir_all(target).is_err() {
         return false;
     }
     let Ok(entries) = fs::read_dir(legacy) else {
         return false;
     };
+
     let mut copied_everything = true;
     for entry in entries.flatten() {
         if !entry.path().is_file() {
+            copied_everything = false;
             continue;
         }
         if fs::copy(entry.path(), target.join(entry.file_name())).is_err() {
             copied_everything = false;
         }
     }
+
     if copied_everything {
         let _ = fs::remove_dir_all(legacy);
     }
@@ -438,6 +454,46 @@ mod tests {
             std::fs::read_to_string(target.join("config.toml")).unwrap(),
             "theme = \"Actuel\""
         );
+    }
+
+    /// Le repli par copie ne doit jamais supprimer ce qu'il n'a pas emporté.
+    ///
+    /// Testé directement : depuis `migrate_legacy_config_dir`, le renommage
+    /// réussit sur un même système de fichiers et ce chemin n'est jamais pris,
+    /// ce qui est précisément pourquoi le défaut passait inaperçu.
+    #[test]
+    fn a_copy_that_could_not_take_everything_deletes_nothing() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let legacy = root.path().join("xion");
+        let target = root.path().join("Colony").join("Xion");
+        std::fs::create_dir_all(legacy.join("sous-dossier")).unwrap();
+        std::fs::write(legacy.join("config.toml"), "theme = \"Nord\"").unwrap();
+        std::fs::write(legacy.join("sous-dossier").join("precieux"), "à garder").unwrap();
+
+        assert!(
+            !super::copy_directory_across_devices(&legacy, &target),
+            "un déménagement incomplet doit se déclarer incomplet"
+        );
+        assert!(
+            legacy.join("sous-dossier").join("precieux").exists(),
+            "rien ne doit être supprimé tant que tout n'est pas passé"
+        );
+    }
+
+    /// Un dossier plat, lui, passe en entier et l'original s'efface.
+    #[test]
+    fn a_copy_that_took_everything_removes_the_original() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let legacy = root.path().join("xion");
+        let target = root.path().join("Colony").join("Xion");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("config.toml"), "theme = \"Nord\"").unwrap();
+        std::fs::write(legacy.join("config.toml.bak"), "theme = \"Dark\"").unwrap();
+
+        assert!(super::copy_directory_across_devices(&legacy, &target));
+        assert!(target.join("config.toml").exists());
+        assert!(target.join("config.toml.bak").exists());
+        assert!(!legacy.exists());
     }
 
     /// Une installation neuve n'a rien à migrer et ne doit rien créer.

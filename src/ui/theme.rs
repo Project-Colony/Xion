@@ -506,3 +506,46 @@ pub mod layout {
     /// Minimum height for terminal panel.
     pub const TERMINAL_MIN_HEIGHT: f32 = 120.0;
 }
+
+#[cfg(test)]
+mod palette_separation_tests {
+    use super::UiColors;
+    use crate::core::ThemeConfig;
+
+    /// Une zone doit se distinguer de sa voisine, par l'aplat ou par le trait.
+    ///
+    /// L'en-tête a perdu sa bordure pour que l'onglet actif rejoigne la liste.
+    /// Cela suppose que les deux aplats diffèrent — ce qui est faux en contraste
+    /// élevé, où tout est noir et où seules les bordures séparent. Ce test dit
+    /// laquelle des deux mécaniques chaque palette utilise, pour qu'aucune ne se
+    /// retrouve sans les deux.
+    #[test]
+    fn every_palette_separates_the_header_from_the_content() {
+        for theme in [
+            ThemeConfig::Light,
+            ThemeConfig::Dark,
+            ThemeConfig::Nord,
+            ThemeConfig::Solarized,
+            ThemeConfig::HighContrast,
+        ] {
+            let colors = UiColors::from_theme(&theme);
+            let fills_differ = colors.chrome_background != colors.panel_background;
+            let border_visible = colors.border != colors.chrome_background;
+            assert!(
+                fills_differ || border_visible,
+                "{theme:?} ne sépare l'en-tête du contenu ni par l'aplat ni par le trait"
+            );
+        }
+    }
+
+    /// Le contraste élevé est le cas qui a cassé : il sépare par le trait seul.
+    #[test]
+    fn high_contrast_relies_on_its_border() {
+        let colors = UiColors::from_theme(&ThemeConfig::HighContrast);
+        assert_eq!(
+            colors.chrome_background, colors.panel_background,
+            "si ces deux-là divergent un jour, le repli sur la bordure devient inutile"
+        );
+        assert_ne!(colors.border, colors.chrome_background);
+    }
+}

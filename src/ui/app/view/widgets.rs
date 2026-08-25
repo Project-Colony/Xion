@@ -46,6 +46,20 @@ pub(super) struct ViewCtx {
     pub(super) typography: UiTypography,
 }
 
+/// Où pendent les menus déroulants issus de la barre d'en-tête.
+///
+/// Mesuré depuis le haut de la fenêtre : le rembourrage extérieur du contenu,
+/// puis le rembourrage haut de l'en-tête, puis la hauteur d'un bouton de barre
+/// d'outils. C'est une estimation, pas une valeur dérivée de la mise en page —
+/// iced ne rend pas la position calculée disponible ici.
+///
+/// Elle est unique et partagée pour une raison précise : le menu du fil
+/// d'Ariane utilisait 90, calibré sur l'ancien en-tête à trois bandes. Celui-ci
+/// n'en a plus qu'une, et le menu flottait cinquante pixels sous le bouton
+/// auquel il appartient. Deux nombres pour la même chose divergent dès que la
+/// chose change.
+pub(super) const HEADER_DROPDOWN_TOP: f32 = 54.0;
+
 /// A solid fill with the standard one-pixel outline and a rounded corner.
 ///
 /// Thirty call sites across the view tree had written this same struct literal
@@ -73,13 +87,20 @@ pub(super) fn filled_style(
 /// status bar, which is what made the screen read as a stack of panels rather
 /// than an application.
 pub(super) fn header_style(colors: UiColors) -> impl Fn(&Theme) -> container::Style + Copy {
+    // Sauf quand l'aplat ne sépare rien. Le thème « contraste élevé » peint
+    // `chrome_background` et `panel_background` tous deux en noir : il ne
+    // distingue les zones que par ses bordures blanches. Retirer celle-ci y
+    // rendait l'en-tête purement invisible — précisément dans le thème destiné
+    // aux personnes qui ont besoin de séparations franches.
+    let fills_separate = colors.chrome_background != colors.panel_background;
     move |_: &Theme| container::Style {
         background: Some(Background::Color(colors.chrome_background)),
         border: iced::Border {
             radius: iced::border::Radius::default()
                 .top_left(RADIUS.xl)
                 .top_right(RADIUS.xl),
-            ..Default::default()
+            color: colors.border,
+            width: if fills_separate { 0.0 } else { 1.0 },
         },
         ..Default::default()
     }

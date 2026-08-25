@@ -36,6 +36,7 @@ use crate::ui::theme::layout::PREVIEW_RESIZE_BAR_WIDTH;
 use super::XionApp;
 use widgets::ViewCtx;
 
+use widgets::HEADER_DROPDOWN_TOP;
 use widgets::body_text;
 use widgets::caption_text;
 use widgets::filled_style;
@@ -309,7 +310,7 @@ impl XionApp {
                     // Position below the header area
                     let menu_layer: Element<'_, UiMessage> = container(
                         column![
-                            vertical_space().height(Length::Fixed(90.0)),
+                            vertical_space().height(Length::Fixed(HEADER_DROPDOWN_TOP)),
                             row![horizontal_space().width(Length::Fixed(120.0)), opaque(menu)]
                         ]
                         .spacing(0),

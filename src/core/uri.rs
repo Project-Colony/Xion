@@ -57,7 +57,30 @@ pub fn path_from_argument(argument: &str) -> PathBuf {
         None => return PathBuf::from(argument),
     };
 
-    PathBuf::from(percent_decode(path))
+    let decoded = percent_decode(path);
+
+    // RFC 8089 : `file:///C:/…` désigne un chemin à lettre de lecteur, et la
+    // barre oblique qui précède fait partie de la syntaxe de l'URI, pas du
+    // chemin. Laissée en place, elle produisait `/C:/Users/alice`, que Windows
+    // ne sait pas ouvrir — et le projet vise Windows autant que Linux.
+    //
+    // La règle ne s'applique qu'à une lettre unique suivie de deux-points, donc
+    // un dossier POSIX nommé `ab:` garde bien sa barre.
+    if is_drive_rooted(&decoded) {
+        return PathBuf::from(&decoded[1..]);
+    }
+
+    PathBuf::from(decoded)
+}
+
+/// `/C:/…` ou `/C:` — la forme que RFC 8089 réserve aux lettres de lecteur.
+fn is_drive_rooted(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 3
+        && bytes[0] == b'/'
+        && bytes[1].is_ascii_alphabetic()
+        && bytes[2] == b':'
+        && (bytes.len() == 3 || bytes[3] == b'/')
 }
 
 #[cfg(test)]
@@ -90,6 +113,25 @@ mod tests {
             path_from_argument("file:///home/alice/Vid%C3%A9os"),
             Path::new("/home/alice/Vidéos")
         );
+    }
+
+    /// RFC 8089 : `file:///C:/…` désigne un chemin à lettre de lecteur. Rendu
+    /// tel quel, il produisait `/C:/Users/alice`, que Windows ne sait pas
+    /// ouvrir — et le projet vise Windows.
+    #[test]
+    fn a_windows_drive_uri_loses_its_leading_slash() {
+        assert_eq!(
+            path_from_argument("file:///C:/Users/alice"),
+            Path::new("C:/Users/alice")
+        );
+        assert_eq!(path_from_argument("file:///D:/"), Path::new("D:/"));
+    }
+
+    /// Un chemin POSIX ordinaire ne doit pas être amputé par cette règle.
+    #[test]
+    fn a_posix_path_keeps_its_leading_slash() {
+        assert_eq!(path_from_argument("file:///home/a"), Path::new("/home/a"));
+        assert_eq!(path_from_argument("file:///ab:/x"), Path::new("/ab:/x"));
     }
 
     #[test]

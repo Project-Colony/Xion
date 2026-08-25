@@ -58,6 +58,13 @@ fn initial_tabs(
 
     match cli_path {
         Some(path) => {
+            // Déjà ouvert : on y va. `open_in_new_tab` fait la même chose pour
+            // l'instance déjà lancée ; ce chemin-ci, celui du démarrage à froid,
+            // avait été oublié. Sans ça, `xion ~/Images` alors qu'un onglet
+            // Images est enregistré en ouvrait un second, identique.
+            if let Some(index) = tabs.iter().position(|tab| tab.path == path) {
+                return (tabs, index);
+            }
             tabs.push(TabState {
                 title: crate::ui::app::helpers::tree_label_for_path(path),
                 path: path.to_path_buf(),
@@ -428,6 +435,20 @@ mod initial_tabs_tests {
         assert_eq!(tabs.len(), 3, "les onglets enregistrés restent");
         assert_eq!(tabs[0].path, Path::new("/images"));
         assert_eq!(tabs[1].path, Path::new("/musique"));
+    }
+
+    /// Le même bug que `open_in_new_tab` avait, corrigé là et oublié ici : deux
+    /// chemins vers la même action, un seul réparé.
+    #[test]
+    fn an_argument_for_an_already_open_folder_does_not_duplicate_it() {
+        let (tabs, active) = initial_tabs(
+            &persisted(&["/images", "/musique"]),
+            0,
+            PathBuf::from("/repli"),
+            Some(Path::new("/images")),
+        );
+        assert_eq!(tabs.len(), 2, "aucun onglet ajouté");
+        assert_eq!(tabs[active].path, Path::new("/images"), "on y est allé");
     }
 
     #[test]

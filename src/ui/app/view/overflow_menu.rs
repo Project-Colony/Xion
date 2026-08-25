@@ -19,14 +19,11 @@ use crate::ui::theme::icons;
 
 use super::XionApp;
 use super::menu_items;
+use super::widgets::HEADER_DROPDOWN_TOP;
 use super::widgets::RADIUS;
 use super::widgets::ViewCtx;
 use super::widgets::surface_style;
 
-/// Where the menu hangs from, measured from the top-right of the window.
-///
-/// The header is one bar now, so this no longer has to clear three of them.
-const MENU_TOP: f32 = 46.0;
 const MENU_RIGHT_MARGIN: f32 = 12.0;
 const MENU_WIDTH: f32 = 260.0;
 
@@ -158,7 +155,7 @@ impl XionApp {
 
         let anchored: Element<'_, UiMessage> = container(
             column![
-                vertical_space().height(Length::Fixed(MENU_TOP)),
+                vertical_space().height(Length::Fixed(HEADER_DROPDOWN_TOP)),
                 row![
                     horizontal_space(),
                     opaque(menu),

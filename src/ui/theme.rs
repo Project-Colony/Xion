@@ -397,119 +397,6 @@ impl Default for UiTypography {
     }
 }
 
-impl UiColors {
-    /// Dark theme color palette.
-    pub fn dark() -> Self {
-        Self {
-            chrome_background: Color::from_rgb8(30, 30, 34),
-            panel_background: Color::from_rgb8(36, 36, 42),
-            border: Color::from_rgb8(58, 58, 68),
-            sidebar_background: Color::from_rgb8(28, 28, 32),
-            accent: Color::from_rgb8(78, 154, 240),
-            text_primary: Color::from_rgb8(220, 222, 228),
-            text_muted: Color::from_rgb8(160, 164, 174),
-            selection: Color::from_rgb8(40, 56, 80),
-            selection_border: Color::from_rgb8(60, 90, 130),
-            hover: Color::from_rgb8(44, 44, 52),
-            pressed: Color::from_rgb8(50, 50, 60),
-            diff_removed: Color::from_rgb(0.9, 0.4, 0.4),
-            diff_added: Color::from_rgb(0.4, 0.9, 0.4),
-            git_staged: Color::from_rgb8(80, 200, 80),
-            git_conflict: Color::from_rgb8(220, 50, 50),
-            git_deleted: Color::from_rgb8(200, 80, 80),
-            address_directory: Color::from_rgb8(86, 182, 94),
-            address_file: Color::from_rgb8(210, 160, 70),
-            address_not_found: Color::from_rgb8(200, 100, 100),
-        }
-    }
-
-    /// Nord theme palette (https://www.nordtheme.com/).
-    pub fn nord() -> Self {
-        Self {
-            chrome_background: Color::from_rgb8(46, 52, 64),
-            panel_background: Color::from_rgb8(59, 66, 82),
-            border: Color::from_rgb8(67, 76, 94),
-            sidebar_background: Color::from_rgb8(46, 52, 64),
-            accent: Color::from_rgb8(129, 161, 193),
-            text_primary: Color::from_rgb8(236, 239, 244),
-            text_muted: Color::from_rgb8(143, 188, 187),
-            selection: Color::from_rgb8(67, 76, 94),
-            selection_border: Color::from_rgb8(129, 161, 193),
-            hover: Color::from_rgb8(67, 76, 94),
-            pressed: Color::from_rgb8(76, 86, 106),
-            diff_removed: Color::from_rgb8(191, 97, 106),
-            diff_added: Color::from_rgb8(163, 190, 140),
-            git_staged: Color::from_rgb8(163, 190, 140),
-            git_conflict: Color::from_rgb8(191, 97, 106),
-            git_deleted: Color::from_rgb8(208, 135, 112),
-            address_directory: Color::from_rgb8(163, 190, 140),
-            address_file: Color::from_rgb8(235, 203, 139),
-            address_not_found: Color::from_rgb8(191, 97, 106),
-        }
-    }
-
-    /// Solarized Dark theme palette.
-    pub fn solarized() -> Self {
-        Self {
-            chrome_background: Color::from_rgb8(0, 43, 54),
-            panel_background: Color::from_rgb8(7, 54, 66),
-            border: Color::from_rgb8(0, 43, 54),
-            sidebar_background: Color::from_rgb8(0, 43, 54),
-            accent: Color::from_rgb8(42, 161, 152),
-            text_primary: Color::from_rgb8(131, 148, 150),
-            text_muted: Color::from_rgb8(88, 110, 117),
-            selection: Color::from_rgb8(7, 54, 66),
-            selection_border: Color::from_rgb8(42, 161, 152),
-            hover: Color::from_rgb8(7, 54, 66),
-            pressed: Color::from_rgb8(0, 43, 54),
-            diff_removed: Color::from_rgb8(220, 50, 47),
-            diff_added: Color::from_rgb8(133, 153, 0),
-            git_staged: Color::from_rgb8(133, 153, 0),
-            git_conflict: Color::from_rgb8(220, 50, 47),
-            git_deleted: Color::from_rgb8(203, 75, 22),
-            address_directory: Color::from_rgb8(133, 153, 0),
-            address_file: Color::from_rgb8(181, 137, 0),
-            address_not_found: Color::from_rgb8(220, 50, 47),
-        }
-    }
-
-    /// High contrast theme palette.
-    pub fn high_contrast() -> Self {
-        Self {
-            chrome_background: Color::BLACK,
-            panel_background: Color::BLACK,
-            border: Color::WHITE,
-            sidebar_background: Color::BLACK,
-            accent: Color::from_rgb8(255, 255, 0),
-            text_primary: Color::WHITE,
-            text_muted: Color::from_rgb8(200, 200, 200),
-            selection: Color::from_rgb8(0, 0, 128),
-            selection_border: Color::from_rgb8(255, 255, 0),
-            hover: Color::from_rgb8(32, 32, 32),
-            pressed: Color::from_rgb8(64, 64, 64),
-            diff_removed: Color::from_rgb8(255, 80, 80),
-            diff_added: Color::from_rgb8(80, 255, 80),
-            git_staged: Color::from_rgb8(80, 255, 80),
-            git_conflict: Color::from_rgb8(255, 80, 80),
-            git_deleted: Color::from_rgb8(255, 128, 128),
-            address_directory: Color::from_rgb8(80, 255, 80),
-            address_file: Color::from_rgb8(255, 255, 80),
-            address_not_found: Color::from_rgb8(255, 80, 80),
-        }
-    }
-
-    /// Returns colors for the given theme config.
-    pub fn from_theme(theme: &crate::core::ThemeConfig) -> Self {
-        match theme {
-            crate::core::ThemeConfig::Light => Self::default(),
-            crate::core::ThemeConfig::Dark => Self::dark(),
-            crate::core::ThemeConfig::Nord => Self::nord(),
-            crate::core::ThemeConfig::Solarized => Self::solarized(),
-            crate::core::ThemeConfig::HighContrast => Self::high_contrast(),
-        }
-    }
-}
-
 /// Complete design token set for the UI.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UiTokens {
@@ -522,14 +409,6 @@ pub struct UiTokens {
 }
 
 impl UiTokens {
-    /// Returns tokens with the dark color palette.
-    pub fn dark() -> Self {
-        Self {
-            colors: UiColors::dark(),
-            ..Default::default()
-        }
-    }
-
     /// Returns tokens for a specific theme config.
     ///
     /// Pure: `resolve` and `with_high_contrast` both are, and this runs once per

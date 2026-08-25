@@ -1,0 +1,31 @@
+# Keep the supply chain current: GitHub Actions and Cargo dependencies.
+#
+# From templates/dependabot.yml in Project-Colony-Resources, unchanged apart
+# from this header. Dependabot opening a PR is not the rule being followed —
+# merging it is. See design/dependencies.md there: everything is on its latest
+# release, always.
+#
+# One thing Dependabot will not do for Xion: `colony-ui` is a git dependency
+# pinned on a tag, and the cargo ecosystem does not bump those. Moving to a new
+# colony-ui tag stays a manual edit of Cargo.toml.
+version: 2
+updates:
+  # A stale action is the same problem as a stale crate, with more privileges.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Minor and patch bumps arrive as one PR, so a routine week is one review
+      # rather than fifteen. Majors stay separate — they deserve their own read.
+      cargo-minor:
+        update-types: ["minor", "patch"]

@@ -1,0 +1,186 @@
+# Colony Rust program — release workflow.
+#
+# Adapted from templates/release.yml in Project-Colony-Resources; the contract
+# it implements is design/releases.md there. Conventional commits go in, a
+# release PR comes out, merging it creates the tag, and the tag is what builds
+# and publishes. Nothing is released by hand.
+#
+# Xion ships Linux and Windows only — the two targets rust-toolchain.toml
+# declares. The macOS rows of the template are deliberately absent rather than
+# commented out: a program that ships no macOS asset is simply unavailable
+# there, which is a choice, not a gap.
+#
+# Asset names: Colony resolves them from the REPOSITORY name lowercased, not
+# from the binary name. See the "Nom de l'asset" step for why they are computed
+# instead of written out.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# `issues: write` is not in the template but is in release-please-action's own
+# README: labelling the release PR goes through the issues API.
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Assembles a release PR from the conventional commits since the last release.
+  # Merging that PR is what creates the tag; the build job below runs only then.
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # No `release-type:` input, unlike the template. Passing it puts the
+      # action in its "straight-forward configuration" mode, which builds a
+      # configuration from that single value and never reads
+      # release-please-config.json — and that file is where the Colony changelog
+      # sections live. The two paths below are the action's own defaults;
+      # they are spelled out so the omission above reads as deliberate.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build:
+    name: build ${{ matrix.target }}
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            suffix: linux
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            suffix: windows.exe
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Same as ci.yml: rust-toolchain.toml pins the version (1.98.0) and lists
+      # both targets, so no `targets:` input here — it would install them for
+      # the action's own toolchain, not for the pinned one that cargo actually
+      # uses. dtolnay/rust-toolchain publishes no version tags, only branches,
+      # so it stays on @stable where the other actions are pinned by SHA.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Dépendances système (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libxkbcommon-dev pkg-config
+
+      # Colony derives the asset name from the repository name, lowercased —
+      # `<repo>-linux` and `<repo>-windows.exe` — not from the binary name. Here
+      # the two differ: the binary is `xion`, the repository is `Xion-Private`,
+      # so the assets are `xion-private-linux` and `xion-private-windows.exe`.
+      #
+      # Computed from $GITHUB_REPOSITORY rather than written out, so renaming or
+      # publishing the repository under another name moves the asset names with
+      # it. Hard-coding `xion-` instead would need `releaseFiles` in colony.json
+      # to name the assets explicitly; that file currently declares `platforms`
+      # only, which is exactly the auto-detected path.
+      - name: Nom de l'asset
+        shell: bash
+        run: |
+          repo="${GITHUB_REPOSITORY##*/}"
+          prefix="$(printf '%s' "$repo" | tr '[:upper:]' '[:lower:]')"
+          echo "ASSET=${prefix}-${{ matrix.suffix }}" >> "$GITHUB_ENV"
+          echo "asset: ${prefix}-${{ matrix.suffix }}"
+
+      # .cargo/config.toml asks for this to be set here rather than there: cargo
+      # does not expand variables in that file, so the paths can only come from
+      # whatever builds the artefacts that get shipped. Without it every panic!
+      # and #[track_caller] site embeds the builder's home directory — about
+      # 1 070 copies of it, username and directory layout included.
+      #
+      # A prefix that does not match is simply not rewritten, so a wrong guess
+      # here costs nothing but the anonymisation it was meant to buy.
+      - name: Chemins de compilation anonymisés
+        shell: bash
+        run: |
+          cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            registry="${cargo_home}\\registry\\src\\"
+          else
+            registry="${cargo_home}/registry/src/"
+          fi
+          echo "CARGO_BUILD_RUSTFLAGS=--remap-path-prefix=${registry}=deps/ --remap-path-prefix=${GITHUB_WORKSPACE}=xion" >> "$GITHUB_ENV"
+
+      # `--locked` because Cargo.lock is committed and the point of committing it
+      # is that the binary users download is built from it. A lockfile that no
+      # longer matches Cargo.toml fails here instead of being quietly updated.
+      #
+      # .cargo/config.toml caps `jobs = 6`, which applies on the runners too.
+      # Left alone on purpose: on a 4-vCPU runner it oversubscribes slightly and
+      # costs nothing, and overriding it would put the build's parallelism in a
+      # second place that has to be kept in sync with the first.
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Nommer l'artefact
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "target/${{ matrix.target }}/release/xion.exe" "$ASSET"
+          else
+            cp "target/${{ matrix.target }}/release/xion" "$ASSET"
+          fi
+
+      # Signing is not wired in, because colony.json does not say "signed": true
+      # and no COLONY_SIGNING_KEY secret exists. The template's step is
+      # fail-closed by design — it exits 1 when the key is missing — so leaving
+      # it in would break every release until a key exists.
+      #
+      # To turn signing on, all three of these together, or none of them:
+      #   1. add "signed": true to colony.json;
+      #   2. add the ed25519 private key (PEM) as the COLONY_SIGNING_KEY
+      #      repository secret — it never lives in the repository;
+      #   3. restore the step below and add "${{ env.ASSET }}.sig",
+      #      ".meta" and ".meta.sig" to the upload's `files`.
+      #
+      # - name: Signer l'artefact
+      #   if: runner.os != 'Windows'   # sign-release.sh needs a POSIX shell and openssl
+      #   env:
+      #     SIGNING_KEY: ${{ secrets.COLONY_SIGNING_KEY }}
+      #   run: |
+      #     if [ -z "$SIGNING_KEY" ]; then
+      #       echo "::error::COLONY_SIGNING_KEY is not set but signing is enabled"
+      #       exit 1
+      #     fi
+      #     keyfile="$(mktemp)"
+      #     trap 'rm -f "$keyfile"' EXIT
+      #     printf '%s' "$SIGNING_KEY" > "$keyfile"
+      #     COLONY_SIGNING_KEY="$keyfile" \
+      #     COLONY_RELEASE_VERSION="${{ needs.release-please.outputs.tag_name }}" \
+      #       ./scripts/sign-release.sh "$ASSET"
+      #
+      # Note that a Windows asset would then be the only unsigned one, which is
+      # a decision to take deliberately rather than discover after a release.
+
+      - name: Publier l'asset sur la release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: ${{ needs.release-please.outputs.tag_name }}
+          files: ${{ env.ASSET }}

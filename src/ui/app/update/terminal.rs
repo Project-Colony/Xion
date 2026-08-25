@@ -95,6 +95,16 @@ impl XionApp {
                         .position(|tab| tab.terminal.as_ref().is_some_and(|t| t.id == id));
                     if let Some(index) = index {
                         self.retire_terminal(index);
+                        // Sans ce mot, le panneau retombait sur « Démarrage de
+                        // l'interpréteur… » et le gardait indéfiniment : un
+                        // message qui ment, puisque rien ne démarre.
+                        if let Some(tab) = self.terminal.tabs.get_mut(index) {
+                            tab.notice = Some(
+                                "L'interpréteur s'est arrêté. Repliez et rouvrez le panneau \
+                                 pour en relancer un."
+                                    .to_string(),
+                            );
+                        }
                     }
                 }
             }
@@ -120,10 +130,10 @@ impl XionApp {
                     // Retirer l'onglet emporte son émulateur : il faut donc le
                     // mettre à la retraite avant, sinon il est lâché ici même.
                     self.retire_terminal(index);
+                    let previously_active = self.terminal.active_tab;
                     self.terminal.tabs.remove(index);
-                    if self.terminal.active_tab >= self.terminal.tabs.len() {
-                        self.terminal.active_tab = self.terminal.tabs.len() - 1;
-                    }
+                    self.terminal.active_tab =
+                        active_after_close(previously_active, index, self.terminal.tabs.len());
                 }
             }
             UiMessage::TerminalSwitchTab(index) => {
@@ -133,8 +143,30 @@ impl XionApp {
                     // encore de shell : c'est en y venant qu'il en mérite un.
                     if self.terminal_anim_target > 0.5 {
                         self.start_active_terminal(tasks);
+
+                        // Et le focus, même quand le shell existait déjà.
+                        //
+                        // L'état de focus vit dans l'arbre de widgets, et
+                        // `iced_term` le réinitialise dès que l'identifiant du
+                        // terminal change — donc à chaque changement d'onglet.
+                        // Sans ceci, le widget affiché était muet : les frappes
+                        // repartaient dans les raccourcis de Xion, ce qui est
+                        // exactement le symptôme qu'on croyait avoir éliminé.
+                        if let Some(widget_id) = self
+                            .terminal
+                            .active_ref()
+                            .and_then(|tab| tab.terminal.as_ref())
+                            .map(|terminal| terminal.widget_id().clone())
+                        {
+                            tasks.push(iced_term::TerminalView::focus(widget_id));
+                        }
                     }
                 }
+            }
+            UiMessage::ReapRetiredTerminals => {
+                // Plus personne n'écoute leur canal : iced a recalculé ses
+                // souscriptions entre le lot précédent et celui-ci.
+                self.retired_terminals.0.clear();
             }
             UiMessage::TerminalAnimTick => {
                 let speed = 0.15;
@@ -181,6 +213,13 @@ impl XionApp {
                 self.window_size = (width, height);
             }
             other => return Err(other),
+        }
+
+        // Tant qu'il reste des retirés, on redemande leur destruction pour un
+        // lot ultérieur. Ne pas le faire sur place est tout l'intérêt : iced
+        // traite un lot entier avant de recalculer ses souscriptions.
+        if !self.retired_terminals.0.is_empty() {
+            tasks.push(Task::done(UiMessage::ReapRetiredTerminals));
         }
 
         Ok(Flow::Continue)
@@ -461,5 +500,52 @@ mod tests {
             a: 1.0,
         };
         assert_eq!(hex(out_of_range), "#FF0080");
+    }
+}
+
+/// L'onglet actif après la fermeture de celui d'indice `closed`.
+///
+/// Fermer un onglet situé *avant* l'actif décale tous les suivants d'un cran.
+/// La version précédente ne corrigeait que le dépassement de borne, si bien que
+/// fermer le premier onglet alors qu'on était sur le deuxième affichait le
+/// troisième — l'utilisateur se retrouvait devant un autre terminal que celui
+/// qu'il regardait. Le cas « actif en dernier » marchait par accident.
+fn active_after_close(active: usize, closed: usize, remaining: usize) -> usize {
+    let shifted = if closed < active { active - 1 } else { active };
+    shifted.min(remaining.saturating_sub(1))
+}
+
+#[cfg(test)]
+mod close_tab_tests {
+    use super::active_after_close;
+
+    /// Le cas qui était faux : fermer avant l'actif décale l'actif.
+    #[test]
+    fn closing_before_the_active_tab_follows_the_shift() {
+        // [T1, T2, T3], on regarde T2, on ferme T1 → il reste [T2, T3] et T2
+        // est passé en position 0.
+        assert_eq!(active_after_close(1, 0, 2), 0);
+        assert_eq!(active_after_close(2, 0, 2), 1);
+    }
+
+    /// Fermer après l'actif ne bouge rien.
+    #[test]
+    fn closing_after_the_active_tab_leaves_it_alone() {
+        assert_eq!(active_after_close(0, 1, 2), 0);
+        assert_eq!(active_after_close(1, 2, 2), 1);
+    }
+
+    /// Fermer l'actif lui-même : on reste à sa place, sauf s'il était dernier.
+    #[test]
+    fn closing_the_active_tab_keeps_the_position_or_steps_back() {
+        assert_eq!(active_after_close(1, 1, 2), 1);
+        assert_eq!(active_after_close(2, 2, 2), 1);
+    }
+
+    /// Le cas qui marchait par accident, et qui doit continuer de marcher.
+    #[test]
+    fn the_last_tab_never_points_past_the_end() {
+        assert_eq!(active_after_close(1, 1, 1), 0);
+        assert_eq!(active_after_close(0, 0, 1), 0);
     }
 }

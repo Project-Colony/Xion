@@ -306,6 +306,15 @@ pub enum UiMessage {
     FinalizeDrag,
     TreeResizeStart,
     TreeResizeEnd,
+    /// Détruit les émulateurs mis à la retraite au tour précédent.
+    ///
+    /// Envoyé comme tâche et non appelé sur place : une tâche revient dans un
+    /// *lot* de messages ultérieur, donc après qu'iced a recalculé ses
+    /// souscriptions. Vider en tête d'`update` ne suffisait pas — iced traite
+    /// tout un lot de messages avant de recalculer, si bien qu'un second
+    /// message du même lot lâchait le terminal alors que sa souscription
+    /// vivait encore.
+    ReapRetiredTerminals,
     /// Saisit la bordure haute du panneau terminal pour le redimensionner.
     TerminalResizeStart,
     TerminalResizeEnd,

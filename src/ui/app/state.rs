@@ -529,7 +529,15 @@ impl XionApp {
                     let mut map: HashMap<PathBuf, GitFileStatus> = HashMap::new();
                     for entry in statuses.iter() {
                         let s = entry.status();
-                        let rel = entry.path()?;
+                        // `path()` rend un `Result` depuis git2 0.21, là où il
+                        // rendait un `Option`. Un chemin non valide en UTF-8
+                        // fait donc sauter cette entrée seule, au lieu
+                        // d'interrompre la lecture de tout le dépôt comme le
+                        // faisait le `?` précédent — une entrée illisible ne
+                        // doit pas priver les autres de leur état Git.
+                        let Ok(rel) = entry.path() else {
+                            continue;
+                        };
                         let file_path = root.join(rel);
                         let status = if s.contains(git2::Status::CONFLICTED) {
                             GitFileStatus::Conflict

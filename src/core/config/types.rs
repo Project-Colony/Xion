@@ -83,6 +83,39 @@ pub enum ThemeConfig {
 }
 
 impl ThemeConfig {
+    /// The Colony family and variant this choice selects.
+    ///
+    /// Xion used to carry its own five hand-written palettes. They are now a
+    /// selection into the shared catalogue of `colony-ui` — twenty-five
+    /// families, fifty-seven variants — so a colour fixed upstream reaches Xion
+    /// without being re-typed here, and Xion looks like the rest of the
+    /// ecosystem.
+    ///
+    /// `Light` and `Dark` were generic names with no family behind them; they
+    /// map to the catalogue's own fallback family. `Nord` and `Solarized` map
+    /// exactly. `HighContrast` is not a family at all — see
+    /// [`Self::wants_high_contrast`].
+    pub fn colony_keys(&self) -> (&'static str, &'static str) {
+        match self {
+            Self::Light => ("gruvbox", "light"),
+            Self::Dark => ("gruvbox", "dark"),
+            Self::Nord => ("nord", "dark"),
+            Self::Solarized => ("solarized", "dark"),
+            Self::HighContrast => ("gruvbox", "dark"),
+        }
+    }
+
+    /// Whether the palette should be boosted for legibility.
+    ///
+    /// Colony treats high contrast as a modifier applied to any palette, not as
+    /// a theme of its own — which is the better model, and it happens to fix a
+    /// real defect of Xion's hand-written version: there, the header background
+    /// and the list background were both pure black, so the two could only be
+    /// told apart by a border.
+    pub fn wants_high_contrast(&self) -> bool {
+        matches!(self, Self::HighContrast)
+    }
+
     /// Whether this theme uses a dark palette.
     ///
     /// `AppConfig::dark_mode` is derived from the theme, but the test was

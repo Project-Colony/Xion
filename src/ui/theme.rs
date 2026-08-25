@@ -203,6 +203,78 @@ pub struct UiColors {
     pub address_not_found: Color,
 }
 
+/// Perceived brightness, for deciding whether two colours read as different.
+fn luminance(color: Color) -> f32 {
+    0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b
+}
+
+/// Nudges a colour away from `surface` until the two can be told apart.
+///
+/// Colony's palettes separate their surfaces by fill, the way a card-based
+/// layout does. Xion separates them by line. Measured across the fifty-seven
+/// variants of the catalogue, `border_subtle` equals `bg_card` in twenty-nine
+/// of them, and `divider` in twenty-nine as well — so taking either as given
+/// would draw an invisible border in more than half the themes.
+///
+/// The nudge goes towards `towards`, which the caller picks as the most
+/// contrasting thing the palette has against that surface.
+fn separated_from(candidate: Color, surface: Color, towards: Color) -> Color {
+    const MIN_SEPARATION: f32 = 0.06;
+    const BLEND: f32 = 0.22;
+
+    if (luminance(candidate) - luminance(surface)).abs() >= MIN_SEPARATION {
+        return candidate;
+    }
+
+    Color {
+        r: surface.r + (towards.r - surface.r) * BLEND,
+        g: surface.g + (towards.g - surface.g) * BLEND,
+        b: surface.b + (towards.b - surface.b) * BLEND,
+        a: 1.0,
+    }
+}
+
+impl UiColors {
+    /// Derives Xion's nineteen surface names from a Colony palette.
+    ///
+    /// Xion keeps its own names rather than passing `ThemePalette` around: the
+    /// view threads colours explicitly through `ViewCtx`, and a hidden
+    /// dependency on Colony's global theme state would scatter through hundreds
+    /// of call sites.
+    ///
+    /// The palette arrives as an argument for the same reason. `for_theme` runs
+    /// inside `view`, so it runs on every rebuild of the widget tree; reaching
+    /// for `active_palette()` there would take a lock per frame, and setting it
+    /// would be the view mutating global state. `colony_ui::resolve` is pure,
+    /// so neither is needed.
+    pub fn from_colony(palette: colony_ui::ThemePalette, accent: Color) -> Self {
+        Self {
+            chrome_background: palette.bg_primary,
+            panel_background: palette.bg_card,
+            sidebar_background: palette.bg_sidebar,
+            border: separated_from(palette.border_subtle, palette.bg_card, palette.text_primary),
+            accent,
+            text_primary: palette.text_primary,
+            text_muted: palette.text_muted,
+            // `bg_selected` égale `bg_card` dans douze variantes sur
+            // cinquante-sept : la ligne sélectionnée y disparaîtrait dans le
+            // fond de la liste.
+            selection: separated_from(palette.bg_selected, palette.bg_card, accent),
+            selection_border: accent,
+            hover: palette.bg_card_hover,
+            pressed: palette.bg_card_pressed,
+            diff_removed: palette.error,
+            diff_added: palette.success,
+            git_staged: palette.success,
+            git_conflict: palette.error,
+            git_deleted: palette.error_light,
+            address_directory: palette.success,
+            address_file: palette.warning,
+            address_not_found: palette.error,
+        }
+    }
+}
+
 impl Default for UiColors {
     fn default() -> Self {
         Self {
@@ -459,9 +531,19 @@ impl UiTokens {
     }
 
     /// Returns tokens for a specific theme config.
+    ///
+    /// Pure: `resolve` and `with_high_contrast` both are, and this runs once per
+    /// rebuild of the widget tree.
     pub fn for_theme(theme: &crate::core::ThemeConfig) -> Self {
+        let (family, variant) = theme.colony_keys();
+        let palette = colony_ui::resolve(family, variant);
+        let palette = if theme.wants_high_contrast() {
+            palette.with_high_contrast()
+        } else {
+            palette
+        };
         Self {
-            colors: UiColors::from_theme(theme),
+            colors: UiColors::from_colony(palette, palette.accent_blue),
             ..Default::default()
         }
     }
@@ -508,44 +590,78 @@ pub mod layout {
 }
 
 #[cfg(test)]
-mod palette_separation_tests {
-    use super::UiColors;
-    use crate::core::ThemeConfig;
+mod colony_palette_tests {
+    use super::{UiColors, luminance};
 
-    /// Une zone doit se distinguer de sa voisine, par l'aplat ou par le trait.
+    /// Ce que Xion exige de toute palette, vérifié sur le catalogue entier.
     ///
-    /// L'en-tête a perdu sa bordure pour que l'onglet actif rejoigne la liste.
-    /// Cela suppose que les deux aplats diffèrent — ce qui est faux en contraste
-    /// élevé, où tout est noir et où seules les bordures séparent. Ce test dit
-    /// laquelle des deux mécaniques chaque palette utilise, pour qu'aucune ne se
-    /// retrouve sans les deux.
+    /// Colony offre vingt-cinq familles et cinquante-sept variantes. Aucune
+    /// n'est relue à la main ; ce test l'est à leur place, et il échouera le
+    /// jour où le socle en ajoutera une qui ne sépare pas ce que Xion sépare.
     #[test]
-    fn every_palette_separates_the_header_from_the_content() {
-        for theme in [
-            ThemeConfig::Light,
-            ThemeConfig::Dark,
-            ThemeConfig::Nord,
-            ThemeConfig::Solarized,
-            ThemeConfig::HighContrast,
-        ] {
-            let colors = UiColors::from_theme(&theme);
-            let fills_differ = colors.chrome_background != colors.panel_background;
-            let border_visible = colors.border != colors.chrome_background;
-            assert!(
-                fills_differ || border_visible,
-                "{theme:?} ne sépare l'en-tête du contenu ni par l'aplat ni par le trait"
-            );
+    fn every_colony_variant_stays_legible() {
+        const MIN: f32 = 0.03;
+        let mut checked = 0usize;
+
+        for family in colony_ui::THEME_FAMILIES {
+            for variant in family.variants {
+                let palette = colony_ui::resolve(family.key, variant.key);
+                let colors = UiColors::from_colony(palette, palette.accent_blue);
+                let at = format!("{}/{}", family.key, variant.key);
+                checked += 1;
+
+                let apart = |a, b| (luminance(a) - luminance(b)).abs();
+
+                assert!(
+                    apart(colors.border, colors.panel_background) >= MIN,
+                    "{at} : la bordure est invisible sur la liste"
+                );
+                assert!(
+                    apart(colors.selection, colors.panel_background) >= MIN,
+                    "{at} : la ligne sélectionnée se confond avec le fond"
+                );
+                assert!(
+                    apart(colors.text_primary, colors.panel_background) >= 0.2,
+                    "{at} : le texte est illisible sur la liste"
+                );
+                assert!(
+                    apart(colors.text_muted, colors.panel_background) >= 0.08,
+                    "{at} : le texte atténué est illisible sur la liste"
+                );
+            }
         }
+
+        assert!(checked >= 50, "catalogue trop court : {checked} variantes");
     }
 
-    /// Le contraste élevé est le cas qui a cassé : il sépare par le trait seul.
+    /// Le contraste élevé est un modificateur, pas un thème : il s'applique à
+    /// n'importe quelle palette. C'est ce qui règle le défaut de l'ancienne
+    /// palette maison, où l'en-tête et la liste étaient tous deux noirs et où
+    /// seule une bordure les distinguait.
     #[test]
-    fn high_contrast_relies_on_its_border() {
-        let colors = UiColors::from_theme(&ThemeConfig::HighContrast);
-        assert_eq!(
-            colors.chrome_background, colors.panel_background,
-            "si ces deux-là divergent un jour, le repli sur la bordure devient inutile"
+    fn high_contrast_applies_to_any_family() {
+        let palette = colony_ui::resolve("gruvbox", "dark");
+        let plain = UiColors::from_colony(palette, palette.accent_blue);
+        let boosted_palette = palette.with_high_contrast();
+        let boosted = UiColors::from_colony(boosted_palette, boosted_palette.accent_blue);
+
+        let contrast =
+            |c: &UiColors| (luminance(c.text_primary) - luminance(c.panel_background)).abs();
+        assert!(
+            contrast(&boosted) >= contrast(&plain),
+            "le contraste élevé doit augmenter le contraste, pas le réduire"
         );
-        assert_ne!(colors.border, colors.chrome_background);
+    }
+
+    /// Une famille inconnue — une configuration ancienne, une famille retirée
+    /// du socle — doit dégrader vers le repli, pas empêcher le démarrage.
+    #[test]
+    fn an_unknown_family_falls_back_instead_of_failing() {
+        let palette = colony_ui::resolve("famille-qui-nexiste-pas", "variante-inventee");
+        let colors = UiColors::from_colony(palette, palette.accent_blue);
+        assert!(
+            (luminance(colors.text_primary) - luminance(colors.panel_background)).abs() >= 0.2,
+            "le repli doit rester lisible"
+        );
     }
 }

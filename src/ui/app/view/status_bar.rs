@@ -5,7 +5,7 @@
 
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, row};
-use iced::{Alignment, Element};
+use iced::{Alignment, Element, Length};
 
 use crate::core::ViewMode;
 use crate::filesystem::{FsEntry, FsEntryType};
@@ -21,6 +21,21 @@ use super::widgets::caption_text;
 use super::widgets::glyph_text;
 use super::widgets::surface_style;
 use super::widgets::toggle_button_style;
+
+/// Côté des bascules de la barre d'état.
+///
+/// Carrées à dessein : trois icônes côte à côte de largeurs différentes se
+/// lisent comme trois objets sans rapport. La taille laisse de la marge autour
+/// du glyphe le plus large sans que le bouton ne domine la barre.
+const TOGGLE_SIZE: f32 = 26.0;
+
+/// De combien l'icône est ramenée vers la gauche dans sa bascule.
+///
+/// Compense le dessin de la police, pas un défaut de mise en page : les glyphes
+/// de la fonte d'icônes sont posés à droite de leur chasse, donc une boîte
+/// parfaitement centrée montre quand même une icône décalée. Si Xion change de
+/// fonte, ce nombre n'a plus de raison d'être — et se verra.
+const ICON_LEFT_SHIFT: f32 = 2.0;
 
 impl XionApp {
     /// `display_entries` and `filtered_indices` are resolved once in `view()`
@@ -173,16 +188,52 @@ impl XionApp {
         let is_list = matches!(view_mode, ViewMode::List);
         let is_grid = matches!(view_mode, ViewMode::Grid);
 
+        // Un carré, et le glyphe centré dedans.
+        //
+        // Le bouton se dimensionnait sur la boîte du glyphe, et les glyphes Nerd
+        // Font ont une chasse large dont l'encre n'occupe pas le centre : les
+        // boîtes sortaient rectangulaires et les icônes décalées, chacune
+        // différemment selon le dessin de son glyphe.
+        let toggle_face = |icon: String| {
+            let glyph = glyph_text(typography, icon)
+                // La hauteur de ligne vaut celle de la boîte : c'est là que se
+                // joue le centrage vertical.
+                //
+                // Par défaut elle vaut 1,3 fois la taille du texte, donc la
+                // boîte réserve une ascendante et une descendante que l'icône
+                // n'occupe pas — centrer cette boîte pousse le glyphe vers le
+                // bas. Sans interligne à répartir, il ne reste que le glyphe.
+                .line_height(iced::widget::text::LineHeight::Absolute(TOGGLE_SIZE.into()))
+                .center();
+
+            // Et une compensation horizontale, parce que centrer ne suffit pas.
+            //
+            // Ces glyphes sont dessinés à droite de leur chasse : la boîte est
+            // bien centrée, l'encre ne l'est pas. Le rembourrage à droite
+            // rétrécit l'aire dans laquelle le glyphe se centre, ce qui le
+            // ramène vers la gauche de la moitié de sa valeur — sans changer la
+            // taille du bouton, qui reste carré.
+            container(glyph)
+                .width(Length::Fixed(TOGGLE_SIZE))
+                .height(Length::Fixed(TOGGLE_SIZE))
+                .padding(iced::Padding {
+                    right: ICON_LEFT_SHIFT * 2.0,
+                    ..iced::Padding::ZERO
+                })
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center)
+        };
+
         let view_button = |icon: String, active: bool| {
-            button(glyph_text(typography, icon))
-                .padding([spacing.xs, spacing.xs])
+            button(toggle_face(icon))
+                .padding(0)
                 .style(toggle_button_style(colors, active))
                 .on_press(UiMessage::ToggleViewMode)
         };
 
         let terminal_active = self.terminal_anim_target > 0.5;
-        let terminal_btn = button(glyph_text(typography, icons::TERMINAL.to_string()))
-            .padding([spacing.xs, spacing.xs])
+        let terminal_btn = button(toggle_face(icons::TERMINAL.to_string()))
+            .padding(0)
             .style(toggle_button_style(colors, terminal_active))
             .on_press(UiMessage::ToggleTerminal);
 

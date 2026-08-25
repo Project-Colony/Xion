@@ -283,15 +283,19 @@ pub(super) fn toggle_button_style(
             ..Default::default()
         };
 
+        // `md` plutôt que `sm` : sur un carré de vingt-six pixels, un rayon de
+        // quatre laisse des coins presque droits, et le bouton se lit comme une
+        // case à cocher plutôt que comme une bascule.
         if active {
             style.background = Some(Background::Color(colors.selection));
-            style.border = border::rounded(RADIUS.sm)
+            style.border = border::rounded(RADIUS.md)
                 .color(colors.selection_border)
                 .width(1.0);
         }
 
         if matches!(status, ButtonStatus::Hovered) {
             style.background = Some(Background::Color(colors.hover));
+            style.border = border::rounded(RADIUS.md).width(0.0);
         }
 
         style

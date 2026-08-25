@@ -28,6 +28,23 @@ pub trait FileWatcher {
     fn poll(&mut self) -> AppResult<Vec<WatchEvent>>;
 }
 
+/// Traduit une erreur de `notify` en gardant son type d'entrée-sortie.
+///
+/// L'aplatir en texte — ce que faisait `XionError::Watcher(error.to_string())`
+/// — perdait le `io::ErrorKind`, donc l'appelant ne pouvait plus distinguer une
+/// permission refusée, qui est normale et sur laquelle l'utilisateur ne peut
+/// rien, d'une panne réelle comme une limite d'inotify atteinte, qui se corrige.
+///
+/// Le texte de `notify` cite en outre les chemins concernés au format `Debug`,
+/// d'où le `about ["/boot"]` que la barre d'état affichait à côté du chemin déjà
+/// écrit en clair.
+fn watcher_error(error: notify::Error) -> XionError {
+    match error.kind {
+        notify::ErrorKind::Io(io) => XionError::Io(io),
+        other => XionError::Watcher(format!("{other:?}")),
+    }
+}
+
 #[derive(Debug)]
 pub struct NativeFileWatcher {
     watcher: RecommendedWatcher,
@@ -42,7 +59,7 @@ impl NativeFileWatcher {
         let watcher = notify::recommended_watcher(move |event| {
             let _ = sender.send(event);
         })
-        .map_err(|error| XionError::Watcher(error.to_string()))?;
+        .map_err(watcher_error)?;
 
         Ok(Self {
             watcher,
@@ -89,7 +106,7 @@ impl FileWatcher for NativeFileWatcher {
         }
         self.watcher
             .watch(path, RecursiveMode::NonRecursive)
-            .map_err(|error| XionError::Watcher(error.to_string()))?;
+            .map_err(watcher_error)?;
         self.watched.insert(path.to_path_buf());
         Ok(())
     }
@@ -98,9 +115,7 @@ impl FileWatcher for NativeFileWatcher {
         if !self.watched.remove(path) {
             return Ok(());
         }
-        self.watcher
-            .unwatch(path)
-            .map_err(|error| XionError::Watcher(error.to_string()))?;
+        self.watcher.unwatch(path).map_err(watcher_error)?;
         Ok(())
     }
 
@@ -147,5 +162,52 @@ impl FileWatcher for NoopFileWatcher {
 
     fn poll(&mut self) -> AppResult<Vec<WatchEvent>> {
         Ok(self.queued.drain(..).collect())
+    }
+}
+
+#[cfg(test)]
+mod watcher_error_tests {
+    use super::watcher_error;
+    use crate::core::XionError;
+    use std::io;
+
+    /// Le cas rencontré : ouvrir `/boot`, qui est en `drwx------ root:root`.
+    /// L'appelant doit pouvoir reconnaître un refus pour se taire.
+    #[test]
+    fn a_permission_refusal_keeps_its_io_kind() {
+        let error = notify::Error {
+            kind: notify::ErrorKind::Io(io::Error::from(io::ErrorKind::PermissionDenied)),
+            paths: vec!["/boot".into()],
+        };
+        match watcher_error(error) {
+            XionError::Io(io) => assert_eq!(io.kind(), io::ErrorKind::PermissionDenied),
+            other => panic!("type d'erreur perdu : {other}"),
+        }
+    }
+
+    /// Une limite d'inotify atteinte se corrige, elle
+    /// (`fs.inotify.max_user_watches`) : elle doit rester signalée, donc
+    /// arriver distincte d'un refus de permission.
+    #[test]
+    fn a_real_failure_is_not_mistaken_for_a_refusal() {
+        let error = notify::Error {
+            kind: notify::ErrorKind::MaxFilesWatch,
+            paths: Vec::new(),
+        };
+        assert!(matches!(watcher_error(error), XionError::Watcher(_)));
+    }
+
+    /// Le message ne doit plus porter la liste de chemins que `notify` ajoute
+    /// au format `Debug` : c'est elle qui produisait `about ["/boot"]` dans la
+    /// barre d'état, à côté du chemin déjà écrit en clair.
+    #[test]
+    fn the_message_no_longer_carries_a_debug_path_list() {
+        let error = notify::Error {
+            kind: notify::ErrorKind::WatchNotFound,
+            paths: vec!["/boot".into()],
+        };
+        let rendered = watcher_error(error).to_string();
+        assert!(!rendered.contains("about"), "message : {rendered}");
+        assert!(!rendered.contains("/boot"), "message : {rendered}");
     }
 }

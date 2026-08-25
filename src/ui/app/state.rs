@@ -165,11 +165,23 @@ impl XionApp {
         self.watched_path = target.clone();
         if let Some(path) = target {
             if let Err(error) = self.file_watcher.watch(&path) {
-                self.last_action = Some(format!(
-                    "Observateur FS: impossible de surveiller {} ({})",
-                    path.display(),
-                    error
-                ));
+                // Un dossier qu'on n'a pas le droit de lire ne peut évidemment
+                // pas être surveillé, et l'utilisateur ne peut rien y faire :
+                // `/boot` est en `drwx------ root:root` sur la plupart des
+                // distributions. La liste affiche déjà l'échec de lecture ;
+                // répéter la même chose en bas de fenêtre n'apprend rien.
+                //
+                // Les autres échecs restent signalés — une limite d'inotify
+                // atteinte, elle, se corrige.
+                let refused = matches!(
+                    &error,
+                    crate::core::XionError::Io(io)
+                        if io.kind() == std::io::ErrorKind::PermissionDenied
+                );
+                if !refused {
+                    self.last_action =
+                        Some(format!("Surveillance impossible : {}", path.display()));
+                }
             }
         }
     }

@@ -1,6 +1,6 @@
 # Routing UI : modèle de navigation
 
-Document réécrit le 2026-08-24 à partir de `src/ui/mod.rs` et
+Document réécrit le 2026-08-24 et relu le 2026-08-25 à partir de `src/ui/mod.rs` et
 `src/ui/app/state.rs`. La version précédente décrivait des structures qui
 n'existent plus (`Route.path`, `NavigationState.selection: Option<PathBuf>`,
 `SelectEntry(path)`) : du code écrit contre elle ne compilait pas.
@@ -20,7 +20,7 @@ pub enum PaneKind { Tree, List, Preview }   // src/ui/mod.rs
 - **Preview** : aperçu de l'entrée focalisée.
 
 `cycle_focus` fait tourner le focus dans l'ordre Tree → List → Preview → Tree
-(`src/ui/app/navigation.rs`).
+(`src/ui/app/navigation/focus.rs`).
 
 ## Route
 
@@ -117,8 +117,8 @@ pub enum SelectionKind { Single, Toggle, Range }
 - `Toggle` : ajoute ou retire (Ctrl+clic).
 - `Range` : étend depuis `anchor` (Maj+clic).
 
-`selection_kind_from_modifiers` (`src/ui/app/navigation.rs`) déduit le
-genre des modificateurs enfoncés.
+`selection_kind_from_modifiers` (`src/ui/app/navigation/rubber_band.rs`) déduit
+le genre des modificateurs enfoncés.
 
 Les commandes clavier passent par un enum séparé, `KeyboardCommand`
 (`src/ui/mod.rs`), traduit depuis les touches par
@@ -133,27 +133,27 @@ Les commandes clavier passent par un enum séparé, `KeyboardCommand`
    le filtre rapide, la recherche, l'état de glisser-déposer et le défilement.
    La sélection ne survit donc pas à un changement de dossier.
 3. `FocusPane` ne modifie que `navigation.focused_pane`
-   (`src/ui/app/update.rs`).
+   (`src/ui/app/update/navigation.rs`).
 4. `SelectEntry` ne change pas de dossier ; elle met à jour `selected`,
    `focused` et éventuellement `anchor` via `apply_selection`
-   (`src/ui/app/navigation.rs`).
+   (`src/ui/app/navigation/mod.rs`).
 
 ### Sélection et filtre
 
-`select_all_entries` (`src/ui/app/navigation.rs`) et la sélection par plage
+`select_all_entries` (`src/ui/app/navigation/focus.rs`) et la sélection par plage
 ne portent que sur les entrées **visibles** : si un filtre rapide ou une
 recherche est actif, les entrées masquées ne sont jamais sélectionnées. C'est
 couvert par `quick_filter_select_all_ignores_hidden_entries`,
 `search_query_select_all_ignores_hidden_entries`,
 `shift_click_range_respects_filter` et `arrow_keys_walk_visible_rows_only`
-(`src/ui/app/navigation.rs`).
+(`src/ui/app/navigation/mod.rs`).
 
 ## Historique
 
 - Géré par `services::HistoryService`.
 - Chaque `navigate_to` appelle `history.record` (`src/ui/app/state.rs`),
   ce qui tronque l'historique « avant ».
-- `Back` / `Forward` (`src/ui/app/update.rs`) réappliquent le chemin via
+- `Back` / `Forward` (`src/ui/app/update/navigation.rs`) réappliquent le chemin via
   `update_active_tab_path` puis `refresh_entries` — sans repasser par
   `record`, donc sans écraser l'historique.
 - La barre d'adresse propose les entrées d'historique en suggestions
@@ -162,8 +162,8 @@ couvert par `quick_filter_select_all_ignores_hidden_entries`,
 ## Rafraîchissement automatique
 
 Une souscription émet `FileWatchTick` toutes les 750 ms
-(`src/ui/app/mod.rs`). Les évènements de `NativeFileWatcher` sont filtrés
-par `is_event_relevant` (`src/ui/app/navigation.rs`) : seuls ceux qui
+(`src/ui/app/windowing.rs`). Les évènements de `NativeFileWatcher` sont filtrés
+par `is_event_relevant` (`src/ui/app/navigation/buffers.rs`) : seuls ceux qui
 concernent le dossier surveillé provoquent un relistage.
 
 ## État d'implémentation
@@ -182,6 +182,6 @@ concernent le dossier surveillé provoquent un relistage.
 - [ ] `RouteKind::Recent` et `RouteKind::Network` n'ont pas d'équivalent pour la
       corbeille : `NavigateToTrash` liste les éléments, mais `TrashListLoaded`
       se contente d'écrire un compteur dans la barre d'état
-      (`src/ui/app/update.rs`).
+      (`src/ui/app/update/navigation.rs`).
 - [ ] Aucun test ne couvre `Route` ni `SelectionState` directement ; ils ne sont
       testés qu'indirectement, via `tests/integration_tests.rs` (mod `ui_update`).

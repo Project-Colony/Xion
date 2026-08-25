@@ -19,6 +19,15 @@ chacune si elle est tenue et par quel mécanisme.
 ## Décisions techniques
 
 - **Pile UI** : Iced 0.14 + winit + wgpu.
+- **Socle partagé** : `colony-ui`, épinglé sur un tag (`Cargo.toml`). Il fournit
+  les palettes, les chemins de configuration, l'i18n et deux sélecteurs de
+  thème. Les cinq palettes écrites à la main dans Xion ont été retirées : les
+  couleurs viennent du catalogue — 25 familles, 57 variantes, 8 accents — et
+  une famille ajoutée en amont apparaît sans recompiler Xion.
+- **Emplacement des fichiers** : `<racine>/Colony/Xion/`, la disposition de
+  l'écosystème (`design/filesystem.md` de Project-Colony-Resources). Sous Linux,
+  `~/.config/Colony/Xion/config.toml`. L'ancien `~/.config/xion/` est déménagé
+  automatiquement au premier lancement.
 - **Terminal intégré** : `portable-pty` (ConPTY sous Windows, `openpty` sous
   Unix) et `vte` pour l'interprétation des séquences d'échappement. Le modèle
   d'écran est un historique de lignes, pas une grille : les applications plein
@@ -35,7 +44,8 @@ chacune si elle est tenue et par quel mécanisme.
 - Séparation par domaine :
   - `core/` : types partagés, erreurs, configuration.
   - `filesystem/` : accès FS, watch, métadonnées, opérations.
-  - `services/` : recherche, miniatures, historique, favoris, réseau.
+  - `services/` : recherche, miniatures, historique, favoris, réseau, montages
+    gvfs.
   - `platform/` : intégration OS, un backend par cible.
   - `terminal` : session shell sur pseudo-terminal.
   - `ui/` : composants Iced, état, routing, rendu.
@@ -59,6 +69,10 @@ appelle `std::fs` directement, et `core` dépend de `ui`.
 
 - Configuration versionnée en TOML, migrée et validée.
 - Valeurs par défaut minimales, extensibles.
+- Le thème est une sélection dans un catalogue partagé (famille, variante,
+  contraste élevé, accent), pas un ensemble fermé de noms : le socle en ajoute
+  sans que Xion soit recompilé, et un couple inconnu dégrade vers la palette de
+  repli au lieu d'empêcher le démarrage.
 - Voir `docs/config.md` pour le format, les chemins réels et la validation.
 
 ## Qualité
@@ -99,9 +113,33 @@ qui fait foi.
 - `docs/architecture.md` : modules, responsabilités, écarts connus, terminal,
   sécurité, CI.
 - `docs/ui-routing.md` : route, sélection, messages, historique.
-- `docs/config.md` : chemins de configuration, format TOML complet, migration,
-  validation, raccourcis.
+- `docs/config.md` : chemins de configuration, format TOML complet, migration
+  (dossier et thème), validation, raccourcis.
 - `docs/search.md` : indexation, filtres, intégration UI asynchrone.
 - `tasks/roadmap.md` : source unique de l'état d'avancement.
 - `tasks/tasks.md` : obligations permanentes et suivi documentaire.
 - `AUDIT.txt` : items d'audit avec leurs preuves.
+
+## Écarts à la convention de l'écosystème
+
+`design/documentation.md` de Project-Colony-Resources fixe la disposition des
+dépôts Colony. Xion s'en écarte sur quatre points, tous connus et aucun corrigé
+à ce jour, parce que chacun demande une décision plutôt qu'une correction :
+
+1. **La documentation est en français.** La convention veut l'anglais pour le
+   `README.md`, `docs/`, le code, les identifiants et les messages de commit ;
+   le français est une des deux **locales d'interface**, pas une langue de
+   documentation. Corriger cela veut dire réécrire — pas traduire à la machine.
+2. **`docs/` n'est pas trié par lecteur.** La convention demande `guide/`,
+   `internals/` et `project/`, plus un `docs/README.md` en index. Xion a cinq
+   pages à plat, triées par sujet.
+3. **`tasks/` et `AUDIT.txt` n'existent pas dans la convention.**
+   `tasks/roadmap.md` correspond à `docs/project/status.md`, et `AUDIT.txt`
+   devrait être un `.md` sous `docs/project/`, en kebab-case minuscule.
+4. **`docs/superpowers/specs/2026-08-25-*.md`** porte une date dans son nom, ce
+   que la convention interdit explicitement : un nom qui dit *quand* le fichier
+   a été écrit cesse d'être utile à l'instant où il l'est.
+
+Le `README.md` s'écarte aussi du gabarit : ni bloc d'en-tête centré, ni badges,
+ni section `## Installation`. Il a en revanche reçu son bloc **Status**, que la
+convention déclare non optionnel.

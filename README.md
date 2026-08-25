@@ -1,7 +1,20 @@
 # Xion Explorer
 
 Xion est un explorateur de fichiers écrit en Rust, inspiré de Windows File
-Explorer, Files et Dolphin.
+Explorer, Files et Dolphin. Il fait partie de l'écosystème **Project Colony** :
+ses fichiers vivent sous `<racine>/Colony/Xion/` et son apparence vient du
+catalogue de thèmes partagé (`colony.json`, `docs/config.md`).
+
+> **Status** — Ce qui est prouvé : la navigation, les opérations de fichiers,
+> les archives, la recherche, la prévisualisation, le terminal et la
+> configuration, tous couverts par des tests et joués en CI sur Linux et
+> Windows. Ce qui est écrit mais non atteignable depuis l'interface : la
+> connexion aux partages authentifiés, FTP, et l'indicateur d'état réseau. Ce
+> qui est listé sans être parcourable : la corbeille. Aucune version n'a encore
+> été publiée : le dépôt ne porte ni tag ni release, et l'infrastructure de
+> publication (`.github/workflows/release.yml`, release-please) est en place mais
+> inerte tant que les commits ne sont pas conventionnels. L'installation se fait
+> depuis les sources, par `scripts/install.sh` sous Linux.
 
 ## Objectifs
 
@@ -14,12 +27,15 @@ Explorer, Files et Dolphin.
 ## Exigences techniques
 
 - Rust **édition 2024**, chaîne d'outils épinglée à 1.98.0
-  (`rust-toolchain.toml`).
+  (`rust-toolchain.toml`) ; version minimale déclarée : 1.85
+  (`rust-version` dans `Cargo.toml`).
 - Cibles suivies : `x86_64-unknown-linux-gnu` et `x86_64-pc-windows-msvc`.
 
 ## Stack
 
 - **UI** : Iced 0.14
+- **Socle Colony** : `colony-ui` (thèmes, chemins, i18n, sélecteurs), épinglé
+  sur un tag
 - **Fenêtrage/événements** : winit
 - **Rendu** : wgpu
 - **Terminal intégré** : portable-pty + vte
@@ -31,7 +47,13 @@ Explorer, Files et Dolphin.
   `terminal` et `ui`.
 - `docs/` : documentation technique.
 - `tasks/` : suivi des tâches et de la roadmap.
-- `.github/workflows/ci.yml` : intégration continue.
+- `tests/` : tests d'intégration ; `examples/` : les mesures (`bench_listing`,
+  `bench_frame`, `bench_memory`, `bench_sort`).
+- `assets/`, `packaging/`, `scripts/install.sh` : icônes, entrée de bureau,
+  installation dans `$HOME` sans `sudo`.
+- `colony.json` : le manifeste du lanceur Colony.
+- `.github/workflows/` : `ci.yml` (intégration continue) et `release.yml`
+  (publication, encore inerte) ; `.github/dependabot.yml` pour les mises à jour.
 
 `tasks/roadmap.md` est la **source unique** de l'état d'avancement. Cette page
 n'en donne qu'un résumé ; en cas de divergence, c'est la roadmap qui fait foi,
@@ -56,9 +78,17 @@ et la roadmap est elle-même tenue à jour d'après le code.
 - Prévisualisation : métadonnées, image, texte coloré syntaxiquement, vue
   hexadécimale, diff entre deux fichiers.
 - Terminal intégré sur pseudo-terminal réel.
-- Configuration TOML versionnée, migrée, validée et rechargeable à chaud.
-- Thèmes (Light, Dark, Nord, Solarized, HighContrast), mode compact, étiquettes
-  de couleur, statut Git par entrée.
+- Configuration TOML versionnée, migrée, validée et rechargeable à chaud, sous
+  `~/.config/Colony/Xion/config.toml` (et l'équivalent Windows et macOS). Une
+  configuration écrite par une version antérieure, dans `~/.config/xion/`, est
+  déménagée automatiquement au premier lancement.
+- Apparence : le catalogue de thèmes partagé de `colony-ui` — 25 familles, 57
+  variantes, 8 accents — plus un contraste élevé applicable à n'importe laquelle
+  d'entre elles. L'écran **Apparence** (menu `⋯`) les présente ; le bouton de
+  bascule clair/sombre change la variante de la famille courante.
+- Mode compact, étiquettes de couleur, statut Git par entrée.
+- Emplacements montés par gvfs (partages SMB, SFTP, téléphones, Google Drive)
+  listés dans le panneau latéral, sans dépendance GIO.
 - Rafraîchissement automatique par observateur de fichiers natif.
 
 ## Terminal intégré
@@ -97,6 +127,10 @@ en mode interactif ne s'affichent pas correctement. Ce n'est pas un bug.
 - job séparé `cargo deny check advisories bans licenses sources`, rejoué chaque
   lundi pour faire remonter les advisories publiées entre deux pushs.
 
+`.github/workflows/release.yml` et `release-please-config.json` complètent la
+chaîne : construction des binaires, signature (`scripts/sign-release.sh`) et
+`CHANGELOG.md` généré à la première release. Rien n'a encore été publié.
+
 ## Chantiers ouverts
 
 Détail et justification dans `tasks/roadmap.md`.
@@ -104,16 +138,23 @@ Détail et justification dans `tasks/roadmap.md`.
 - Corbeille navigable (elle est listée, pas parcourable).
 - FTP et connexion aux partages authentifiés : les fonctions
   `list_ftp_directory` et `connect_authenticated` existent dans
-  `services/network.rs` mais ne sont branchées sur aucune commande de
-  l'interface. SFTP n'est pas supporté.
+  `services/network/` mais ne sont branchées sur aucune commande de
+  l'interface. Xion n'implémente pas SFTP ; un montage SFTP fait par gvfs est en
+  revanche parcouru comme un dossier ordinaire.
 - Indicateur d'état réseau : l'enum `NetworkStatus` existe et n'est lu nulle
   part dans `src/ui/`.
-- Découpage de `src/ui/app/view/mod.rs` (3174 lignes pour une seule fonction) et
-  de `src/ui/app/update.rs`.
+- Trois fichiers dépassent encore la cible de 800 lignes : `ui/app/types.rs`,
+  `ui/app/helpers.rs`, `services/thumbnails.rs`. Le point noir historique est
+  réglé : `ui/app/view/mod.rs` est passé de 3174 à ~360 lignes et
+  `ui/app/update.rs` est devenu un module de neuf fichiers.
 - Couverture de tests des modules purs non couverts : `services/search.rs`,
-  `core/config/shortcuts.rs`, `filesystem/watcher.rs`.
-- Mise à jour des dépendances et surveillance automatisée (pas de
-  `dependabot.yml`).
+  `core/config/shortcuts.rs`, l'ensemble de `ui/app/view/`.
+- Objectifs de performance chiffrés : les mesures existent (`examples/bench_*`),
+  les cibles à tenir ne sont écrites nulle part.
+- Mise à jour des dépendances : `.github/dependabot.yml` ouvre désormais les PR
+  hebdomadaires. Reste à les fusionner — et `colony-ui`, dépendance git épinglée
+  sur un tag, n'est pas suivie par Dependabot : la faire monter reste une
+  modification manuelle de `Cargo.toml`.
 
 ## Documentation
 

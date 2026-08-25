@@ -63,6 +63,12 @@ les deux vivent sur le même système de fichiers, ce qui est le cas ordinaire ;
 sinon les fichiers sont copiés un à un, et l'ancien dossier n'est supprimé que
 si **tout** est passé.
 
+Ce repli par copie ne traite que les **fichiers** du dossier : un éventuel
+sous-dossier est ignoré et compte quand même comme « passé ». Xion n'en crée
+aucun — `config.toml`, son `.bak` et les `.corrupt-*` sont tous à plat — donc le
+cas ne se produit pas aujourd'hui ; il se produirait le jour où une version
+poserait un sous-dossier.
+
 Trois cas où la migration ne fait rien :
 
 - la destination existe déjà — une configuration récente n'est jamais écrasée
@@ -224,6 +230,29 @@ focus_search = "Ctrl+E"
 `[labels]`, `[column_widths]` et `user_favorites` ne sont écrits que lorsqu'ils
 ne sont pas vides (`config_to_file` les met à `None` sinon) : leur absence d'un
 fichier existant est normale.
+
+## Ce qui écrit les quatre clés d'apparence
+
+Aucune n'a besoin d'être éditée à la main : l'écran **Apparence** les écrit
+(`render_appearance_layer`, `src/ui/app/view/appearance.rs`, ouvert par
+`UiMessage::ToggleAppearance` depuis le menu `⋯`). Les deux sélecteurs sont
+ceux de `colony-ui` et se rendent seuls depuis le catalogue ; Xion n'écrit ni
+les vignettes, ni les noms, ni la liste.
+
+| Message | Effet sur le fichier |
+| --- | --- |
+| `SetThemeVariant(family, variant)` | écrit `theme_family` et `theme_variant` |
+| `SetAccent(key)` | écrit `accent`, ou l'efface si on rechoisit le même |
+| `ToggleHighContrast` | bascule `high_contrast` |
+| `ToggleDarkMode` | bascule `theme_variant` entre `dark` et `light` |
+
+Chacun sauvegarde immédiatement (`update/tools.rs`).
+
+`ToggleDarkMode` ne fait plus tourner cinq thèmes : il bascule la variante
+claire/sombre **de la famille courante**. Une famille dont les variantes ne
+s'appellent ni `dark` ni `light` — `catppuccin` et ses quatre saveurs — n'a pas
+de contraire évident ; dans ce cas rien ne change et la barre d'état invite à
+choisir dans le menu (`update/tools.rs`).
 
 ## Raccourcis
 

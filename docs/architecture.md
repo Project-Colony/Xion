@@ -1,6 +1,6 @@
 # Architecture modulaire Xion
 
-Document relu contre le code le 2026-08-24. Les affirmations ci-dessous sont
+Document relu contre le code le 2026-08-25. Les affirmations ci-dessous sont
 appuyées par un fichier plus un symbole, ou par un nom de test ; celles qui ne
 l'étaient pas ont été soit corrigées, soit déplacées dans la section « Écarts
 constatés ».
@@ -42,9 +42,18 @@ niveau (`src/lib.rs`).
 - `XionError` / `AppResult` : erreurs unifiées (`src/core/mod.rs`).
   La variante `Rejected` distingue un refus délibéré (copie d'un dossier dans
   lui-même, entrée d'archive qui s'échappe) d'une erreur d'E/S.
+- `core::uri` : décodage pour-cent, partagé par les noms de montages gvfs et
+  les URI (`src/core/uri.rs`).
 - `core::config` : `AppConfig` et sa persistance, découpé en
-  `types.rs` (structures), `manager.rs` (chargement, validation, migration,
-  écriture) et `shortcuts.rs` (`KeyChord`, `ShortcutBindings`).
+  `types.rs` (structures), `shortcuts.rs` (`KeyChord`, `ShortcutBindings`) et
+  `manager/` — lui-même en six fichiers : `mod.rs` (chemin, chargement,
+  écriture atomique, tests), `file_format.rs` (les formes sur disque V0/V1),
+  `migrate.rs` (les deux `merge_from_v*` et `config_to_file`), `validate.rs`
+  (les `validated_*`), `limits.rs` (les bornes) et `shortcuts_io.rs`.
+- Le chemin du fichier vient du socle partagé, `colony_ui::paths::locate`, et
+  non d'un calcul local : `<racine>/Colony/Xion/config.toml` sur les trois
+  plateformes, avec déménagement automatique depuis l'ancien `~/.config/xion/`.
+  Détail dans `docs/config.md`.
 
 > Règle visée : aucune dépendance sur `filesystem/`, `services/`, `ui/`.
 > Elle est **violée** aujourd'hui, voir « Écarts constatés ».
@@ -68,7 +77,7 @@ niveau (`src/lib.rs`).
     `map_kind` et file d'attente bornée par `MAX_QUEUED_EVENTS = 1_000` ;
   - `NoopFileWatcher`, utilisé uniquement quand la création du watcher natif
     échoue — le repli est dans le constructeur de `XionApp`
-    (`src/ui/app/mod.rs`).
+    (`src/ui/app/construction.rs`).
 
 **Invariants**
 
@@ -90,7 +99,14 @@ niveau (`src/lib.rs`).
 - `SearchService` : index en mémoire et filtres (voir `docs/search.md`).
 - `ThumbnailService` et fonctions de génération (image, vidéo via ffmpeg,
   PDF via mutool/pdftoppm).
-- `NetworkDiscoveryService` : découverte SMB et mDNS.
+- `NetworkDiscoveryService` : découverte SMB et mDNS
+  (`src/services/network/`, découpé en `wnet.rs`, `net_view.rs`, `mdns.rs`,
+  `credentials.rs` et `ftp.rs`).
+- `gvfs` : les emplacements montés par gvfs — partages SMB, SFTP, téléphones,
+  Google Drive — retrouvés sous `$XDG_RUNTIME_DIR/gvfs`, où `gvfsd-fuse` les
+  expose comme des dossiers ordinaires. Aucune liaison GIO : `LocalFileSystem`
+  les lit tels quels. Branché dans le panneau latéral
+  (`src/ui/app/view/sidebar_sections.rs`).
 - `VirtualList` : fenêtre visible pour le rendu virtualisé.
 - `highlight` : coloration syntaxique via syntect.
 
@@ -116,9 +132,19 @@ section dédiée plus bas.
 - `PaneKind` : `Tree` / `List` / `Preview` (`src/ui/mod.rs`).
 - `UiMessage` : plus de 150 variantes (`src/ui/mod.rs`). Les énumérer dans un
   document serait périmé au commit suivant ; l'enum est sa propre référence.
-- `XionApp` : l'application Iced, découpée en `state.rs`, `navigation.rs`,
-  `operations.rs`, `update.rs`, `archive.rs`, `permissions.rs`, `shell.rs`,
-  `helpers.rs`, `types.rs` et `view/`.
+- `XionApp` : l'application Iced, découpée en fichiers simples — `mod.rs`,
+  `state.rs`, `types.rs`, `helpers.rs`, `construction.rs`, `archive.rs`,
+  `media.rs`, `paging.rs`, `permissions.rs`, `shell.rs`, `windowing.rs` — et en
+  quatre sous-modules : `update/` (9 fichiers), `view/` (21), `operations/` (8)
+  et `navigation/` (5).
+- Les couleurs ne sont plus écrites dans Xion. `UiTokens::for_theme`
+  (`src/ui/theme.rs`) résout un couple famille/variante dans le catalogue
+  partagé de `colony-ui` — 25 familles, 57 variantes, 8 accents — et
+  `UiColors::from_colony` en dérive les dix-neuf surfaces que Xion nomme. La
+  palette arrive en argument plutôt que par `active_palette()` : `for_theme`
+  tourne à chaque reconstruction de l'arbre de widgets, donc une lecture d'état
+  global coûterait un verrou par image. Couvert par `colony_palette_tests`
+  (`src/ui/theme.rs`), qui vérifie la lisibilité sur **tout** le catalogue.
 
 ## Flux de données
 
@@ -131,7 +157,7 @@ UI (UiMessage) -> XionApp::update -> services (history, loader, search)
 
 Le rafraîchissement automatique remonte dans l'autre sens : une souscription
 Iced émet `FileWatchTick` toutes les 750 ms
-(`src/ui/app/mod.rs`, `WATCHER_POLL_INTERVAL`, `src/ui/theme.rs`), qui
+(`src/ui/app/windowing.rs`, `WATCHER_POLL_INTERVAL`, `src/ui/theme.rs`), qui
 appelle `poll_watcher` (`src/ui/app/state.rs`) et déclenche un
 relistage si un évènement concerne le dossier affiché.
 
@@ -150,40 +176,58 @@ Ces points sont des dettes réelles, pas des choix. Ils sont écrits ici pour qu
 personne ne réimplémente ce qui existe, ni ne fasse confiance à une règle qui
 n'est pas tenue.
 
-1. **L'UI accède directement au disque.** Au 2026-08-24, `src/ui/` compte 44
-   usages de `std::fs::` (31 hors modules de test), concentrés dans `update.rs`,
-   `archive.rs` et `operations.rs`. L'ancienne formulation « `ui` n'a pas accès
-   direct au disque : elle demande au `filesystem` » était simplement fausse.
+1. **L'UI accède directement au disque.** Au 2026-08-25, `src/ui/` compte 47
+   usages de `std::fs::` (31 hors modules de test), dont 27 dans le seul
+   `app/archive.rs`, puis `app/helpers.rs` (6) et `app/update/tools.rs` (5).
+   L'ancienne formulation « `ui` n'a pas accès direct au disque : elle demande
+   au `filesystem` » était simplement fausse.
    Contrôle : `grep -rho 'std::fs::[A-Za-z_]*' src/ui --include='*.rs' | wc -l`
 2. **`core` dépend de `ui`.** `src/core/config/types.rs` stocke des
    `crate::ui::FileLabel`, et `merge_from_v1` / `config_to_file`
-   (`src/core/config/manager.rs`) les convertissent depuis et vers le TOML.
-   La règle « `core` ne dépend de rien » n'est donc pas tenue.
+   (`src/core/config/manager/migrate.rs`) les convertissent depuis et vers le
+   TOML. `types.rs` appelle en plus `crate::ui::theme::resolves_dark` pour
+   dériver `dark_mode` du thème. La règle « `core` ne dépend de rien » n'est
+   donc pas tenue.
    Contrôle : `grep -rn 'crate::ui::' src/core/`
-3. **`src/ui/app/view/mod.rs` fait 3174 lignes pour une seule fonction**,
-   `view`. Aucun test unitaire n'y est possible, et `src/ui/app/update.rs`
-   dépasse 2000 lignes pour une poignée de fonctions.
-   Contrôle : `wc -l src/ui/app/view/mod.rs && grep -c 'fn ' src/ui/app/view/mod.rs`
-4. **26 des 43 fichiers `.rs` de `src/` n'ont aucun test unitaire** (relevé du
-   2026-08-24), dont `services/search.rs`, `core/config/manager.rs`,
-   `core/config/shortcuts.rs`, `filesystem/watcher.rs` et `ui/theme.rs`.
+3. **Aucun fichier de plus de 1000 lignes ; trois au-dessus de 800.** Au
+   2026-08-25, dans cet ordre : `ui/app/types.rs`, `ui/app/helpers.rs`,
+   `services/thumbnails.rs` — tous entre 800 et 1000. Le décompte exact bouge à
+   chaque commit ; ce qui compte est lesquels, pas combien. La cible « aucun
+   fichier > 800 lignes » n'est donc pas encore atteinte, mais le point noir
+   historique a disparu :
+   `ui/app/view/mod.rs` est passé de 3174 à ~360 lignes, sa fonction `view`
+   déléguant à vingt sous-modules, et `ui/app/update.rs` a été remplacé par
+   `ui/app/update/`, neuf fichiers.
+   Contrôle : `find src -name '*.rs' -exec wc -l {} + | sort -rn | head`
+4. **75 des 99 fichiers `.rs` de `src/` n'ont aucun test unitaire** (relevé du
+   2026-08-25), dont `services/search.rs`, `core/config/shortcuts.rs`,
+   `ui/app/state.rs` et l'ensemble de `ui/app/view/`. `filesystem/watcher.rs`,
+   `ui/theme.rs` et `core/config/manager/mod.rs` en ont désormais.
+   Contrôle : `grep -rL --include='*.rs' '#\[cfg(test)\]' src | wc -l`
 
 ## État d'implémentation
 
 - [x] Modules `core/`, `filesystem/`, `services/`, `platform/`, `ui/` présents
       et séparés — `src/lib.rs`.
-- [x] Config centralisée utilisée côté UI — `src/ui/app/mod.rs`.
+- [x] Config centralisée utilisée côté UI — `src/ui/app/construction.rs`.
 - [x] Services branchés dans la boucle UI (history, loader, thumbnails).
 - [x] Virtualisation des listes branchée dans l'UI —
       `src/services/virtualization.rs`.
 - [x] Observateur FS natif — `NativeFileWatcher`,
-      `src/filesystem/watcher.rs`, instancié `src/ui/app/mod.rs`,
+      `src/filesystem/watcher.rs`, instancié `src/ui/app/construction.rs`,
       interrogé `src/ui/app/state.rs`.
+- [x] Découper `view/mod.rs` et `update.rs` — `src/ui/app/view/` (21 fichiers)
+      et `src/ui/app/update/` (9 fichiers).
+- [x] Thème issu du catalogue partagé `colony-ui` — `UiTokens::for_theme`,
+      `src/ui/theme.rs`.
 - [ ] Invalidation fine des caches sur évènement : le watcher déclenche
       aujourd'hui un relistage complet du dossier, pas une mise à jour ciblée.
 - [ ] Sortir les appels `std::fs` de `src/ui/` vers `filesystem/`.
-- [ ] Retirer la dépendance de `core` vers `ui` (`FileLabel`).
-- [ ] Découper `view/mod.rs` et `update.rs`.
+- [ ] Retirer la dépendance de `core` vers `ui` (`FileLabel`,
+      `theme::resolves_dark`).
+- [ ] Ramener les trois derniers fichiers au-dessus de 800 lignes sous la
+      cible : `ui/app/types.rs`, `ui/app/helpers.rs`,
+      `services/thumbnails.rs`.
 
 ## Terminal intégré
 
@@ -229,11 +273,11 @@ Tests : 16 tests unitaires dans `src/terminal.rs`, dont
   `create_parent_within_rejects_a_symlink_escape`
   (`src/ui/app/archive.rs`).
 - La suppression passe par la corbeille (`trash::delete`,
-  `src/ui/app/operations.rs`). `Maj+Suppr` déclenche la suppression
-  définitive, toujours derrière une confirmation
-  (`src/ui/app/operations.rs`) ; tests
+  `src/ui/app/operations/delete.rs`). `Maj+Suppr` déclenche la suppression
+  définitive, toujours derrière une confirmation ; tests
   `permanent_delete_asks_before_acting`,
-  `cancelling_the_confirmation_deletes_nothing`.
+  `cancelling_the_confirmation_deletes_nothing`
+  (`src/ui/app/operations/mod.rs`).
 
 ## Intégration continue
 

@@ -220,9 +220,90 @@ fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
 // ── Loading logic ─────────────────────────────────────────────────────────────
 
 fn default_config_path() -> PathBuf {
-    ProjectDirs::from("io", "xion", "Xion")
-        .map(|dirs| dirs.config_dir().join("config.toml"))
-        .unwrap_or_else(|| PathBuf::from("config.toml"))
+    // `locate::` et non `paths::config_dir` : ce dernier **crée** le dossier,
+    // c'est la raison de son `io::Result`. Créé avant la migration, il faisait
+    // croire à une configuration déjà en place, la migration était sautée, et
+    // Xion écrivait des valeurs par défaut à côté d'une configuration
+    // existante — constaté : deux onglets et un dossier de démarrage perdus.
+    //
+    // La documentation de `colony-ui` le dit : « afficher où les préférences
+    // vivraient ne doit pas faire exister le dossier ». `save` crée son parent
+    // lui-même, donc personne n'a besoin de le devancer.
+    let Ok(dir) = colony_ui::paths::locate::config_dir(COLONY_PROGRAM) else {
+        return PathBuf::from("config.toml");
+    };
+
+    if let Some(legacy) = legacy_config_dir() {
+        migrate_legacy_config_dir(&legacy, &dir);
+    }
+
+    dir.join("config.toml")
+}
+
+/// Le nom du programme tel que l'écosystème l'écrit.
+///
+/// Capitalisé, pas un identifiant en minuscules : la convention est
+/// `<racine>/Colony/<Programme>/`, avec `<Programme>` orthographié comme le
+/// programme s'écrit — voir `design/filesystem.md` de Project-Colony-Resources.
+const COLONY_PROGRAM: &str = "Xion";
+
+/// Là où Xion écrivait avant d'adopter la disposition Colony.
+///
+/// `ProjectDirs::from("io", "xion", "Xion")` produisait `~/.config/xion/` sous
+/// Linux. Les programmes Colony se rangent désormais côte à côte sous un même
+/// dossier, pour qu'une sauvegarde de celui-ci les emporte tous.
+fn legacy_config_dir() -> Option<PathBuf> {
+    ProjectDirs::from("io", "xion", "Xion").map(|dirs| dirs.config_dir().to_path_buf())
+}
+
+/// Déplace une configuration antérieure vers son emplacement Colony.
+///
+/// Le dossier entier voyage, pas seulement `config.toml` : le `.bak` posé à côté
+/// est le chemin de secours quand le fichier principal est illisible, et le
+/// laisser derrière reviendrait à s'en priver sans le dire.
+///
+/// Ne fait rien si la destination existe déjà — une configuration récente ne
+/// doit jamais être écrasée par une ancienne — et rien non plus si l'ancienne
+/// est absente, ce qui est le cas de toute installation neuve.
+fn migrate_legacy_config_dir(legacy: &Path, target: &Path) -> bool {
+    if target.exists() || !legacy.is_dir() || legacy == target {
+        return false;
+    }
+
+    if let Some(parent) = target.parent() {
+        if fs::create_dir_all(parent).is_err() {
+            return false;
+        }
+    }
+
+    // Un renommage suffit tant que les deux vivent sur le même système de
+    // fichiers, ce qui est le cas ordinaire — les deux sont sous `~/.config`.
+    if fs::rename(legacy, target).is_ok() {
+        return true;
+    }
+
+    // Sinon on copie, et on ne supprime l'original que si tout est passé :
+    // perdre la configuration de quelqu'un pour un déménagement de dossier
+    // serait un très mauvais échange.
+    if fs::create_dir_all(target).is_err() {
+        return false;
+    }
+    let Ok(entries) = fs::read_dir(legacy) else {
+        return false;
+    };
+    let mut copied_everything = true;
+    for entry in entries.flatten() {
+        if !entry.path().is_file() {
+            continue;
+        }
+        if fs::copy(entry.path(), target.join(entry.file_name())).is_err() {
+            copied_everything = false;
+        }
+    }
+    if copied_everything {
+        let _ = fs::remove_dir_all(legacy);
+    }
+    copied_everything
 }
 
 fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
@@ -314,6 +395,59 @@ mod tests {
     /// default path is the developer's real `config.toml`.
     fn manager_in(dir: &std::path::Path) -> ConfigManager {
         ConfigManager::with_path(dir.join("config.toml"))
+    }
+
+    /// Le cas de tout utilisateur existant : la configuration vit encore dans
+    /// l'ancien dossier au premier lancement de la version alignée.
+    #[test]
+    fn a_pre_colony_configuration_moves_with_its_backup() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let legacy = root.path().join("xion");
+        let target = root.path().join("Colony").join("Xion");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("config.toml"), "theme = \"Nord\"").unwrap();
+        std::fs::write(legacy.join("config.toml.bak"), "theme = \"Dark\"").unwrap();
+
+        assert!(super::migrate_legacy_config_dir(&legacy, &target));
+
+        assert_eq!(
+            std::fs::read_to_string(target.join("config.toml")).unwrap(),
+            "theme = \"Nord\""
+        );
+        assert!(
+            target.join("config.toml.bak").exists(),
+            "la sauvegarde est le recours quand le fichier principal est illisible"
+        );
+        assert!(!legacy.exists(), "l'ancien dossier ne doit pas subsister");
+    }
+
+    /// Une configuration déjà écrite à l'emplacement Colony ne doit jamais être
+    /// écrasée par une ancienne restée là.
+    #[test]
+    fn an_existing_colony_configuration_wins() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let legacy = root.path().join("xion");
+        let target = root.path().join("Colony").join("Xion");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("config.toml"), "theme = \"Ancien\"").unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("config.toml"), "theme = \"Actuel\"").unwrap();
+
+        assert!(!super::migrate_legacy_config_dir(&legacy, &target));
+        assert_eq!(
+            std::fs::read_to_string(target.join("config.toml")).unwrap(),
+            "theme = \"Actuel\""
+        );
+    }
+
+    /// Une installation neuve n'a rien à migrer et ne doit rien créer.
+    #[test]
+    fn a_fresh_installation_migrates_nothing() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let legacy = root.path().join("absent");
+        let target = root.path().join("Colony").join("Xion");
+        assert!(!super::migrate_legacy_config_dir(&legacy, &target));
+        assert!(!target.exists());
     }
 
     #[test]

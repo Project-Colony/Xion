@@ -127,7 +127,15 @@ impl XionApp {
                     // borrow outlives the returned tree. Names under the
                     // limit — nearly all of them — no longer allocate.
                     let display_name = truncate_name(&entry.name, 60);
-                    let name_text = body_text(typography, display_name);
+                    // Jamais de retour à la ligne.
+                    //
+                    // La troncature compte soixante *caractères* alors que la
+                    // contrainte est en *pixels* : sur une colonne étroite le
+                    // nom restait trop large, iced le repliait sur une seconde
+                    // ligne, et la ligne débordait de sa hauteur fixe pour
+                    // chevaucher ses voisines. Rien ne rognait derrière.
+                    let name_text = body_text(typography, display_name)
+                        .wrapping(iced::widget::text::Wrapping::None);
                     let name_text = if is_cut {
                         name_text.color(colors.text_muted)
                     } else {
@@ -141,6 +149,9 @@ impl XionApp {
                     container(name_row)
                         .width(spec.width)
                         .align_x(spec.align)
+                        // Ce qui dépasse de la colonne est coupé net plutôt que
+                        // peint par-dessus la colonne voisine.
+                        .clip(true)
                         .into()
                 }
                 ViewColumn::Type => {

@@ -563,8 +563,21 @@ pub mod layout {
     /// n'en offrait que onze une fois la barre d'onglets déduite. La borne
     /// existe pour qu'il reste toujours de quoi voir les fichiers derrière.
     pub const TERMINAL_MAX_HEIGHT: f32 = 900.0;
+    /// Hauteur de la bande qui porte les onglets, en haut de fenêtre comme dans
+    /// le panneau terminal.
+    ///
+    /// Partagée à dessein : l'onglet actif doit toucher le bas de sa bande sans
+    /// laisser d'espace — c'est ce contact qui fait qu'une rangée de boutons se
+    /// lit comme des onglets. Deux nombres pour la même chose divergent dès que
+    /// la chose change.
+    pub const TAB_STRIP_HEIGHT: f32 = 30.0;
     /// Épaisseur de la poignée de redimensionnement du panneau terminal.
-    pub const TERMINAL_RESIZE_BAR_HEIGHT: f32 = 6.0;
+    ///
+    /// Plus fine que celle du volet d'aperçu, qui fait six pixels : celle-ci est
+    /// horizontale et s'ajoute à la hauteur du chrome, déjà occupée par la bande
+    /// d'onglets. Quatre pixels restent saisissables et rendent deux pixels à la
+    /// grille.
+    pub const TERMINAL_RESIZE_BAR_HEIGHT: f32 = 4.0;
 }
 
 #[cfg(test)]

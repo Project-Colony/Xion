@@ -40,8 +40,8 @@ impl XionApp {
             UiMessage::ToggleTerminal => {
                 if self.terminal_anim_target > 0.5 {
                     // Fermeture : les émulateurs partent, et leurs shells avec.
-                    for tab in &mut self.terminal.tabs {
-                        tab.terminal = None;
+                    for index in 0..self.terminal.tabs.len() {
+                        self.retire_terminal(index);
                     }
                     self.terminal_anim_target = 0.0;
                 } else {
@@ -68,10 +68,14 @@ impl XionApp {
                     return Ok(Flow::Continue);
                 };
 
+                let mut shutting_down = false;
                 match terminal.handle(iced_term::Command::ProxyToBackend(command)) {
                     iced_term::actions::Action::Shutdown => {
-                        // Le shell a rendu la main : `exit`, ou une mort.
-                        tab.terminal = None;
+                        // Le shell a rendu la main : `exit`, ou une mort. Le flux
+                        // a vu passer `Exit`, donc lui ne paniquera pas — mais on
+                        // passe quand même par le cimetière, pour n'avoir qu'un
+                        // seul chemin de sortie.
+                        shutting_down = true;
                     }
                     iced_term::actions::Action::ChangeTitle(title) => {
                         // Ce que le programme veut qu'on l'appelle — le shell y
@@ -81,6 +85,17 @@ impl XionApp {
                         }
                     }
                     iced_term::actions::Action::Ignore => {}
+                }
+
+                if shutting_down {
+                    let index = self
+                        .terminal
+                        .tabs
+                        .iter()
+                        .position(|tab| tab.terminal.as_ref().is_some_and(|t| t.id == id));
+                    if let Some(index) = index {
+                        self.retire_terminal(index);
+                    }
                 }
             }
             UiMessage::TerminalAddTab => {
@@ -102,7 +117,9 @@ impl XionApp {
             }
             UiMessage::TerminalCloseTab(index) => {
                 if self.terminal.tabs.len() > 1 && index < self.terminal.tabs.len() {
-                    // Retirer l'onglet détruit son émulateur, donc son shell.
+                    // Retirer l'onglet emporte son émulateur : il faut donc le
+                    // mettre à la retraite avant, sinon il est lâché ici même.
+                    self.retire_terminal(index);
                     self.terminal.tabs.remove(index);
                     if self.terminal.active_tab >= self.terminal.tabs.len() {
                         self.terminal.active_tab = self.terminal.tabs.len() - 1;
@@ -147,7 +164,7 @@ impl XionApp {
             UiMessage::SetShell(shell) => {
                 self.state.config.terminal_shell = shell;
                 // L'émulateur en cours porte l'ancien interpréteur : il part.
-                self.terminal.active().terminal = None;
+                self.retire_terminal(self.terminal.active_tab);
                 self.config_manager.save(&self.state.config);
 
                 // Et il faut le remplacer immédiatement. Le commentaire
@@ -167,6 +184,20 @@ impl XionApp {
         }
 
         Ok(Flow::Continue)
+    }
+
+    /// Met un émulateur à la retraite au lieu de le lâcher sur place.
+    ///
+    /// Voir [`RetiredTerminals`] : lâcher un `Terminal` ferme son canal, et la
+    /// souscription qui l'écoute encore appelle `panic!` en le constatant. Le
+    /// garder en vie jusqu'au tour suivant laisse à iced le temps de retirer
+    /// cette souscription.
+    fn retire_terminal(&mut self, index: usize) {
+        if let Some(tab) = self.terminal.tabs.get_mut(index) {
+            if let Some(terminal) = tab.terminal.take() {
+                self.retired_terminals.0.push(terminal);
+            }
+        }
     }
 
     /// Le dossier que le terminal doit ouvrir.

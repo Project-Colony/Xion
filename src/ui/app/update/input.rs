@@ -35,7 +35,10 @@ impl XionApp {
         match message {
             UiMessage::Noop => {}
             UiMessage::ExitRequested => {
-                // Kill cmd.exe before exiting so no orphan processes remain.
+                // Les shells partent avec le programme. Pas par le cimetière :
+                // l'application s'arrête, il n'y aura pas de tour suivant pour
+                // le vider, et le processus meurt avant qu'un flux ne s'en
+                // aperçoive.
                 for tab in &mut self.terminal.tabs {
                     tab.terminal = None;
                 }

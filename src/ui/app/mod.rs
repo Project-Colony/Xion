@@ -112,6 +112,9 @@ pub struct XionApp {
     preview_anim_progress: f32,
     preview_anim_target: f32,
     terminal: TerminalState,
+    /// Voir [`RetiredTerminals`] : lâcher un terminal trop tôt fait paniquer la
+    /// souscription qui l'écoute encore.
+    retired_terminals: RetiredTerminals,
     terminal_anim_progress: f32,
     terminal_anim_target: f32,
     // Feature 3: Properties dialog

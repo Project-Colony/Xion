@@ -859,6 +859,28 @@ pub(super) enum ContextSubmenu {
     Label,
 }
 
+/// Les émulateurs mis à la retraite, gardés en vie une passe de plus.
+///
+/// `iced_term` **panique** quand le canal d'un terminal se ferme alors que sa
+/// souscription vit encore : `terminal.rs` appelle `panic!` au lieu de terminer
+/// le flux. Or lâcher un `Terminal` ferme son canal, et iced ne retire sa
+/// souscription qu'après le retour de `update` — le flux avait donc le temps de
+/// voir la fermeture et d'emporter un fil de tokio avec lui.
+///
+/// Les retirés attendent ici que la liste des souscriptions ait été recalculée
+/// sans eux, puis sont détruits au tour suivant, quand plus personne n'écoute.
+#[derive(Default)]
+pub(super) struct RetiredTerminals(pub(super) Vec<iced_term::Terminal>);
+
+impl std::fmt::Debug for RetiredTerminals {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("RetiredTerminals")
+            .field(&self.0.len())
+            .finish()
+    }
+}
+
 /// L'état de la page de préférences pendant qu'elle est ouverte.
 #[derive(Debug, Default)]
 pub(super) struct PreferencesState {

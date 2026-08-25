@@ -77,7 +77,8 @@ pub(super) fn filled_style(
     }
 }
 
-/// The header band: filled, rounded at the top only, and with no outline.
+/// La bande qui porte des onglets : remplie, arrondie en haut seulement, et
+/// sans contour.
 ///
 /// Two reasons it has no border. The tab strip sits flush against the bottom of
 /// this container, and the active tab is painted in the list's own background —
@@ -86,7 +87,14 @@ pub(super) fn filled_style(
 /// header, one around the sidebar, one around the list and one around the
 /// status bar, which is what made the screen read as a stack of panels rather
 /// than an application.
-pub(super) fn header_style(colors: UiColors) -> impl Fn(&Theme) -> container::Style + Copy {
+///
+/// Partagée entre l'en-tête de fenêtre et le panneau terminal : la bande du
+/// terminal utilisait `filled_style`, qui trace justement cette ligne, et ses
+/// onglets ne se rattachaient donc à rien.
+pub(super) fn tab_strip_style(
+    colors: UiColors,
+    radius: f32,
+) -> impl Fn(&Theme) -> container::Style + Copy {
     // Sauf quand l'aplat ne sépare rien. Le thème « contraste élevé » peint
     // `chrome_background` et `panel_background` tous deux en noir : il ne
     // distingue les zones que par ses bordures blanches. Retirer celle-ci y
@@ -97,13 +105,18 @@ pub(super) fn header_style(colors: UiColors) -> impl Fn(&Theme) -> container::St
         background: Some(Background::Color(colors.chrome_background)),
         border: iced::Border {
             radius: iced::border::Radius::default()
-                .top_left(RADIUS.xl)
-                .top_right(RADIUS.xl),
+                .top_left(radius)
+                .top_right(radius),
             color: colors.border,
             width: if fills_separate { 0.0 } else { 1.0 },
         },
         ..Default::default()
     }
+}
+
+/// La bande de l'en-tête de fenêtre.
+pub(super) fn header_style(colors: UiColors) -> impl Fn(&Theme) -> container::Style + Copy {
+    tab_strip_style(colors, RADIUS.xl)
 }
 
 /// Container style for a floating surface: menus, dropdowns, dialogs.

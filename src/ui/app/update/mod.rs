@@ -30,6 +30,12 @@ impl XionApp {
     pub(crate) fn update(&mut self, message: UiMessage) -> Task<UiMessage> {
         let mut tasks = Vec::new();
 
+        // Les émulateurs retirés au tour précédent peuvent partir : iced a
+        // recalculé ses souscriptions depuis, et plus personne n'écoute leur
+        // canal. Les lâcher plus tôt faisait paniquer le flux qui l'écoutait
+        // encore — voir `RetiredTerminals`.
+        self.retired_terminals.0.clear();
+
         let message = if self.is_user_selecting {
             match self.intercept_during_selection(message) {
                 Ok(task) => return task,

@@ -15,6 +15,7 @@ use iced::widget::{button, column, container, mouse_area, row};
 use iced::{Alignment, Background, Element, Length, Theme};
 
 use crate::ui::theme::icons;
+use crate::ui::theme::layout::TAB_STRIP_HEIGHT;
 use crate::ui::{KeyboardCommand, UiMessage};
 
 use super::XionApp;
@@ -25,12 +26,6 @@ use super::widgets::body_text;
 use super::widgets::caption_text;
 use super::widgets::glyph_text;
 use super::widgets::header_style;
-
-/// Height of the strip the tabs sit in.
-///
-/// The active tab has to reach the bottom of it without a gap — that contact is
-/// what makes a row of buttons read as tabs.
-const TAB_STRIP_HEIGHT: f32 = 30.0;
 
 impl XionApp {
     /// Returns the header and, separately, the address-history dropdown: the

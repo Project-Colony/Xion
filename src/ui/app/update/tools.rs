@@ -45,11 +45,31 @@ impl XionApp {
             UiMessage::CloseProperties => {
                 self.properties_dialog = None;
             }
-            UiMessage::ToggleAppearance(open) => {
-                self.menus.appearance_open = open;
-                if open {
-                    self.menus.overflow_open = false;
+            UiMessage::TogglePreferences => {
+                self.menus.preferences.open = !self.menus.preferences.open;
+                // Le menu `⋯` couvrirait la page qui vient de s'ouvrir.
+                self.menus.overflow_open = false;
+            }
+            UiMessage::SelectPreferencesCategory(category) => {
+                self.menus.preferences.category = category;
+            }
+            UiMessage::TogglePreferencesSection(key) => {
+                if !self.menus.preferences.expanded.remove(key) {
+                    self.menus.preferences.expanded.insert(key);
                 }
+            }
+            UiMessage::ToggleShowHidden => {
+                self.state.config.list.show_hidden = !self.state.config.list.show_hidden;
+                self.config_manager.save(&self.state.config);
+                // Le filtrage se fait au chargement, pas au rendu : sans
+                // relecture, la liste garde l'ancien contenu.
+                tasks.push(self.refresh_entries());
+            }
+            UiMessage::ToggleDirectoriesFirst => {
+                self.state.config.list.directories_first =
+                    !self.state.config.list.directories_first;
+                self.config_manager.save(&self.state.config);
+                tasks.push(self.refresh_entries());
             }
             UiMessage::SetThemeVariant(family, variant) => {
                 self.state.config.theme.family = family.to_string();

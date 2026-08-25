@@ -121,6 +121,81 @@ impl XionApp {
         (header.into(), history_menu)
     }
 
+    /// Le bouton « Xion », qui ouvre et ferme les préférences.
+    ///
+    /// La convention Colony veut que l'identité du programme soit le chemin
+    /// vers ses réglages — « not a gear floating in a toolbar, not an entry
+    /// buried in a list of sections ». Xion a la forme de chrome de Digger, une
+    /// barre horizontale, et suit donc sa mise en œuvre : un bouton texte, pas
+    /// un fond de carte.
+    ///
+    /// Il vit dans la bande d'onglets, et tout l'enjeu est qu'il ne se lise pas
+    /// comme un onglet de plus. Ce qui fait qu'un bouton *devient* un onglet,
+    /// c'est le contact avec le bas de la bande — c'est écrit à
+    /// [`TAB_STRIP_HEIGHT`]. Celui-ci est donc centré verticalement, sans
+    /// jamais toucher ce bas, et garde un arrondi complet là où les onglets
+    /// sont carrés en bas. Les deux différences se voient d'un coup d'œil.
+    fn render_identity_button(&self, ctx: ViewCtx) -> Element<'_, UiMessage> {
+        let ViewCtx {
+            colors,
+            spacing,
+            typography,
+        } = ctx;
+
+        let open = self.menus.preferences.open;
+
+        let label = row![
+            caption_text(typography, icons::SETTINGS),
+            body_text(typography, "Xion")
+        ]
+        .spacing(spacing.xs)
+        .align_y(Alignment::Center);
+
+        let identity = button(label)
+            .padding([spacing.xs, spacing.sm])
+            .style(move |_theme: &Theme, status: ButtonStatus| {
+                // Ouvert : l'accent et un fond. Fermé : discret, parce que le
+                // nom du programme n'a pas à concurrencer les onglets.
+                let background = if open {
+                    Some(Background::Color(colors.selection))
+                } else if matches!(status, ButtonStatus::Hovered) {
+                    Some(Background::Color(colors.hover))
+                } else {
+                    None
+                };
+
+                iced::widget::button::Style {
+                    background,
+                    text_color: if open {
+                        colors.accent
+                    } else {
+                        colors.text_muted
+                    },
+                    border: iced::Border {
+                        radius: RADIUS.md.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            })
+            .on_press(UiMessage::TogglePreferences);
+
+        let tip = if open {
+            "Fermer les préférences"
+        } else {
+            "Préférences"
+        };
+
+        container(widgets::tip(ctx, identity, tip, TipVariant::Nav))
+            .height(Length::Fixed(TAB_STRIP_HEIGHT))
+            .align_y(Alignment::Center)
+            .padding(iced::Padding {
+                right: spacing.md,
+                ..iced::Padding::ZERO
+            })
+            .into()
+    }
+
     /// The tab strip.
     ///
     /// The close cross used to be built with the very same widget as the tab —
@@ -135,7 +210,9 @@ impl XionApp {
             typography,
         } = ctx;
 
-        let mut strip = row![].spacing(0).align_y(Alignment::End);
+        let mut strip = row![self.render_identity_button(ctx)]
+            .spacing(0)
+            .align_y(Alignment::End);
 
         for (index, tab) in self.tab_manager.tabs.iter().enumerate() {
             let active = index == self.tab_manager.active;

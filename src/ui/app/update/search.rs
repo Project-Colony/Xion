@@ -262,6 +262,10 @@ impl XionApp {
                 } else {
                     ".gitignore désactivé".to_string()
                 });
+                // La page de préférences affiche « enregistrées
+                // automatiquement » ; sans ceci le réglage revenait au
+                // démarrage suivant et la promesse était fausse.
+                self.config_manager.save(&self.state.config);
                 tasks.push(self.refresh_entries());
             }
             // ── UX: Sidebar accordion ─────────────────────────────────────────

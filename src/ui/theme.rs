@@ -76,6 +76,12 @@ pub mod icons {
     pub const FILE_TEXT: &str = "\u{f0219}"; // 󰈙 nf-md-file_document
     pub const FILE_TABLE: &str = "\u{f021b}"; // 󰈛 nf-md-file_excel
     pub const FILE_CONFIG: &str = "\u{f0493}"; // 󰒓 nf-md-settings
+    /// La roue dentée du bouton d'identité, qui ouvre les préférences.
+    ///
+    /// Même glyphe que `FILE_CONFIG`, deux usages sans rapport : l'un décore un
+    /// fichier de configuration dans la liste, l'autre est un bouton de chrome.
+    /// Les nommer séparément fait que changer l'un ne touche pas l'autre.
+    pub const SETTINGS: &str = "\u{f0493}"; // 󰒓 nf-md-settings
     pub const FILE_GIT: &str = "\u{f02a2}"; // 󰊢 nf-md-git
     pub const FILE_LOCK: &str = "\u{f033e}"; // 󰌾 nf-md-lock
     pub const FILE_FONT: &str = "\u{f031a}"; // 󰌚 nf-md-format_font

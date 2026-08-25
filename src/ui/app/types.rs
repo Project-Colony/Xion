@@ -852,6 +852,19 @@ pub(super) enum ContextSubmenu {
     Label,
 }
 
+/// L'état de la page de préférences pendant qu'elle est ouverte.
+#[derive(Debug, Default)]
+pub(super) struct PreferencesState {
+    pub(super) open: bool,
+    pub(super) category: crate::ui::PreferencesCategory,
+    /// Les sections dépliées, par clé.
+    ///
+    /// La convention le veut ainsi — « expanded state is per-section and
+    /// remembered while the page is open » — et rien de plus : l'état meurt
+    /// avec la fenêtre, il n'a pas sa place dans le fichier de configuration.
+    pub(super) expanded: std::collections::HashSet<&'static str>,
+}
+
 #[derive(Debug, Default)]
 pub(super) struct MenuState {
     pub(super) context_open: bool,
@@ -862,12 +875,13 @@ pub(super) struct MenuState {
     pub(super) context_submenu: Option<ContextSubmenu>,
     pub(super) history_open: bool,
     pub(super) history_position: Option<iced::Point>,
-    /// L'écran d'apparence, en surcouche.
+    /// La page de préférences.
     ///
-    /// Les sélecteurs de thème et d'accent viennent de `colony-ui` et se
-    /// rendent seuls depuis le catalogue : vingt-cinq familles en cartes. Ils ne
-    /// tiennent pas dans un menu déroulant, d'où une modale.
-    pub(super) appearance_open: bool,
+    /// Elle remplace la zone de contenu ; ce n'est pas une surcouche. C'était
+    /// une modale à sa première écriture, ce que la convention Colony désigne
+    /// nommément comme le contre-exemple : « it is not a modal, not a separate
+    /// window, not a popover ».
+    pub(super) preferences: PreferencesState,
     /// The `⋯` menu at the end of the single header bar.
     ///
     /// Everything the old command bar showed as a permanent third row lives

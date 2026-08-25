@@ -4,7 +4,6 @@
 //! Modal overlay rendering is in [`overlays`].
 
 mod address_bar;
-mod appearance;
 mod command_bar;
 mod context_entries;
 mod context_menu;
@@ -16,6 +15,7 @@ mod main_area;
 mod menu_items;
 mod overflow_menu;
 mod overlays;
+mod preferences;
 mod preview;
 mod rows;
 mod sidebar;
@@ -168,6 +168,16 @@ impl XionApp {
 
         let body = body.height(Length::Fill).spacing(spacing.xs);
 
+        // Les préférences remplacent la zone de contenu — pas une surcouche.
+        // C'est la différence entre cette page et la modale qu'elle remplace :
+        // l'en-tête et la barre d'état restent, le reste cède la place. La
+        // barre latérale des fichiers part avec le corps, sans quoi deux
+        // colonnes de gauche se disputeraient le même rôle.
+        let body: Element<'_, UiMessage> = match self.render_preferences_page(ctx) {
+            Some(page) => page,
+            None => body.into(),
+        };
+
         let status_bar = self.render_status_bar(ctx, display_entries, &filtered_indices);
 
         // No gap between the header and the body: the active tab has to reach
@@ -273,9 +283,6 @@ impl XionApp {
         let overflow_layer: Element<'_, UiMessage> = self
             .render_overflow_menu(ctx)
             .unwrap_or_else(|| container(row![]).into());
-        let appearance_layer: Element<'_, UiMessage> = self
-            .render_appearance_layer(ctx)
-            .unwrap_or_else(|| container(row![]).into());
 
         // Feature R: Breadcrumb dropdown
         let breadcrumb_dropdown_layer: Element<'_, UiMessage> =
@@ -350,7 +357,6 @@ impl XionApp {
             history_layer,
             context_layer,
             overflow_layer,
-            appearance_layer,
             properties_layer,
             bulk_rename_layer,
             diff_layer,

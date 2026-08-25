@@ -203,6 +203,35 @@ impl AppState {
     }
 }
 
+/// Les catégories de la page de préférences.
+///
+/// Les trois premières sont imposées par la convention Colony, dans cet ordre :
+/// « Do not reorder the first three. They are what a user hunting for a setting
+/// scans first ». Viennent ensuite celles propres au programme — pour Xion, la
+/// liste de fichiers — et « À propos » en dernier.
+///
+/// Un programme peut en omettre ; il ne peut pas en détourner une.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PreferencesCategory {
+    #[default]
+    General,
+    Appearance,
+    Accessibility,
+    Files,
+    About,
+}
+
+impl PreferencesCategory {
+    /// Dans l'ordre d'affichage.
+    pub const ALL: [Self; 5] = [
+        Self::General,
+        Self::Appearance,
+        Self::Accessibility,
+        Self::Files,
+        Self::About,
+    ];
+}
+
 #[derive(Debug, Clone)]
 pub enum UiMessage {
     Noop,
@@ -405,8 +434,20 @@ pub enum UiMessage {
     OpenRequestTick,
     /// Opens or closes the `⋯` menu at the end of the header bar.
     ToggleOverflowMenu(bool),
-    /// Ouvre ou ferme l'écran d'apparence.
-    ToggleAppearance(bool),
+    /// Ouvre ou ferme la page de préférences.
+    ///
+    /// Une bascule sans argument, et c'est voulu : la convention Colony veut
+    /// que le bouton « Fermer » de la page envoie *le même* message que le
+    /// bouton d'identité qui l'a ouverte. Deux sorties, un seul message.
+    TogglePreferences,
+    /// Choisit la catégorie affichée dans la page de préférences.
+    SelectPreferencesCategory(PreferencesCategory),
+    /// Déplie ou replie une section de la page de préférences.
+    TogglePreferencesSection(&'static str),
+    /// Affiche ou masque les fichiers dont le nom commence par un point.
+    ToggleShowHidden,
+    /// Regroupe les dossiers avant les fichiers, ou trie tout ensemble.
+    ToggleDirectoriesFirst,
     /// Choisit une famille et une variante du catalogue Colony.
     SetThemeVariant(&'static str, &'static str),
     /// Choisit un accent ; la même clé deux fois revient à « celui du thème ».

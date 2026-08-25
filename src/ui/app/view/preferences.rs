@@ -231,15 +231,10 @@ impl XionApp {
         ]
         .spacing(spacing.sm);
 
-        // Les mêmes intitulés que le sélecteur du panneau terminal, qui est
-        // l'endroit où ce réglage se change. Deux noms pour le même
-        // interpréteur donneraient l'impression de deux réglages distincts.
-        let shell = match &config.terminal_shell {
-            crate::core::ShellConfig::Cmd => "CMD".to_string(),
-            crate::core::ShellConfig::PowerShell => "PowerShell".to_string(),
-            crate::core::ShellConfig::GitBash => "Bash".to_string(),
-            crate::core::ShellConfig::Custom(path) => path.clone(),
-        };
+        // Le même intitulé que le sélecteur du panneau terminal, produit par la
+        // même fonction : deux noms pour le même interpréteur donneraient
+        // l'impression de deux réglages distincts.
+        let shell = crate::ui::app::shell::label_for(&config.terminal_shell);
 
         let terminal = column![
             Self::readout(ctx, "Interpréteur", shell),

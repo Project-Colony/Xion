@@ -168,18 +168,16 @@ impl XionApp {
         }
         let muted_color = colors.text_muted;
         // Feature J: Shell switcher buttons
-        use crate::core::ShellConfig;
+        //
+        // Découverts, plus écrits en dur : la liste figée affichait « CMD » sous
+        // Linux pour un bouton qui lançait zsh, et un « PS » qui ne pouvait rien
+        // lancer du tout.
         let current_shell = &self.state.config.terminal_shell;
-        let shells: &[(&str, ShellConfig)] = &[
-            ("CMD", ShellConfig::Cmd),
-            ("PS", ShellConfig::PowerShell),
-            ("Bash", ShellConfig::GitBash),
-        ];
-        for (label, shell_cfg) in shells {
-            let is_active = current_shell == shell_cfg;
-            let shell_cfg_clone = shell_cfg.clone();
+        for choice in crate::ui::app::shell::available_shells() {
+            let is_active = *current_shell == choice.config;
+            let shell_cfg_clone = choice.config.clone();
             tab_bar = tab_bar.push(
-                button(caption_text(typography, *label))
+                button(caption_text(typography, choice.label))
                     .padding([spacing.xs, spacing.xs])
                     .on_press(UiMessage::SetShell(shell_cfg_clone))
                     .style(

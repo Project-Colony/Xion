@@ -118,10 +118,18 @@ impl ThemeChoice {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub enum ShellConfig {
+    /// Le shell de connexion de l'utilisateur.
+    ///
+    /// Une intention, pas un binaire : `$SHELL` sous Unix, `cmd` sous Windows.
+    /// C'est ce qui permet au même fichier de configuration de rester valide en
+    /// passant d'une machine à l'autre — la variante s'appelait `Cmd`, ce qui
+    /// désignait un exécutable Windows tout en lançant zsh sous Linux.
     #[default]
-    Cmd,
+    System,
     PowerShell,
-    GitBash,
+    /// Bash : Git Bash sous Windows, le bash du système ailleurs.
+    Bash,
+    /// Un exécutable désigné par son chemin absolu.
     Custom(String),
 }
 

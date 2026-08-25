@@ -255,9 +255,13 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
     }
     if let Some(shell_str) = file.terminal_shell {
         config.terminal_shell = match shell_str.as_str() {
-            "Cmd" => ShellConfig::Cmd,
+            // « Cmd » et « GitBash » sont les noms d'avant. Ils restent lus pour
+            // toujours : une configuration écrite par une version précédente ne
+            // doit pas se transformer en `Custom("Cmd")`, ce qui donnerait un
+            // chemin absolu invalide et un terminal qui refuse de s'ouvrir.
+            "System" | "Cmd" => ShellConfig::System,
             "PowerShell" => ShellConfig::PowerShell,
-            "GitBash" => ShellConfig::GitBash,
+            "Bash" | "GitBash" => ShellConfig::Bash,
             other => ShellConfig::Custom(other.to_string()),
         };
     }
@@ -375,9 +379,9 @@ pub(super) fn config_to_file(config: &AppConfig) -> AppConfigFileV1 {
         active_tab_index: Some(config.active_tab_index),
         compact_mode: Some(config.compact_mode),
         terminal_shell: Some(match &config.terminal_shell {
-            ShellConfig::Cmd => "Cmd".to_string(),
+            ShellConfig::System => "System".to_string(),
             ShellConfig::PowerShell => "PowerShell".to_string(),
-            ShellConfig::GitBash => "GitBash".to_string(),
+            ShellConfig::Bash => "Bash".to_string(),
             ShellConfig::Custom(s) => s.clone(),
         }),
         respect_gitignore: Some(config.respect_gitignore),

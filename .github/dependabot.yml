@@ -24,6 +24,17 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # `wgpu` n'est pas une dépendance de Xion au sens ordinaire : elle n'existe
+      # que pour demander à wgpu s'il trouve un adaptateur Vulkan avant de l'y
+      # restreindre — voir `prefer_vulkan_when_available` dans main.rs. Sa
+      # version doit rester **celle qu'iced_wgpu déclare**, sans quoi Cargo
+      # compile un second wgpu au lieu de réutiliser celui d'iced.
+      #
+      # Elle suit donc iced, pas les sorties de wgpu. Dependabot a proposé la 30
+      # en #176 alors qu'iced_wgpu 0.14 épingle la 27 : la compilation a échoué.
+      # Elle se mettra à jour le jour où Xion changera de version d'iced.
+      - dependency-name: wgpu
     groups:
       # Minor and patch bumps arrive as one PR, so a routine week is one review
       # rather than fifteen. Majors stay separate — they deserve their own read.

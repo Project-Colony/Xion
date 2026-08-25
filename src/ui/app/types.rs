@@ -862,6 +862,12 @@ pub(super) struct MenuState {
     pub(super) context_submenu: Option<ContextSubmenu>,
     pub(super) history_open: bool,
     pub(super) history_position: Option<iced::Point>,
+    /// L'écran d'apparence, en surcouche.
+    ///
+    /// Les sélecteurs de thème et d'accent viennent de `colony-ui` et se
+    /// rendent seuls depuis le catalogue : vingt-cinq familles en cartes. Ils ne
+    /// tiennent pas dans un menu déroulant, d'où une modale.
+    pub(super) appearance_open: bool,
     /// The `⋯` menu at the end of the single header bar.
     ///
     /// Everything the old command bar showed as a permanent third row lives

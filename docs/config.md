@@ -2,50 +2,92 @@
 
 Ce document décrit le format de configuration versionné de Xion, les valeurs par
 défaut et le comportement en cas d'erreur. Il a été relu ligne à ligne contre
-`src/core/config/manager.rs` et `src/core/config/types.rs` le 2026-08-24.
+`src/core/config/types.rs` et les six fichiers de `src/core/config/manager/`
+le 2026-08-25.
 
 > Les références sont données par nom de symbole plutôt que par numéro de
 > ligne : un numéro devient faux au commit suivant. Chaque référence se contrôle
 > par un `grep`.
 
+`manager.rs` n'existe plus en tant que fichier unique. Le module est découpé, et
+les références ci-dessous nomment le bon fichier :
+
+| Fichier | Contenu |
+| --- | --- |
+| `manager/mod.rs` | `ConfigManager`, `default_config_path`, `load_from_path`, écriture atomique, tests |
+| `manager/file_format.rs` | `AppConfigFileV0` / `AppConfigFileV1`, les formes sur disque |
+| `manager/migrate.rs` | `merge_from_v0`, `merge_from_v1`, `config_to_file` |
+| `manager/validate.rs` | les fonctions `validated_*` |
+| `manager/limits.rs` | `CURRENT_CONFIG_VERSION` et les bornes `MIN_*` / `MAX_*` |
+| `manager/shortcuts_io.rs` | `merge_shortcuts`, `parse_shortcut`, `chord_to_string` |
+
 ## Emplacement
 
-Le chemin est calculé par `default_config_path()`
-(`src/core/config/manager.rs`) :
+Xion suit la disposition de l'écosystème Colony, `<racine>/Colony/<Programme>/`,
+et le chemin vient du socle partagé plutôt que d'un calcul local
+(`default_config_path`, `manager/mod.rs`) :
 
 ```rust
-ProjectDirs::from("io", "xion", "Xion")
-    .map(|dirs| dirs.config_dir().join("config.toml"))
-    .unwrap_or_else(|| PathBuf::from("config.toml"))
+colony_ui::paths::locate::config_dir("Xion")?.join("config.toml")
 ```
 
-Avec `directories` 5.0.1 (cf. `Cargo.lock`), cela donne :
+Le nom du programme est **capitalisé** — `Xion`, pas `xion` : la convention est
+`<racine>/Colony/<Programme>/` avec le programme orthographié comme il s'écrit
+(`COLONY_PROGRAM`, `manager/mod.rs` ; voir `design/filesystem.md` de
+Project-Colony-Resources). Cela donne :
 
-- **Linux** : `$XDG_CONFIG_HOME/xion/config.toml`, ou à défaut
-  `~/.config/xion/config.toml`.
-  Le nom du dossier est **en minuscules** : `directories` applique
-  `trim_and_lowercase_then_replace_spaces` au seul champ « application ».
-  Sur un système de fichiers sensible à la casse, `~/.config/Xion/` ne sera
-  jamais lu.
-- **Windows** : `%APPDATA%\xion\Xion\config\config.toml`.
-  Le chemin comprend bien trois segments : l'organisation en minuscules,
-  l'application, puis un sous-dossier `config` ajouté par `directories`.
-- **macOS** : `~/Library/Application Support/io.xion.Xion/config.toml`
-  (identifiant de bundle `qualifier.organization.application`).
+- **Linux** : `~/.config/Colony/Xion/config.toml`
+  (`$XDG_CONFIG_HOME/Colony/Xion/config.toml` si la variable est posée).
+- **Windows** : `%LOCALAPPDATA%\Colony\Xion\config.toml`.
+  `AppData\Local`, jamais `Roaming` : `colony_ui` appelle
+  `dirs::config_local_dir()`.
+- **macOS** : `~/Library/Application Support/Colony/Xion/config.toml`.
 
-Si `ProjectDirs::from` échoue, Xion retombe sur le chemin **relatif**
+C'est `locate::config_dir` qui est appelé, et non `paths::config_dir` : le
+second **crée** le dossier. Créé avant la migration, il ferait croire à une
+configuration déjà en place, la migration serait sautée et Xion écrirait des
+valeurs par défaut à côté d'une configuration existante. `save` crée son parent
+lui-même (`write_atomic`), donc personne n'a besoin de le devancer.
+
+### Déménagement depuis l'ancien emplacement
+
+Xion écrivait auparavant sous `ProjectDirs::from("io", "xion", "Xion")`, soit
+`~/.config/xion/` sous Linux. Ce chemin n'est plus qu'une **source de
+migration** (`legacy_config_dir`, `manager/mod.rs`).
+
+Au premier calcul du chemin, `migrate_legacy_config_dir` (`manager/mod.rs`)
+déplace le **dossier entier**, pas seulement `config.toml` : le `.bak` posé à
+côté est le recours quand le fichier principal est illisible, et le laisser
+derrière reviendrait à s'en priver sans le dire. Un `fs::rename` suffit quand
+les deux vivent sur le même système de fichiers, ce qui est le cas ordinaire ;
+sinon les fichiers sont copiés un à un, et l'ancien dossier n'est supprimé que
+si **tout** est passé.
+
+Trois cas où la migration ne fait rien :
+
+- la destination existe déjà — une configuration récente n'est jamais écrasée
+  par une ancienne restée là ;
+- l'ancien dossier est absent, ce qui est le cas de toute installation neuve ;
+- l'ancien et le nouveau chemin sont identiques.
+
+Tests : `a_pre_colony_configuration_moves_with_its_backup`,
+`an_existing_colony_configuration_wins`, `a_fresh_installation_migrates_nothing`
+(`manager/mod.rs`).
+
+### Quand le chemin ne peut pas être calculé
+
+Si `locate::config_dir` échoue, Xion retombe sur le chemin **relatif**
 `config.toml`, résolu depuis le répertoire courant du processus. C'est un défaut
 connu : selon l'endroit d'où l'exécutable est lancé, un `config.toml` peut être
 créé ailleurs que prévu.
 
 Le chemin résolu n'est aujourd'hui affiché nulle part dans l'interface.
-`ConfigManager::path()` existe (`src/core/config/manager.rs`) mais n'a
-aucun appelant côté UI.
+`ConfigManager::path()` existe (`manager/mod.rs`) mais n'a aucun appelant côté
+UI.
 
 En l'absence de fichier, `load_from_path` renvoie `AppConfig::default()` avec
-`ConfigSource::Default` et aucun avertissement
-(`src/core/config/manager.rs`) : un fichier écrit au mauvais endroit
-n'entraîne donc **aucun message**.
+`ConfigSource::Default` et aucun avertissement (`manager/mod.rs`) : un fichier
+écrit au mauvais endroit n'entraîne donc **aucun message**.
 
 ## Format (version 1)
 
@@ -53,8 +95,8 @@ Le fichier est un TOML versionné par la clé `version`. Toutes les sections et
 toutes les clés sont optionnelles ; ce qui manque prend la valeur par défaut.
 
 Le bloc ci-dessous liste l'intégralité de ce que Xion écrit et relit
-(`AppConfigFileV1` dans `src/core/config/manager.rs`, sérialisé par
-`config_to_file`).
+(`AppConfigFileV1` dans `manager/file_format.rs`, sérialisé par
+`config_to_file`, `manager/migrate.rs`).
 
 ```toml
 # ── Clés de premier niveau ────────────────────────────────────────────────────
@@ -62,12 +104,30 @@ Le bloc ci-dessous liste l'intégralité de ce que Xion écrit et relit
 
 version = 1
 
-# `theme` est la seule source de vérité. `dark_mode` est RECALCULÉ à partir de
-# lui au chargement (`config.dark_mode = config.theme.is_dark()`) ; s'il est
-# écrit et incohérent, un avertissement le signale et la valeur du thème gagne.
-# `dark_mode = true` n'est lu que dans un fichier antérieur à la clé `theme`.
-theme = "Light"              # Light | Dark | Nord | Solarized | HighContrast
+# ── Apparence ─────────────────────────────────────────────────────────────────
+# Le thème est une sélection dans le catalogue partagé de `colony-ui` :
+# 25 familles, 57 variantes, 8 accents. Les clés sont des chaînes libres et non
+# un ensemble fermé, à dessein : le socle ajoute des familles sans que Xion soit
+# recompilé, et `colony_ui::resolve` retombe sur sa palette de repli pour tout
+# couple inconnu — une famille retirée en amont dégrade au lieu d'empêcher le
+# démarrage.
+theme_family = "gruvbox"     # clé de famille : gruvbox, nord, catppuccin…
+theme_variant = "dark"       # clé de variante dans cette famille : dark, light,
+                             # mocha… ; les noms varient selon la famille
+high_contrast = false        # modificateur applicable à N'IMPORTE quelle
+                             # palette, pas un thème à part
+accent = "blue"              # red | orange | yellow | green | blue | indigo |
+                             # violet | amber. Absent = l'accent du thème.
+
+# `dark_mode` est RECALCULÉ au chargement à partir de la palette résolue
+# (`resolves_dark`, `src/ui/theme.rs`, qui mesure la luminance du fond) ; s'il
+# est écrit et incohérent, un avertissement le signale et le thème gagne.
 dark_mode = false
+
+# `theme` (ancien nom : Light | Dark | Nord | Solarized | HighContrast) est
+# encore LU, uniquement pour migrer un fichier antérieur au catalogue Colony.
+# Il n'est plus jamais écrit, et `theme_family` / `theme_variant` l'emportent
+# dès qu'ils sont présents tous les deux. Voir « Migration ».
 
 # Dossier d'ouverture. Défaut : le répertoire courant du processus.
 start_path = "/home/utilisateur"
@@ -195,41 +255,77 @@ Ils sont câblés dans `src/ui/app/helpers.rs` et ne passent pas par le fichier 
 
 ## Migration
 
+### Depuis une V0 (fichier sans clé `version`)
+
 Un fichier sans clé `version` est traité comme une V0 : seuls `start_path`,
 `show_hidden`, `thumbnail_size`, `thumbnail_cache_entries` et
 `thumbnail_cache_ttl_seconds` sont repris (`AppConfigFileV0`,
-`src/core/config/manager.rs`, puis `merge_from_v0`). Le résultat est
-signalé par `ConfigSource::Migrated`.
+`manager/file_format.rs`, puis `merge_from_v0`, `manager/migrate.rs`). Le
+résultat est signalé par `ConfigSource::Migrated`.
 
-Une version supérieure à `CURRENT_CONFIG_VERSION` (= 1) est refusée avec un
-message explicite (`src/core/config/manager.rs`) ; la configuration par
-défaut est utilisée.
+Une version supérieure à `CURRENT_CONFIG_VERSION` (= 1, `manager/limits.rs`)
+est refusée avec un message explicite (`load_from_path`, `manager/mod.rs`) ; la
+configuration par défaut est utilisée.
 
-La migration est couverte par les tests `migrates_v0_file_without_version_key`,
+### Depuis l'ancienne clé `theme`
+
+Xion portait cinq palettes écrites à la main derrière un `enum`. Elles ont
+disparu au profit du catalogue `colony-ui`, et `merge_from_v1`
+(`manager/migrate.rs`) traduit l'ancien nom vers un couple famille/variante :
+
+| ancien `theme` | `theme_family` | `theme_variant` | `high_contrast` |
+| --- | --- | --- | --- |
+| `"Light"` | `gruvbox` | `light` | `false` |
+| `"Dark"` | `gruvbox` | `dark` | `false` |
+| `"Nord"` | `nord` | `dark` | `false` |
+| `"Solarized"` | `solarized` | `dark` | `false` |
+| `"HighContrast"` | `gruvbox` | `dark` | **`true`** |
+| absent | `gruvbox` | `dark` (ou `light` si `dark_mode = false`) | `false` |
+| autre chaîne | `gruvbox` | `dark` | `false`, **avec avertissement** |
+
+`Light` et `Dark` étaient des noms génériques sans famille derrière eux : ils
+prennent celle du repli du catalogue. `HighContrast` n'était pas une palette
+mais un rehaussement, et Colony en fait un modificateur applicable à n'importe
+quelle palette — d'où la case `high_contrast` plutôt qu'une famille dédiée.
+
+Cette traduction n'a lieu **que** si `theme_family` et `theme_variant` sont
+absents (ou l'un des deux) ; dès que les deux sont là, l'ancienne clé est
+ignorée. Un `high_contrast` explicite dans le fichier gagne dans tous les cas.
+
+### Tests de migration
+
+`migrates_v0_file_without_version_key`,
 `v0_migration_clamps_out_of_range_values`,
-`v0_dark_mode_key_is_ignored_but_v1_theme_wins` et
+`v0_dark_mode_key_is_ignored_but_v1_theme_wins`,
+`dark_mode_is_recomputed_from_the_theme` et
 `unsupported_future_version_is_rejected_without_losing_the_file`
-(`src/core/config/manager.rs`).
+(`manager/mod.rs`).
 
 ## Validation et repli
 
 Chaque champ numérique est borné (constantes `MIN_*` / `MAX_*`,
-`src/core/config/manager.rs`). En cas de valeur hors bornes :
+`manager/limits.rs`, appliquées par les fonctions `validated_*`,
+`manager/validate.rs`). En cas de valeur hors bornes :
 
 - la valeur fautive est ignorée,
 - la valeur par défaut correspondante est réappliquée,
 - un `ConfigWarning` est ajouté et remonté à l'UI.
 
-Un thème inconnu déclenche un avertissement et retombe sur `Light`
-(`src/core/config/manager.rs`). Une valeur de `terminal_shell` non
-reconnue n'est pas une erreur : elle est prise telle quelle comme
-`ShellConfig::Custom` (`src/core/config/manager.rs`).
+Le thème, lui, n'est pas validé et n'a pas à l'être : une famille ou une
+variante inconnue **ne produit aucun avertissement**. `colony_ui::resolve`
+retombe sur sa palette de repli, et Xion démarre sur cette palette. Seule
+l'**ancienne** clé `theme`, avec une chaîne hors des cinq noms historiques,
+déclenche encore un avertissement (`merge_from_v1`, `manager/migrate.rs`).
+
+Une valeur de `terminal_shell` non reconnue n'est pas une erreur non plus :
+elle est prise telle quelle comme `ShellConfig::Custom`
+(`manager/migrate.rs`).
 
 ## Rechargement à chaud
 
 `UiMessage::Refresh` (`Ctrl+R` ou `F5`) appelle `reload_config`
-(`src/ui/app/navigation.rs`) avant de relister le dossier
-(`src/ui/app/update.rs`). Le fichier est donc relu sans redémarrage.
+(`src/ui/app/navigation/buffers.rs`) avant de relister le dossier
+(`src/ui/app/update/navigation.rs`). Le fichier est donc relu sans redémarrage.
 
 L'écriture est déclenchée par les actions qui modifient un réglage (thème, mode
 compact, onglets, favoris, shell…). `ConfigManager::save` sérialise
@@ -259,11 +355,16 @@ remonte le tout en avertissements. Test :
 - [x] Migration depuis une version non versionnée — `merge_from_v0`.
 - [x] Validation des champs avec avertissements — constantes `MIN_*`/`MAX_*` et
       fonctions `validated_*`, appelées depuis `merge_from_v1`.
-- [x] Rechargement à chaud — `src/ui/app/navigation.rs`.
+- [x] Rechargement à chaud — `src/ui/app/navigation/buffers.rs`.
 - [x] Persistance des onglets, du thème, du shell et des favoris —
       `config_to_file`.
+- [x] Emplacement aligné sur `<racine>/Colony/Xion/`, avec déménagement
+      automatique de l'ancien dossier — `migrate_legacy_config_dir`.
+- [x] Thème choisi dans le catalogue partagé `colony-ui` (famille, variante,
+      contraste élevé, accent) — `ThemeChoice`, `src/core/config/types.rs`.
 - [x] Tests de la migration, de la validation, de l'écriture atomique et de la
-      récupération — 11 tests unitaires dans `src/core/config/manager.rs`.
+      récupération — 14 tests unitaires dans `manager/mod.rs` (relevé du
+      2026-08-25 ; `grep -c '#\[test\]' src/core/config/manager/mod.rs`).
 - [ ] Affichage du chemin de configuration résolu dans l'interface.
 - [ ] Remplacement du repli relatif `config.toml` par un chemin absolu sûr.
 - [ ] Éditeur de configuration intégré à l'interface.

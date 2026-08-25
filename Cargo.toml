@@ -6,7 +6,7 @@ rust-version = "1.85"
 authors = ["Xion Contributors"]
 description = "A modern, performant file explorer written in Rust"
 repository = "https://github.com/MotherSphere/Xion-Private"
-license = "MIT"
+license = "GPL-3.0-or-later"
 keywords = ["file-explorer", "gui", "iced", "filesystem"]
 categories = ["gui", "filesystem"]
 

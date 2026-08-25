@@ -405,6 +405,14 @@ pub enum UiMessage {
     OpenRequestTick,
     /// Opens or closes the `⋯` menu at the end of the header bar.
     ToggleOverflowMenu(bool),
+    /// Ouvre ou ferme l'écran d'apparence.
+    ToggleAppearance(bool),
+    /// Choisit une famille et une variante du catalogue Colony.
+    SetThemeVariant(&'static str, &'static str),
+    /// Choisit un accent ; la même clé deux fois revient à « celui du thème ».
+    SetAccent(&'static str),
+    /// Rehausse le contraste, sur n'importe quelle palette.
+    ToggleHighContrast,
     ColumnResizeStart(&'static str),
     ColumnResizeEnd,
     ColumnResized(&'static str, f32),

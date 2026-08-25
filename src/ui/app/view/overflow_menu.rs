@@ -115,6 +115,12 @@ impl XionApp {
             UiMessage::ToggleDarkMode,
         ));
         items = items.push(entry(
+            icons::FILE_CONFIG,
+            "Apparence…",
+            "",
+            UiMessage::ToggleAppearance(true),
+        ));
+        items = items.push(entry(
             "\u{22a1}",
             compact_label,
             "",

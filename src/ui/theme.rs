@@ -203,6 +203,33 @@ pub struct UiColors {
     pub address_not_found: Color,
 }
 
+impl UiTypography {
+    /// Ce que les widgets partagés de Colony attendent.
+    ///
+    /// Les deux structures ne décrivent pas la même chose. Xion nomme trois
+    /// rôles avec leur taille — titre, corps, légende. Colony nomme trois
+    /// graisses et une échelle, et ses widgets appellent `sz(base)` avec des
+    /// tailles de base allant de 8 à 15 : c'est l'échelle qui fait varier le
+    /// tout, pas des tailles nommées.
+    ///
+    /// Le pont pose l'échelle sur le corps de texte, qui est la taille dont
+    /// dépend la lisibilité générale, et rapporte les graisses aux polices que
+    /// Xion embarque. Xion n'a pas de gras : la plus lourde qu'il porte est la
+    /// demi-grasse des titres, qui sert donc pour les deux.
+    pub fn colony(&self) -> colony_ui::Typography {
+        /// La taille de corps sur laquelle les tailles de base de Colony sont
+        /// calibrées. `sz(13)` doit rendre à peu près un corps de texte.
+        const COLONY_BODY_BASE: f32 = 13.0;
+
+        colony_ui::Typography {
+            scale: self.body / COLONY_BODY_BASE,
+            regular: self.body_font,
+            medium: self.title_font,
+            bold: self.title_font,
+        }
+    }
+}
+
 /// Whether a theme choice resolves to a dark palette.
 ///
 /// Derived from the background's luminance rather than from the catalogue's

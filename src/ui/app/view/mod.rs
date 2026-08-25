@@ -4,6 +4,7 @@
 //! Modal overlay rendering is in [`overlays`].
 
 mod address_bar;
+mod appearance;
 mod command_bar;
 mod context_entries;
 mod context_menu;
@@ -272,6 +273,9 @@ impl XionApp {
         let overflow_layer: Element<'_, UiMessage> = self
             .render_overflow_menu(ctx)
             .unwrap_or_else(|| container(row![]).into());
+        let appearance_layer: Element<'_, UiMessage> = self
+            .render_appearance_layer(ctx)
+            .unwrap_or_else(|| container(row![]).into());
 
         // Feature R: Breadcrumb dropdown
         let breadcrumb_dropdown_layer: Element<'_, UiMessage> =
@@ -346,6 +350,7 @@ impl XionApp {
             history_layer,
             context_layer,
             overflow_layer,
+            appearance_layer,
             properties_layer,
             bulk_rename_layer,
             diff_layer,

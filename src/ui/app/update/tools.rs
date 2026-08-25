@@ -45,6 +45,37 @@ impl XionApp {
             UiMessage::CloseProperties => {
                 self.properties_dialog = None;
             }
+            UiMessage::ToggleAppearance(open) => {
+                self.menus.appearance_open = open;
+                if open {
+                    self.menus.overflow_open = false;
+                }
+            }
+            UiMessage::SetThemeVariant(family, variant) => {
+                self.state.config.theme.family = family.to_string();
+                self.state.config.theme.variant = variant.to_string();
+                self.state.config.dark_mode =
+                    crate::ui::theme::resolves_dark(&self.state.config.theme);
+                // Le surligneur garde des couleurs calculées pour l'ancien
+                // thème tant qu'on ne le vide pas.
+                self.cached_highlighted_preview = None;
+                self.config_manager.save(&self.state.config);
+            }
+            UiMessage::SetAccent(key) => {
+                // Rechoisir le même accent revient à « celui du thème » : sans
+                // ça, le sélecteur n'aurait aucun moyen de revenir en arrière.
+                let current = self.state.config.theme.accent.as_deref();
+                self.state.config.theme.accent = if current == Some(key) {
+                    None
+                } else {
+                    Some(key.to_string())
+                };
+                self.config_manager.save(&self.state.config);
+            }
+            UiMessage::ToggleHighContrast => {
+                self.state.config.theme.high_contrast = !self.state.config.theme.high_contrast;
+                self.config_manager.save(&self.state.config);
+            }
             // Feature 4: Color themes
             UiMessage::SetTheme(theme) => {
                 self.state.config.dark_mode = crate::ui::theme::resolves_dark(&theme);

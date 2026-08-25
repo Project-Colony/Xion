@@ -5824,6 +5824,7 @@ dependencies = [
  "trash",
  "vte",
  "walkdir",
+ "wgpu",
  "windows-sys 0.61.2",
  "xion",
  "zbus",

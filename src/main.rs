@@ -32,6 +32,9 @@ fn main() -> iced::Result {
 
     tracing::info!("Starting Xion file explorer");
 
+    // Avant tout ce qui démarre un fil : tokio, zbus et winit viennent après.
+    prefer_vulkan_when_available();
+
     let start_path = args.first().and_then(|arg| resolve_start_path(arg));
 
     // Before opening anything: is a Xion already running in this session? If so
@@ -49,6 +52,65 @@ fn main() -> iced::Result {
 
     xion::ui::run(start_path, primary)
 }
+
+/// La variable par laquelle wgpu accepte qu'on limite ses moteurs de rendu.
+///
+/// C'est le seul levier disponible : iced 0.14 ne permet pas de choisir le
+/// moteur. `iced_wgpu` lit l'adaptateur retenu mais laisse wgpu décider seul,
+/// via `Backends::from_env_or_default()`.
+#[cfg(target_os = "linux")]
+const WGPU_BACKEND: &str = "WGPU_BACKEND";
+
+/// Restreint wgpu à Vulkan, mais seulement si Vulkan répond.
+///
+/// Sans restriction, wgpu instancie **tous** ses moteurs pour énumérer leurs
+/// adaptateurs, puis choisit. Sur cette machine il choisissait déjà Vulkan —
+/// l'adaptateur OpenGL était même rejeté explicitement, « not compatible with
+/// surface ». Mais l'avoir sondé laisse `libnvidia-eglcore` et le `libLLVM` de
+/// Mesa chargés pour la durée du programme : 39 Mo résidents pour une
+/// énumération dont le résultat était écarté.
+///
+/// La restriction n'est posée qu'après avoir vérifié qu'un adaptateur Vulkan
+/// existe, et c'est tout l'intérêt de la fonction. `WGPU_BACKEND=vulkan` posé
+/// à l'aveugle sur une machine sans pilote Vulkan — le paquet du chargeur n'est
+/// pas toujours installé — laisserait wgpu sans aucun adaptateur, et Xion ne
+/// démarrerait pas du tout. Le repli sur OpenGL doit rester possible.
+///
+/// Linux seulement : sous Windows le moteur par défaut est DX12, que rien ne
+/// dit qu'il faille abandonner pour Vulkan, et macOS n'a que Metal.
+#[cfg(target_os = "linux")]
+fn prefer_vulkan_when_available() {
+    // Un choix explicite prime : qui pose la variable veut ce qu'il a écrit.
+    if std::env::var_os(WGPU_BACKEND).is_some() {
+        return;
+    }
+
+    let vulkan_answers = {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN,
+            ..Default::default()
+        });
+        !instance
+            .enumerate_adapters(wgpu::Backends::VULKAN)
+            .is_empty()
+        // L'instance meurt ici, avant que la variable ne soit posée.
+    };
+
+    if !vulkan_answers {
+        tracing::debug!("Aucun adaptateur Vulkan : wgpu choisira seul");
+        return;
+    }
+
+    // SAFETY: `set_var` exige qu'aucun autre fil ne lise l'environnement. On est
+    // au tout début de `main` : ni tokio, ni zbus, ni winit n'existent encore,
+    // et l'instance du sondage ci-dessus a été détruite avant cette ligne.
+    unsafe { std::env::set_var(WGPU_BACKEND, "vulkan") };
+    tracing::info!("Adaptateur Vulkan trouvé : rendu restreint à Vulkan");
+}
+
+/// Ailleurs, wgpu décide seul.
+#[cfg(not(target_os = "linux"))]
+fn prefer_vulkan_when_available() {}
 
 /// Resolve a command-line path argument against the current directory.
 ///

@@ -34,6 +34,11 @@ directories = "6.0"
 # default feature set, which re-enabled every codec the line below deliberately
 # refuses (exr, avif, qoi...). They were compiled and linked regardless.
 iced = { version = "0.14", features = ["image-without-codecs", "wgpu", "tokio"] }
+# Uniquement pour demander à wgpu s'il trouve un adaptateur Vulkan, avant de le
+# restreindre à Vulkan — voir `prefer_vulkan_when_available` dans main.rs. Mêmes
+# version et mêmes features que ce qu'iced_wgpu déclare, donc la caisse déjà
+# compilée pour iced est réutilisée telle quelle : aucune compilation ajoutée.
+wgpu = { version = "27", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["rt", "time", "sync", "process", "io-util"] }
 # No "tiff": it was the only thing pulling tiff -> zune-jpeg 0.4, a SECOND
 # complete JPEG decoder alongside the zune-jpeg 0.5 that image itself uses.

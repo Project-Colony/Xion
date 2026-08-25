@@ -246,9 +246,20 @@ fn regex_replace_preview(
 
 fn map_event_to_message(
     event: iced::Event,
-    _status: iced::event::Status,
+    status: iced::event::Status,
     _window: iced::window::Id,
 ) -> Option<UiMessage> {
+    // Une touche déjà consommée par un widget ne doit pas être rejouée comme
+    // raccourci global.
+    //
+    // Ce statut était ignoré, et c'était sans conséquence tant que rien ne
+    // consommait les touches. Le terminal intégré, lui, les prend toutes quand
+    // il a le focus : taper « claude » y déclenchait aussi la navigation par
+    // première lettre, le filtre rapide et le renommage de Xion, et chaque
+    // changement d'état reconstruisait l'interface — ce qui redimensionnait le
+    // pseudo-terminal et faisait redessiner sa ligne au shell. D'où les lettres
+    // qui semblaient se dédoubler.
+    let captured = matches!(status, iced::event::Status::Captured);
     match event {
         iced::Event::Window(iced::window::Event::CloseRequested) => Some(UiMessage::ExitRequested),
         iced::Event::Window(iced::window::Event::Resized(size)) => {
@@ -261,7 +272,10 @@ fn map_event_to_message(
                 alt: modifiers.alt(),
             }))
         }
-        iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+        // Les modificateurs restent suivis même consommés : c'est un état, pas
+        // une action, et Xion s'en sert pour le glisser-copier comme pour les
+        // infobulles.
+        iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) if !captured => {
             Some(UiMessage::RawKeyPressed { key, modifiers })
         }
         iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
@@ -348,4 +362,62 @@ pub fn run(
         std::process::exit(1);
     }
     std::process::exit(0);
+}
+
+#[cfg(test)]
+mod event_routing_tests {
+    use super::*;
+
+    fn a_key_press() -> iced::Event {
+        iced::Event::Keyboard(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Character("c".into()),
+            modified_key: keyboard::Key::Character("c".into()),
+            physical_key: keyboard::key::Physical::Code(keyboard::key::Code::KeyC),
+            location: keyboard::Location::Standard,
+            modifiers: keyboard::Modifiers::default(),
+            text: Some("c".into()),
+            repeat: false,
+        })
+    }
+
+    /// Une touche consommée par un widget ne redevient pas un raccourci.
+    ///
+    /// Le terminal intégré prend toutes les frappes quand il a le focus. Sans
+    /// cette règle, taper « claude » y déclenchait aussi la navigation par
+    /// première lettre et le filtre rapide de Xion.
+    #[test]
+    fn a_captured_key_is_not_replayed_as_a_shortcut() {
+        let routed = map_event_to_message(
+            a_key_press(),
+            iced::event::Status::Captured,
+            iced::window::Id::unique(),
+        );
+        assert!(routed.is_none(), "une touche consommée a été rejouée");
+    }
+
+    /// Et sans widget pour la prendre, elle doit bien arriver.
+    #[test]
+    fn an_ignored_key_still_reaches_the_shortcuts() {
+        let routed = map_event_to_message(
+            a_key_press(),
+            iced::event::Status::Ignored,
+            iced::window::Id::unique(),
+        );
+        assert!(
+            matches!(routed, Some(UiMessage::RawKeyPressed { .. })),
+            "une touche libre n'est pas parvenue aux raccourcis"
+        );
+    }
+
+    /// Fermer la fenêtre n'est pas une frappe : aucun widget ne la consomme, et
+    /// la règle ci-dessus ne doit pas l'emporter au passage.
+    #[test]
+    fn window_events_are_routed_whatever_the_status() {
+        let routed = map_event_to_message(
+            iced::Event::Window(iced::window::Event::CloseRequested),
+            iced::event::Status::Captured,
+            iced::window::Id::unique(),
+        );
+        assert!(matches!(routed, Some(UiMessage::ExitRequested)));
+    }
 }

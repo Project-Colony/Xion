@@ -556,6 +556,15 @@ pub mod layout {
     pub const TERMINAL_DEFAULT_HEIGHT: f32 = 240.0;
     /// Minimum height for terminal panel.
     pub const TERMINAL_MIN_HEIGHT: f32 = 120.0;
+    /// Hauteur maximale du panneau terminal.
+    ///
+    /// Généreuse à dessein : un programme plein écran — `claude`, `htop`,
+    /// `lazygit` — a besoin de lignes, et la valeur par défaut de 240 pixels
+    /// n'en offrait que onze une fois la barre d'onglets déduite. La borne
+    /// existe pour qu'il reste toujours de quoi voir les fichiers derrière.
+    pub const TERMINAL_MAX_HEIGHT: f32 = 900.0;
+    /// Épaisseur de la poignée de redimensionnement du panneau terminal.
+    pub const TERMINAL_RESIZE_BAR_HEIGHT: f32 = 6.0;
 }
 
 #[cfg(test)]

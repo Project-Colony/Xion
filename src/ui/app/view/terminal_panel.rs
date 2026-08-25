@@ -5,11 +5,11 @@
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, row, tooltip};
+use iced::widget::{button, column, container, mouse_area, row, tooltip};
 use iced::{Background, Element, Length, Theme, border};
 
 use crate::ui::UiMessage;
-use crate::ui::theme::layout::TERMINAL_DEFAULT_HEIGHT;
+use crate::ui::theme::layout::TERMINAL_RESIZE_BAR_HEIGHT;
 
 use super::XionApp;
 use super::widgets::ViewCtx;
@@ -34,7 +34,7 @@ impl XionApp {
             return None;
         }
 
-        let animated_height = TERMINAL_DEFAULT_HEIGHT * term_progress;
+        let animated_height = self.pane_resize.terminal_height * term_progress;
 
         // La grille de l'émulateur, ou le mot de Xion quand il n'y en a pas.
         //
@@ -192,8 +192,30 @@ impl XionApp {
             .style(filled_style(colors, colors.sidebar_background, 0.0))
             .into();
 
+        // La poignée : tirer la bordure haute agrandit le panneau.
+        //
+        // Onze lignes suffisaient à une commande et sa réponse, mais un
+        // programme plein écran s'y trouvait écrasé sans recours — et l'écran
+        // alterné n'a pas d'historique, donc défiler n'était pas une issue.
+        let resize_handle: Element<'_, UiMessage> = mouse_area(
+            container(row![])
+                .width(Length::Fill)
+                .height(Length::Fixed(TERMINAL_RESIZE_BAR_HEIGHT))
+                .style(move |_| iced::widget::container::Style {
+                    background: self
+                        .pane_resize
+                        .terminal_resizing
+                        .then_some(Background::Color(colors.hover)),
+                    ..Default::default()
+                }),
+        )
+        .on_press(UiMessage::TerminalResizeStart)
+        .on_release(UiMessage::TerminalResizeEnd)
+        .interaction(iced::mouse::Interaction::ResizingVertically)
+        .into();
+
         let term_panel: Element<'_, UiMessage> =
-            container(column![tab_bar_element, output_area].spacing(0))
+            container(column![resize_handle, tab_bar_element, output_area].spacing(0))
                 .width(Length::Fill)
                 .height(Length::Fixed(animated_height))
                 .style(surface_style(colors, RADIUS.lg))

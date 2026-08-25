@@ -13,7 +13,8 @@ use crate::filesystem::{FileOperationKind, LocalFileOperations};
 use crate::ui::{KeyboardCommand, SelectionKind, UiMessage};
 
 use crate::ui::theme::layout::{
-    DRAG_START_THRESHOLD, PREVIEW_MAX_WIDTH, PREVIEW_MIN_WIDTH, TREE_MAX_HEIGHT, TREE_MIN_HEIGHT,
+    DRAG_START_THRESHOLD, PREVIEW_MAX_WIDTH, PREVIEW_MIN_WIDTH, TERMINAL_MAX_HEIGHT,
+    TERMINAL_MIN_HEIGHT, TREE_MAX_HEIGHT, TREE_MIN_HEIGHT,
 };
 use crate::ui::theme::timing::DOUBLE_CLICK_THRESHOLD;
 
@@ -61,6 +62,15 @@ impl XionApp {
                         self.pane_resize.tree_height =
                             next_height.clamp(TREE_MIN_HEIGHT, TREE_MAX_HEIGHT);
                         self.scroll.tree_height = self.pane_resize.tree_height.max(1.0);
+                    }
+                }
+                if self.pane_resize.terminal_resizing {
+                    if let Some((start_y, start_height)) = self.pane_resize.terminal_resize_anchor {
+                        // La poignée est en haut du panneau : le tirer vers le
+                        // haut l'agrandit, donc la hauteur croît quand y décroît.
+                        let delta = position.y - start_y;
+                        self.pane_resize.terminal_height =
+                            (start_height - delta).clamp(TERMINAL_MIN_HEIGHT, TERMINAL_MAX_HEIGHT);
                     }
                 }
                 if self.pane_resize.preview_resizing {
@@ -320,6 +330,16 @@ impl XionApp {
                 self.pane_resize.tree_resizing = false;
                 self.pane_resize.tree_resize_anchor = None;
             }
+            UiMessage::TerminalResizeStart => {
+                self.pane_resize.terminal_resizing = true;
+                self.pane_resize.terminal_resize_anchor = self
+                    .cursor_position
+                    .map(|position| (position.y, self.pane_resize.terminal_height));
+            }
+            UiMessage::TerminalResizeEnd => {
+                self.pane_resize.terminal_resizing = false;
+                self.pane_resize.terminal_resize_anchor = None;
+            }
             UiMessage::PreviewResizeStart => {
                 self.pane_resize.preview_resizing = true;
                 self.pane_resize.preview_resize_anchor = self
@@ -348,6 +368,10 @@ impl XionApp {
                 if self.pane_resize.tree_resizing {
                     self.pane_resize.tree_resizing = false;
                     self.pane_resize.tree_resize_anchor = None;
+                }
+                if self.pane_resize.terminal_resizing {
+                    self.pane_resize.terminal_resizing = false;
+                    self.pane_resize.terminal_resize_anchor = None;
                 }
                 if self.pane_resize.preview_resizing {
                     self.pane_resize.preview_resizing = false;

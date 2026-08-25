@@ -360,6 +360,15 @@ pub(super) struct PaneResizeState {
     pub(super) preview_width: f32,
     pub(super) preview_resizing: bool,
     pub(super) preview_resize_anchor: Option<(f32, f32)>,
+    /// Hauteur du panneau terminal, tirée par sa bordure haute.
+    ///
+    /// Elle valait 240 pixels en dur, soit onze lignes une fois la barre
+    /// d'onglets déduite. Assez pour une commande et sa réponse, beaucoup trop
+    /// peu pour un programme plein écran — l'interface de `claude` s'y trouvait
+    /// écrasée sans qu'on puisse rien y faire.
+    pub(super) terminal_height: f32,
+    pub(super) terminal_resizing: bool,
+    pub(super) terminal_resize_anchor: Option<(f32, f32)>,
 }
 
 impl Default for PaneResizeState {
@@ -368,6 +377,9 @@ impl Default for PaneResizeState {
             tree_height: 150.0,
             tree_resizing: false,
             tree_resize_anchor: None,
+            terminal_height: crate::ui::theme::layout::TERMINAL_DEFAULT_HEIGHT,
+            terminal_resizing: false,
+            terminal_resize_anchor: None,
             preview_width: 280.0,
             preview_resizing: false,
             preview_resize_anchor: None,

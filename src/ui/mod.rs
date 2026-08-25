@@ -306,6 +306,9 @@ pub enum UiMessage {
     FinalizeDrag,
     TreeResizeStart,
     TreeResizeEnd,
+    /// Saisit la bordure haute du panneau terminal pour le redimensionner.
+    TerminalResizeStart,
+    TerminalResizeEnd,
     PreviewResizeStart,
     PreviewResizeEnd,
     DropOnPath(PathBuf),

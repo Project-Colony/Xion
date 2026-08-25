@@ -44,17 +44,18 @@ impl XionApp {
                 .push(time::every(Duration::from_millis(16)).map(|_| UiMessage::TerminalAnimTick));
         }
 
-        // Any tab with a live process, not just the active one: a build running
-        // in a background tab used to produce output nobody ever drained.
-        if self
-            .terminal
-            .tabs
-            .iter()
-            .any(|tab| tab.process.as_ref().is_some_and(|p| p.is_running()))
-        {
-            subscriptions.push(
-                time::every(Duration::from_millis(50)).map(|_| UiMessage::TerminalPollOutput),
-            );
+        // Un flux par émulateur vivant, onglets d'arrière-plan compris : une
+        // compilation lancée dans l'un d'eux produit de la sortie que personne
+        // ne draine sinon.
+        //
+        // Remplace une interrogation à 50 ms qui tournait tant qu'un shell
+        // vivait, qu'il ait écrit ou non — et, dans iced, chaque message
+        // reconstruit l'arbre de widgets. Ici c'est le pseudo-terminal qui
+        // réveille l'interface, et seulement quand il a quelque chose à dire.
+        for tab in &self.terminal.tabs {
+            if let Some(terminal) = &tab.terminal {
+                subscriptions.push(terminal.subscription().map(UiMessage::TerminalEvent));
+            }
         }
 
         // Later launches hand their path to this process instead of starting a

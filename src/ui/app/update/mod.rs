@@ -11,7 +11,6 @@ use crate::ui::UiMessage;
 
 use super::XionApp;
 use super::archive;
-use super::shell;
 
 /// Cap on messages held back during a mouse gesture.
 ///
@@ -136,46 +135,6 @@ mod search;
 mod terminal;
 mod tools;
 
-/// Start the configured shell on a blocking task.
-///
-/// Opening a pty forks a process; doing it inside a plain future would hold a
-/// tokio worker for the duration.
-fn spawn_shell_task(shell: crate::core::ShellConfig, cwd: std::path::PathBuf) -> Task<UiMessage> {
-    Task::perform(
-        async move {
-            tokio::task::spawn_blocking(move || {
-                shell::spawn_shell_process(&shell, &cwd).map_err(|error| error.to_string())
-            })
-            .await
-            .unwrap_or_else(|error| Err(error.to_string()))
-        },
-        UiMessage::TerminalSpawned,
-    )
-}
-
-impl XionApp {
-    /// Tell the pty how many rows and columns the panel can show.
-    ///
-    /// Approximated from the window geometry and the monospace metrics of the
-    /// caption font. Being a few cells off is harmless; having no size at all
-    /// is not — the shell then assumes 80x24 and wraps in the wrong place.
-    pub(super) fn resize_terminal_pty(&self) {
-        let Some(process) = self.terminal.active_ref().process.clone() else {
-            return;
-        };
-        let (width, _height) = self.window_size;
-        let tokens = crate::ui::theme::UiTokens::for_theme(&self.state.config.theme);
-        let cell_width = (tokens.typography.caption * 0.6).max(1.0);
-        let cell_height = (tokens.typography.caption * 1.35).max(1.0);
-
-        let cols = (width / cell_width).floor().clamp(20.0, 1000.0) as u16;
-        let rows = (crate::ui::theme::layout::TERMINAL_DEFAULT_HEIGHT / cell_height)
-            .floor()
-            .clamp(5.0, 500.0) as u16;
-        process.resize(rows, cols);
-    }
-}
-
 impl XionApp {
     /// Whether a message queued during a mouse gesture is worth replaying.
     ///
@@ -185,7 +144,6 @@ impl XionApp {
         !matches!(
             message,
             UiMessage::FileWatchTick
-                | UiMessage::TerminalPollOutput
                 | UiMessage::AnimatedPreviewTick(_)
                 | UiMessage::OperationProgressTick
                 | UiMessage::PreviewAnimTick

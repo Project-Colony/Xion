@@ -451,45 +451,46 @@ impl AddressValidationCache {
 
 // ── Terminal state ────────────────────────────────────────────────────────────
 
-/// Maximum number of output lines kept in the terminal buffer.
-
-#[derive(Debug, Default)]
+/// Un onglet du panneau terminal.
+///
+/// L'émulation elle-même appartient à `iced_term`, adossé à
+/// `alacritty_terminal` : une vraie grille de cellules, avec positionnement du
+/// curseur en deux dimensions, écran alterné et frappes transmises telles
+/// quelles. Le modèle écrit ici ne savait rien de tout cela — il empilait des
+/// lignes — et c'est pourquoi tout programme plein écran s'y affichait en
+/// bouillie.
+#[derive(Default)]
 pub(super) struct TerminalTab {
     pub(super) title: String,
-    pub(super) input: String,
-    pub(super) lines: Vec<String>,
-    pub(super) process: Option<crate::terminal::TerminalProcess>,
+    /// L'émulateur, présent tant que le panneau est ouvert sur cet onglet.
+    pub(super) terminal: Option<iced_term::Terminal>,
     pub(super) cwd: Option<std::path::PathBuf>,
-    /// Cached join of `lines` — rebuilt only when lines change.
-    pub(super) cached_output: Option<String>,
+    /// Ce que Xion a à dire lui-même — un échec de démarrage, par exemple.
+    ///
+    /// Séparé de l'écran : la grille appartient au processus, et y injecter du
+    /// texte reviendrait à mentir sur ce que le programme a écrit.
+    pub(super) notice: Option<String>,
+}
+
+// `iced_term::Terminal` n'est pas `Debug` — il porte un cache de rendu et le
+// canal du pseudo-terminal. Plutôt que de retirer `Debug` de tout `XionApp`,
+// l'onglet dit ce qui est observable de lui.
+impl std::fmt::Debug for TerminalTab {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("TerminalTab")
+            .field("title", &self.title)
+            .field("live", &self.terminal.is_some())
+            .field("cwd", &self.cwd)
+            .field("notice", &self.notice)
+            .finish()
+    }
 }
 
 impl TerminalTab {
-    /// Mirror the pty's rendered screen.
-    ///
-    /// The pty owns the scrollback and its bound, so the tab no longer keeps a
-    /// second, shorter buffer that silently truncated what the first one had
-    /// already truncated.
-    pub(super) fn set_lines(&mut self, lines: Vec<String>) {
-        self.lines = lines;
-        self.rebuild_cached_output();
-    }
-
-    /// Append a line produced by Xion itself, not by the shell.
+    /// Ce que Xion a à dire, quand il ne peut pas laisser le shell parler.
     pub(super) fn push_notice(&mut self, notice: String) {
-        self.lines.push(notice);
-        self.rebuild_cached_output();
-    }
-
-    fn rebuild_cached_output(&mut self) {
-        self.cached_output = Some(self.lines.join("\n"));
-    }
-
-    pub(super) fn effective_cwd<'a>(
-        &'a self,
-        fallback: &'a std::path::Path,
-    ) -> &'a std::path::Path {
-        self.cwd.as_deref().unwrap_or(fallback)
+        self.notice = Some(notice);
     }
 }
 
@@ -530,27 +531,21 @@ impl TerminalState {
         &mut self.tabs[self.active_tab]
     }
 
-    /// Get an immutable reference to the active tab, or a static default if empty.
-    pub(super) fn active_ref(&self) -> &TerminalTab {
-        if self.tabs.is_empty() {
-            static DEFAULT_TAB: std::sync::LazyLock<TerminalTab> =
-                std::sync::LazyLock::new(TerminalTab::default);
-            return &DEFAULT_TAB;
-        }
-        let idx = self.active_tab.min(self.tabs.len() - 1);
-        &self.tabs[idx]
+    /// L'onglet actif, ou `None` s'il n'y en a aucun.
+    ///
+    /// Renvoyait auparavant une référence vers un `LazyLock<TerminalTab>`
+    /// statique pour éviter l'option. Un onglet portant désormais un émulateur —
+    /// donc un canal de pseudo-terminal — ne peut plus vivre dans un statique,
+    /// et l'appelant est mieux placé que ce module pour décider quoi afficher
+    /// quand il n'y a rien.
+    pub(super) fn active_ref(&self) -> Option<&TerminalTab> {
+        let index = self.active_tab.min(self.tabs.len().checked_sub(1)?);
+        self.tabs.get(index)
     }
 
     // Delegate helpers to active tab for backward compat
     pub(super) fn push_notice(&mut self, notice: String) {
         self.active().push_notice(notice);
-    }
-
-    pub(super) fn effective_cwd<'a>(
-        &'a self,
-        fallback: &'a std::path::Path,
-    ) -> &'a std::path::Path {
-        self.active_ref().effective_cwd(fallback)
     }
 }
 

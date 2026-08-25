@@ -33,7 +33,6 @@ pub mod core;
 pub mod filesystem;
 pub mod platform;
 pub mod services;
-pub mod terminal;
 pub mod ui;
 
 /// Windows shell integration (`--register` / `--unregister`).

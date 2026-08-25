@@ -36,7 +36,7 @@ impl XionApp {
             UiMessage::ExitRequested => {
                 // Kill cmd.exe before exiting so no orphan processes remain.
                 for tab in &mut self.terminal.tabs {
-                    tab.process = None;
+                    tab.terminal = None;
                 }
                 return Ok(Flow::Stop(iced::exit()));
             }

@@ -5,8 +5,8 @@
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::horizontal as horizontal_space;
-use iced::widget::{button, column, container, row, scrollable, text_input, tooltip};
-use iced::{Alignment, Background, Color, Element, Length, Theme, border};
+use iced::widget::{button, column, container, row, tooltip};
+use iced::{Background, Element, Length, Theme, border};
 
 use crate::ui::UiMessage;
 use crate::ui::theme::layout::TERMINAL_DEFAULT_HEIGHT;
@@ -36,92 +36,41 @@ impl XionApp {
 
         let animated_height = TERMINAL_DEFAULT_HEIGHT * term_progress;
 
-        let active_tab = self.terminal.active_ref();
-        let output_text: Element<'_, UiMessage> = if active_tab.lines.is_empty() {
-            caption_text(typography, "Entrez une commande…")
-                .style(move |_: &Theme| iced::widget::text::Style {
-                    color: Some(colors.text_muted),
-                })
-                .into()
-        } else {
-            let combined = active_tab.cached_output.as_deref().unwrap_or("");
-            // Borrowed: the whole scrollback was copied on every rebuild.
-            caption_text(typography, combined)
-                .style(move |_: &Theme| iced::widget::text::Style {
-                    color: Some(colors.text_primary),
-                })
-                .into()
-        };
-
-        let output_area: Element<'_, UiMessage> = container(
-            scrollable(
-                container(output_text)
-                    .width(Length::Fill)
-                    .padding([spacing.xs, spacing.sm]),
-            )
-            .id(iced::widget::Id::new("terminal_output"))
-            .width(Length::Fill)
-            .height(Length::Fill),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into();
-
-        let fallback_cwd = self
-            .state
-            .route
-            .local_path()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("C:\\"))
-            });
-        let cwd_display = self
+        // La grille de l'émulateur, ou le mot de Xion quand il n'y en a pas.
+        //
+        // `TerminalView` est un widget à part entière : il dessine les cellules,
+        // reçoit les frappes quand il a le focus et prévient le pseudo-terminal
+        // de sa taille. Il remplace le texte défilant et le champ de saisie —
+        // taper se fait maintenant dans le terminal, comme dans tout terminal.
+        let output_area: Element<'_, UiMessage> = match self
             .terminal
-            .effective_cwd(&fallback_cwd)
-            .display()
-            .to_string();
-
-        let prompt_label =
-            glyph_text(typography, format!("{cwd_display} >")).style(move |_: &Theme| {
-                iced::widget::text::Style {
-                    color: Some(colors.accent),
-                }
-            });
-
-        let input_field = text_input("commande…", &self.terminal.active_ref().input)
-            .id(iced::widget::Id::new("terminal_input"))
-            .size(typography.caption)
-            .font(typography.caption_font)
-            .on_input(UiMessage::TerminalInputChanged)
-            .on_submit(UiMessage::TerminalInputSubmitted)
-            .style(
-                move |_theme: &Theme, _status| iced::widget::text_input::Style {
-                    background: Background::Color(Color::TRANSPARENT),
-                    border: border::rounded(0.0).color(Color::TRANSPARENT).width(0.0),
-                    icon: colors.text_muted,
-                    placeholder: colors.text_muted,
-                    value: colors.text_primary,
-                    selection: colors.selection,
-                },
-            );
-
-        let input_row: Element<'_, UiMessage> = container(
-            row![prompt_label, input_field]
-                .spacing(spacing.sm)
-                .align_y(Alignment::Center),
-        )
-        .padding([spacing.xs, spacing.sm])
-        .width(Length::Fill)
-        .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(colors.sidebar_background)),
-            border: iced::Border {
-                color: colors.border,
-                width: 1.0,
-                radius: 0.0.into(),
-            },
-            ..Default::default()
-        })
-        .into();
+            .active_ref()
+            .and_then(|tab| tab.terminal.as_ref())
+        {
+            Some(terminal) => {
+                container(iced_term::TerminalView::show(terminal).map(UiMessage::TerminalEvent))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding([spacing.xs, spacing.sm])
+                    .into()
+            }
+            None => {
+                let message = self
+                    .terminal
+                    .active_ref()
+                    .and_then(|tab| tab.notice.clone())
+                    .unwrap_or_else(|| "Démarrage de l'interpréteur…".to_string());
+                container(caption_text(typography, message).style(move |_: &Theme| {
+                    iced::widget::text::Style {
+                        color: Some(colors.text_muted),
+                    }
+                }))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .padding([spacing.xs, spacing.sm])
+                .into()
+            }
+        };
 
         // Feature I: Terminal tab bar
         let mut tab_bar = row![];
@@ -244,7 +193,7 @@ impl XionApp {
             .into();
 
         let term_panel: Element<'_, UiMessage> =
-            container(column![tab_bar_element, output_area, input_row].spacing(0))
+            container(column![tab_bar_element, output_area].spacing(0))
                 .width(Length::Fill)
                 .height(Length::Fixed(animated_height))
                 .style(surface_style(colors, RADIUS.lg))

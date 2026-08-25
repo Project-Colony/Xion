@@ -39,6 +39,12 @@ iced = { version = "0.14", features = ["image-without-codecs", "wgpu", "tokio"] 
 # version et mêmes features que ce qu'iced_wgpu déclare, donc la caisse déjà
 # compilée pour iced est réutilisée telle quelle : aucune compilation ajoutée.
 wgpu = { version = "27", default-features = false, features = ["std"] }
+# Le terminal intégré : une vraie grille VT, pas un lecteur de lignes.
+# Adossé à alacritty_terminal, et surtout construit pour iced 0.14 — la version
+# exacte de Xion. Le modèle écrit à la main ici ne savait pas positionner un
+# curseur en deux dimensions, donc tout programme plein écran — claude, vim,
+# htop, lazygit — empilait ses redessins au lieu de les recouvrir.
+iced_term = "0.8"
 tokio = { version = "1", features = ["rt", "time", "sync", "process", "io-util"] }
 # No "tiff": it was the only thing pulling tiff -> zune-jpeg 0.4, a SECOND
 # complete JPEG decoder alongside the zune-jpeg 0.5 that image itself uses.
@@ -80,8 +86,6 @@ encoding_rs = "0.8"
 # `--features ftp` once there is a command that calls it.
 suppaftp = { version = "6", features = ["native-tls"], optional = true }
 mdns-sd = "0.11"
-portable-pty = "0.9.0"
-vte = "0.15.0"
 
 # Déjà compilé dans le binaire — iced le tire via mundy, qui lit les réglages
 # d'apparence du bureau. L'instance unique ne coûte donc aucune dépendance

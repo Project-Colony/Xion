@@ -1,9 +1,16 @@
 //! The integrated terminal panel.
 //!
-//! Extracted from the single 2161-line `update()` match. The arms are
-//! unchanged: this is a move, not a rewrite.
+//! L'émulation appartient à `iced_term`, adossé à `alacritty_terminal` : grille
+//! de cellules, curseur en deux dimensions, écran alterné, frappes transmises
+//! telles quelles. Ce module ne fait plus que décider *quand* un émulateur
+//! naît, meurt, et vers quel onglet router ce qu'il produit.
+//!
+//! Ce qui a disparu avec l'ancien modèle : la ligne de saisie en bas du
+//! panneau, la complétion par Tab qu'elle imposait, et l'interrogation
+//! périodique toutes les 50 ms. Le shell fait sa propre complétion, et le
+//! pseudo-terminal signale lui-même qu'il a écrit.
 
-use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use iced::Task;
 
@@ -11,8 +18,15 @@ use crate::ui::UiMessage;
 
 use crate::ui::app::types::*;
 
-use super::{Flow, spawn_shell_task};
+use super::Flow;
 use crate::ui::app::XionApp;
+
+/// Identifiants d'émulateur, distincts pour toute la vie du programme.
+///
+/// `iced_term` s'en sert pour appairer une souscription à son terminal. L'index
+/// de l'onglet ne conviendrait pas : fermer un onglet décale les suivants, et
+/// les événements en vol se retrouveraient livrés au mauvais.
+static NEXT_TERMINAL_ID: AtomicU64 = AtomicU64::new(0);
 
 impl XionApp {
     /// Returns `Err(message)` when the message belongs to another domain,
@@ -25,95 +39,47 @@ impl XionApp {
         match message {
             UiMessage::ToggleTerminal => {
                 if self.terminal_anim_target > 0.5 {
-                    // Close: drop processes on all tabs
+                    // Fermeture : les émulateurs partent, et leurs shells avec.
                     for tab in &mut self.terminal.tabs {
-                        tab.process = None;
+                        tab.terminal = None;
                     }
                     self.terminal_anim_target = 0.0;
                 } else {
-                    // Open: spawn a persistent cmd.exe session
                     self.terminal_anim_target = 1.0;
-                    let cwd = self
-                        .state
-                        .route
-                        .local_path()
-                        .cloned()
-                        .unwrap_or_else(|| std::path::PathBuf::from("."));
-                    self.terminal.active().cwd = Some(cwd.clone());
-                    let shell = self.state.config.terminal_shell.clone();
-                    tasks.push(spawn_shell_task(shell, cwd));
+                    let cwd = self.current_directory();
+                    self.terminal.active().cwd = Some(cwd);
+                    self.start_active_terminal();
                 }
             }
-            UiMessage::TerminalSpawned(result) => match result {
-                Ok(process) => {
-                    self.terminal.active().process = Some(process);
-                    // A fresh pty starts at the default geometry; hand it the
-                    // real panel size straight away.
-                    self.resize_terminal_pty();
-                }
-                Err(e) => {
-                    self.terminal
-                        .push_notice(format!("Erreur démarrage terminal : {e}"));
-                    self.terminal_anim_target = 0.0;
-                }
-            },
-            UiMessage::TerminalInputChanged(input) => {
-                self.terminal.active().input = input;
-            }
-            UiMessage::TerminalInputSubmitted => {
-                let cmd = self.terminal.active_ref().input.trim().to_string();
-                if cmd.is_empty() {
-                    return Ok(Flow::Stop(Task::batch(std::mem::take(tasks))));
-                }
-                self.terminal.active().input.clear();
-                // No local prompt echo any more: the shell owns the pty and
-                // echoes the command itself, so printing our own `cwd>` line
-                // produced a duplicate. `cd` tracking is gone for the same
-                // reason — the shell keeps its own working directory, and the
-                // 30 lines that re-parsed `cd` by hand could only ever drift.
-                if let Some(process) = self.terminal.active_ref().process.clone() {
-                    tasks.push(Task::perform(
-                        // Writing to a pty can block when the child is not
-                        // reading, so it does not belong on the UI thread.
-                        async move {
-                            let _ =
-                                tokio::task::spawn_blocking(move || process.write_line(&cmd)).await;
-                        },
-                        |()| UiMessage::Noop,
-                    ));
-                } else {
-                    self.terminal
-                        .push_notice("Erreur : terminal non démarré.".to_string());
-                }
-            }
-            UiMessage::TerminalPollOutput => {
-                // Drain every tab, not only the visible one.
-                let active = self.terminal.active_tab;
-                let mut active_changed = false;
-                for (index, tab) in self.terminal.tabs.iter_mut().enumerate() {
-                    let Some(process) = tab.process.clone() else {
-                        continue;
-                    };
-                    // `take_output` returns None when the screen has not
-                    // changed, so a quiet terminal costs one atomic read
-                    // instead of a full rebuild of the cached output.
-                    let Some(lines) = process.take_output() else {
-                        continue;
-                    };
-                    tab.set_lines(lines);
-                    if index == active {
-                        active_changed = true;
+            UiMessage::TerminalEvent(event) => {
+                let iced_term::Event::BackendCall(id, command) = event;
+                let Some(tab) = self
+                    .terminal
+                    .tabs
+                    .iter_mut()
+                    .find(|tab| tab.terminal.as_ref().is_some_and(|term| term.id == id))
+                else {
+                    // L'onglet a été fermé pendant que l'événement voyageait.
+                    return Ok(Flow::Continue);
+                };
+
+                let Some(terminal) = tab.terminal.as_mut() else {
+                    return Ok(Flow::Continue);
+                };
+
+                match terminal.handle(iced_term::Command::ProxyToBackend(command)) {
+                    iced_term::actions::Action::Shutdown => {
+                        // Le shell a rendu la main : `exit`, ou une mort.
+                        tab.terminal = None;
                     }
-                }
-                if active_changed {
-                    // Auto-scroll terminal to bottom
-                    tasks.push(iced::widget::operation::scroll_to(
-                        iced::widget::Id::new("terminal_output"),
-                        iced::widget::scrollable::AbsoluteOffset {
-                            x: 0.0,
-                            y: f32::MAX,
-                        },
-                    ));
+                    iced_term::actions::Action::ChangeTitle(title) => {
+                        // Ce que le programme veut qu'on l'appelle — le shell y
+                        // met en général le dossier courant ou la commande.
+                        if !title.trim().is_empty() {
+                            tab.title = title;
+                        }
+                    }
+                    iced_term::actions::Action::Ignore => {}
                 }
             }
             UiMessage::TerminalAddTab => {
@@ -124,30 +90,19 @@ impl XionApp {
                     return Ok(Flow::Stop(Task::none()));
                 }
                 let count = self.terminal.tabs.len() + 1;
-                let tab = TerminalTab {
-                    title: format!("Terminal {}", count),
+                self.terminal.tabs.push(TerminalTab {
+                    title: format!("Terminal {count}"),
                     ..Default::default()
-                };
-                self.terminal.tabs.push(tab);
+                });
                 self.terminal.active_tab = self.terminal.tabs.len() - 1;
-                let cwd = self
-                    .state
-                    .route
-                    .local_path()
-                    .cloned()
-                    .unwrap_or_else(|| std::path::PathBuf::from("."));
-                self.terminal.active().cwd = Some(cwd.clone());
-                let shell = self.state.config.terminal_shell.clone();
-                tasks.push(spawn_shell_task(shell, cwd));
+                let cwd = self.current_directory();
+                self.terminal.active().cwd = Some(cwd);
+                self.start_active_terminal();
             }
             UiMessage::TerminalCloseTab(index) => {
-                if self.terminal.tabs.len() > 1 {
-                    if let Some(tab) = self.terminal.tabs.get_mut(index) {
-                        tab.process = None;
-                    }
-                    if index < self.terminal.tabs.len() {
-                        self.terminal.tabs.remove(index);
-                    }
+                if self.terminal.tabs.len() > 1 && index < self.terminal.tabs.len() {
+                    // Retirer l'onglet détruit son émulateur, donc son shell.
+                    self.terminal.tabs.remove(index);
                     if self.terminal.active_tab >= self.terminal.tabs.len() {
                         self.terminal.active_tab = self.terminal.tabs.len() - 1;
                     }
@@ -156,6 +111,11 @@ impl XionApp {
             UiMessage::TerminalSwitchTab(index) => {
                 if index < self.terminal.tabs.len() {
                     self.terminal.active_tab = index;
+                    // Un onglet ouvert alors que le panneau était replié n'a pas
+                    // encore de shell : c'est en y venant qu'il en mérite un.
+                    if self.terminal_anim_target > 0.5 {
+                        self.start_active_terminal();
+                    }
                 }
             }
             UiMessage::TerminalAnimTick => {
@@ -167,88 +127,26 @@ impl XionApp {
                     self.terminal_anim_progress += diff * speed;
                 }
             }
-            // Feature 1: Trash
-            UiMessage::TerminalAutoComplete => {
-                let input = self.terminal.active_ref().input.clone();
-                if !input.is_empty() {
-                    let fallback = self
-                        .state
-                        .route
-                        .local_path()
-                        .map(|p| p.to_path_buf())
-                        .unwrap_or_else(|| PathBuf::from("."));
-                    let cwd = self.terminal.effective_cwd(&fallback).to_path_buf();
-                    // Try to complete the last word as a path
-                    let last_word = input.split_whitespace().last().unwrap_or("");
-                    let (search_dir, prefix) = if let Some(sep_pos) = last_word.rfind(['\\', '/']) {
-                        let dir_part = &last_word[..=sep_pos];
-                        let file_part = &last_word[sep_pos + 1..];
-                        let search_path = if std::path::Path::new(dir_part).is_absolute() {
-                            PathBuf::from(dir_part)
-                        } else {
-                            cwd.join(dir_part)
-                        };
-                        (search_path, file_part.to_lowercase())
-                    } else {
-                        (cwd.clone(), last_word.to_lowercase())
-                    };
-                    if let Ok(entries) = std::fs::read_dir(&search_dir) {
-                        let mut matches: Vec<String> = entries
-                            .flatten()
-                            .filter_map(|e| {
-                                let name = e.file_name().to_string_lossy().to_string();
-                                if name.to_lowercase().starts_with(&prefix) {
-                                    Some(name)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        matches.sort();
-                        if let Some(first_match) = matches.first() {
-                            // Replace the last word with the completion
-                            let words: Vec<&str> = input.split_whitespace().collect();
-                            let completed = if words.len() > 1 {
-                                let leading = &words[..words.len() - 1];
-                                let last_parts: Vec<&str> =
-                                    last_word.rsplitn(2, ['\\', '/']).collect();
-                                if last_parts.len() > 1 {
-                                    // Has directory prefix: preserve it
-                                    let dir_prefix =
-                                        &last_word[..last_word.len() - last_parts[0].len()];
-                                    format!("{} {}{}", leading.join(" "), dir_prefix, first_match)
-                                } else {
-                                    format!("{} {}", leading.join(" "), first_match)
-                                }
-                            } else {
-                                let last_parts: Vec<&str> =
-                                    last_word.rsplitn(2, ['\\', '/']).collect();
-                                if last_parts.len() > 1 {
-                                    let dir_prefix =
-                                        &last_word[..last_word.len() - last_parts[0].len()];
-                                    format!("{}{}", dir_prefix, first_match)
-                                } else {
-                                    first_match.clone()
-                                }
-                            };
-                            self.terminal.active().input = completed;
-                        }
-                    }
-                }
-            }
-            // ── #21: Trash browsing ──────────────────────────────────────────
             UiMessage::TerminalInterrupt => {
-                if let Some(process) = self.terminal.active_ref().process.clone() {
-                    process.interrupt();
-                } else {
-                    self.terminal
-                        .push_notice("Aucun processus à interrompre.".to_string());
+                // `0x03`, l'octet que Ctrl+C envoie. Le raccourci fonctionne
+                // désormais tout seul quand le terminal a le focus ; ce bouton
+                // reste pour qui ne le connaît pas.
+                const ETX: u8 = 0x03;
+                match self.terminal.active().terminal.as_mut() {
+                    Some(terminal) => {
+                        terminal.handle(iced_term::Command::ProxyToBackend(
+                            iced_term::BackendCommand::Write(vec![ETX]),
+                        ));
+                    }
+                    None => self
+                        .terminal
+                        .push_notice("Aucun processus à interrompre.".to_string()),
                 }
             }
             UiMessage::SetShell(shell) => {
-                self.state.config.terminal_shell = shell.clone();
-                // Le processus en cours parle l'ancien interpréteur : il part.
-                self.terminal.active().process = None;
+                self.state.config.terminal_shell = shell;
+                // L'émulateur en cours porte l'ancien interpréteur : il part.
+                self.terminal.active().terminal = None;
                 self.config_manager.save(&self.state.config);
 
                 // Et il faut le remplacer immédiatement. Le commentaire
@@ -258,24 +156,143 @@ impl XionApp {
                 // première commande tapée répondait « terminal non démarré »
                 // sans que rien n'explique pourquoi.
                 if self.terminal_anim_target > 0.5 {
-                    let cwd = self
-                        .terminal
-                        .active_ref()
-                        .cwd
-                        .clone()
-                        .or_else(|| self.state.route.local_path().cloned())
-                        .unwrap_or_else(|| std::path::PathBuf::from("."));
-                    tasks.push(spawn_shell_task(shell, cwd));
+                    self.start_active_terminal();
                 }
             }
-            // ── Feature K: Hex Viewer ─────────────────────────────────────────
             UiMessage::WindowResized(width, height) => {
                 self.window_size = (width, height);
-                self.resize_terminal_pty();
             }
             other => return Err(other),
         }
 
+        let _ = tasks;
         Ok(Flow::Continue)
+    }
+
+    /// Le dossier que le terminal doit ouvrir.
+    fn current_directory(&self) -> std::path::PathBuf {
+        self.state
+            .route
+            .local_path()
+            .cloned()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+    }
+
+    /// Donne un shell à l'onglet actif s'il n'en a pas déjà un.
+    ///
+    /// Ne fait rien quand un émulateur vit déjà : rouvrir le panneau ou revenir
+    /// sur un onglet ne doit pas abandonner le programme qui y tourne.
+    fn start_active_terminal(&mut self) {
+        if self
+            .terminal
+            .active_ref()
+            .is_some_and(|tab| tab.terminal.is_some())
+        {
+            return;
+        }
+
+        let fallback = self.current_directory();
+        let working_directory = self
+            .terminal
+            .active_ref()
+            .and_then(|tab| tab.cwd.clone())
+            .unwrap_or(fallback);
+
+        let (program, args) =
+            match crate::ui::app::shell::resolve(&self.state.config.terminal_shell) {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    self.terminal
+                        .push_notice(format!("Interpréteur introuvable : {error}"));
+                    return;
+                }
+            };
+
+        // La police de Xion est déjà à chasse fixe — JetBrains Mono Nerd Font —
+        // donc le terminal hérite de la même, et les glyphes Nerd Font que les
+        // invites modernes affichent s'y rendent sans police de secours.
+        let tokens = crate::ui::theme::UiTokens::for_theme(&self.state.config.theme);
+
+        let settings = iced_term::settings::Settings {
+            font: iced_term::settings::FontSettings {
+                size: tokens.typography.body,
+                font_type: tokens.typography.body_font,
+                ..Default::default()
+            },
+            theme: iced_term::settings::ThemeSettings::new(Box::new(terminal_palette(
+                tokens.colors,
+            ))),
+            backend: iced_term::settings::BackendSettings {
+                program,
+                args,
+                working_directory: Some(working_directory),
+                ..Default::default()
+            },
+        };
+
+        let id = NEXT_TERMINAL_ID.fetch_add(1, Ordering::Relaxed);
+        match iced_term::Terminal::new(id, settings) {
+            Ok(terminal) => {
+                let tab = self.terminal.active();
+                tab.notice = None;
+                tab.terminal = Some(terminal);
+            }
+            Err(error) => self
+                .terminal
+                .push_notice(format!("Le terminal n'a pas démarré : {error}")),
+        }
+    }
+}
+
+/// Le fond et le texte du terminal, pris au thème Colony actif.
+///
+/// Les seize couleurs ANSI gardent celles de `iced_term` : elles décrivent ce
+/// que *le programme* demande — « rouge », « vert » — et les redériver depuis
+/// une palette d'interface ferait mentir un `ls --color` sur ce qu'il annonce.
+/// Le fond et l'avant-plan, eux, appartiennent à la fenêtre.
+fn terminal_palette(colors: crate::ui::theme::UiColors) -> iced_term::ColorPalette {
+    iced_term::ColorPalette {
+        background: hex(colors.panel_background),
+        foreground: hex(colors.text_primary),
+        ..Default::default()
+    }
+}
+
+/// `iced_term` attend ses couleurs en texte hexadécimal.
+fn hex(color: iced::Color) -> String {
+    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+    format!(
+        "#{:02X}{:02X}{:02X}",
+        channel(color.r),
+        channel(color.g),
+        channel(color.b)
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hex;
+    use iced::Color;
+
+    #[test]
+    fn a_colour_becomes_the_hex_string_the_emulator_expects() {
+        assert_eq!(hex(Color::BLACK), "#000000");
+        assert_eq!(hex(Color::WHITE), "#FFFFFF");
+        assert_eq!(hex(Color::from_rgb(1.0, 0.0, 0.0)), "#FF0000");
+    }
+
+    /// Une composante hors bornes ne doit pas déborder l'octet.
+    ///
+    /// Construite par champs plutôt que par `Color::from_rgb`, qui refuse par
+    /// assertion ce que ce test veut justement éprouver.
+    #[test]
+    fn an_out_of_range_channel_is_clamped() {
+        let out_of_range = Color {
+            r: 2.0,
+            g: -1.0,
+            b: 0.5,
+            a: 1.0,
+        };
+        assert_eq!(hex(out_of_range), "#FF0080");
     }
 }

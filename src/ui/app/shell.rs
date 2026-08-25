@@ -11,7 +11,6 @@
 //! défaut porte enfin le nom de ce qu'elle fait.
 
 use crate::core::ShellConfig;
-use crate::terminal::{LineEnding, TerminalProcess};
 
 /// Une entrée du sélecteur : ce qui s'affiche, et ce que ça lance.
 pub(super) struct ShellChoice {
@@ -19,34 +18,25 @@ pub(super) struct ShellChoice {
     pub(super) config: ShellConfig,
 }
 
-/// Start the configured shell inside a pseudo-terminal.
+/// Le programme à lancer et ses arguments.
 ///
-/// Blocking (it forks a process), so callers must run it on a blocking task.
-pub(super) fn spawn_shell_process(
-    shell: &ShellConfig,
-    cwd: &std::path::Path,
-) -> std::io::Result<TerminalProcess> {
-    match shell {
-        ShellConfig::System => {
-            TerminalProcess::spawn(&system_shell(), &[], cwd, native_line_ending())
-        }
-        ShellConfig::PowerShell => TerminalProcess::spawn(
-            &find_powershell(),
-            &["-NoLogo", "-NoProfile"],
-            cwd,
-            // Pas `Crlf` en dur : `pwsh` sous Linux termine ses lignes en LF, et
-            // la variante est atteignable là-bas par le fichier de config.
-            native_line_ending(),
+/// Ne démarre rien : c'est `iced_term` qui ouvre le pseudo-terminal, et il
+/// attend un nom de programme. Xion se contente de dire lequel.
+pub(super) fn resolve(shell: &ShellConfig) -> std::io::Result<(String, Vec<String>)> {
+    let resolved = match shell {
+        ShellConfig::System => (system_shell(), Vec::new()),
+        ShellConfig::PowerShell => (
+            find_powershell(),
+            vec!["-NoLogo".to_string(), "-NoProfile".to_string()],
         ),
-        ShellConfig::Bash => TerminalProcess::spawn(&find_bash(), &[], cwd, LineEnding::Lf),
+        ShellConfig::Bash => (find_bash(), Vec::new()),
         ShellConfig::Custom(path) => {
-            // A custom shell is an arbitrary executable path read from
-            // config.toml, so it is resolved and checked before being run
-            // rather than handed straight to the process API.
-            let resolved = validated_custom_shell(path)?;
-            TerminalProcess::spawn(&resolved, &[], cwd, native_line_ending())
+            // Un shell personnalisé est un chemin arbitraire lu dans
+            // config.toml : il est résolu et vérifié avant d'être transmis.
+            (validated_custom_shell(path)?, Vec::new())
         }
-    }
+    };
+    Ok(resolved)
 }
 
 /// Les interpréteurs proposés sur cette machine, dans l'ordre d'affichage.
@@ -202,14 +192,6 @@ fn display_name(path: &str) -> String {
     }
 }
 
-fn native_line_ending() -> LineEnding {
-    if cfg!(windows) {
-        LineEnding::Crlf
-    } else {
-        LineEnding::Lf
-    }
-}
-
 /// Resolve a user-configured shell path, refusing anything that is not an
 /// existing absolute path.
 ///
@@ -362,21 +344,20 @@ mod tests {
         assert_eq!(choices[0].config, ShellConfig::System);
     }
 
-    /// Chaque interpréteur proposé doit réellement démarrer.
+    /// Chaque interpréteur proposé doit désigner un exécutable qui existe.
     ///
     /// C'est le test qui manquait à la version précédente : le bouton « PS »
     /// s'affichait sous Linux en ne pouvant rien lancer, et rien ne le disait.
     /// Proposer un choix, c'est promettre qu'il fonctionne.
     #[test]
-    fn every_offered_shell_actually_starts() {
-        let cwd = std::env::temp_dir();
+    fn every_offered_shell_resolves_to_a_real_program() {
         for choice in available_shells() {
-            let started = spawn_shell_process(&choice.config, &cwd);
+            let resolved = resolve(&choice.config);
+            let (program, _) = resolved.expect("un interpréteur proposé doit se résoudre");
             assert!(
-                started.is_ok(),
-                "« {} » est proposé mais ne démarre pas : {:?}",
-                choice.label,
-                started.err()
+                std::path::Path::new(&program).is_file(),
+                "« {} » est proposé mais {program} n'existe pas",
+                choice.label
             );
         }
     }

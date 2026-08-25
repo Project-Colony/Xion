@@ -334,10 +334,12 @@ pub enum UiMessage {
     },
     PreviewAnimTick,
     ToggleTerminal,
-    TerminalInputChanged(String),
-    TerminalInputSubmitted,
-    TerminalSpawned(Result<crate::terminal::TerminalProcess, String>),
-    TerminalPollOutput,
+    /// Ce que le pseudo-terminal a produit, ou ce que la vue lui destine.
+    ///
+    /// Un seul message pour les deux sens : `iced_term` fait circuler ses
+    /// commandes de moteur par là, qu'elles viennent d'une frappe, d'un
+    /// redimensionnement ou de la sortie du programme.
+    TerminalEvent(iced_term::Event),
     TerminalAnimTick,
     // Feature 1: Trash
     TrashCompleted(Result<(), String>),

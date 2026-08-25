@@ -15,5 +15,5 @@ pub use shortcuts::{KeyChord, KeyInput, KeyKind, NamedKey, ShortcutBindings};
 pub use types::{
     AppConfig, AppConfigLoad, CacheConfig, ConfigSource, ConfigWarning, EntryFilterConfig,
     FilesystemConfig, ListConfig, PagingConfig, ShellConfig, SortKeyConfig, SortOrderConfig,
-    TabPersistConfig, ThemeConfig, ViewColumn, ViewConfig, ViewMode,
+    TabPersistConfig, ThemeChoice, ViewColumn, ViewConfig, ViewMode,
 };

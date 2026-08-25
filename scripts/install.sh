@@ -76,7 +76,7 @@ done
 
 echo "→ entrée de bureau"
 mkdir -p "$APP_DIR"
-install -m 644 "$ROOT/assets/xion.desktop" "$APP_DIR/xion.desktop"
+install -m 644 "$ROOT/packaging/xion.desktop" "$APP_DIR/xion.desktop"
 
 refresh_caches
 

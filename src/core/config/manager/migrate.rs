@@ -5,7 +5,7 @@
 
 use crate::core::config::types::{
     AppConfig, ConfigWarning, EntryFilterConfig, ShellConfig, SortKeyConfig, SortOrderConfig,
-    TabPersistConfig, ThemeConfig, ViewColumn, ViewMode,
+    TabPersistConfig, ViewColumn, ViewMode,
 };
 
 use super::*;
@@ -48,29 +48,50 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
     // The old merge propagated dark_mode -> theme but never theme -> dark_mode,
     // so `theme = "Nord"` with `dark_mode = false` survived the load and drove a
     // light syntax highlighter on a dark UI until the next theme change.
-    match file.theme {
-        Some(theme_str) => {
-            config.theme = match theme_str.as_str() {
-                "Light" => ThemeConfig::Light,
-                "Dark" => ThemeConfig::Dark,
-                "Nord" => ThemeConfig::Nord,
-                "Solarized" => ThemeConfig::Solarized,
-                "HighContrast" => ThemeConfig::HighContrast,
-                other => {
+    // Le nouveau format d'abord ; l'ancien nom de thème ne sert plus qu'à
+    // migrer un fichier écrit avant l'adoption du catalogue Colony.
+    match (file.theme_family, file.theme_variant) {
+        (Some(family), Some(variant)) => {
+            config.theme.family = family;
+            config.theme.variant = variant;
+        }
+        _ => {
+            let legacy = file.theme.as_deref();
+            let (family, variant, high_contrast) = match legacy {
+                // `Light` et `Dark` étaient des noms génériques sans famille
+                // derrière eux : ils prennent celle du repli du catalogue.
+                Some("Light") => ("gruvbox", "light", false),
+                Some("Dark") | None => ("gruvbox", "dark", false),
+                Some("Nord") => ("nord", "dark", false),
+                Some("Solarized") => ("solarized", "dark", false),
+                // Le contraste élevé n'était pas une palette mais un
+                // rehaussement ; Colony en fait un modificateur.
+                Some("HighContrast") => ("gruvbox", "dark", true),
+                Some(other) => {
                     warnings.push(ConfigWarning {
                         message: format!(
                             "Thème inconnu '{other}', utilisation du thème par défaut"
                         ),
                     });
-                    ThemeConfig::default()
+                    ("gruvbox", "dark", false)
                 }
             };
+            // Un fichier antérieur au champ `theme` n'avait que le booléen.
+            let variant = if legacy.is_none() && file.dark_mode == Some(false) {
+                "light"
+            } else {
+                variant
+            };
+            config.theme.family = family.to_string();
+            config.theme.variant = variant.to_string();
+            config.theme.high_contrast = high_contrast;
         }
-        // Pre-theme files only had the boolean.
-        None if file.dark_mode == Some(true) => config.theme = ThemeConfig::Dark,
-        None => {}
     }
-    config.dark_mode = config.theme.is_dark();
+    if let Some(high_contrast) = file.high_contrast {
+        config.theme.high_contrast = high_contrast;
+    }
+    config.theme.accent = file.accent;
+    config.dark_mode = crate::ui::theme::resolves_dark(&config.theme);
     if let Some(dark_mode) = file.dark_mode
         && dark_mode != config.dark_mode
     {
@@ -277,17 +298,15 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
 }
 
 pub(super) fn config_to_file(config: &AppConfig) -> AppConfigFileV1 {
-    let theme_str = match config.theme {
-        ThemeConfig::Light => "Light",
-        ThemeConfig::Dark => "Dark",
-        ThemeConfig::Nord => "Nord",
-        ThemeConfig::Solarized => "Solarized",
-        ThemeConfig::HighContrast => "HighContrast",
-    };
     AppConfigFileV1 {
         version: Some(CURRENT_CONFIG_VERSION),
         dark_mode: Some(config.dark_mode),
-        theme: Some(theme_str.to_string()),
+        // Plus jamais écrit : le champ ne survit qu'en lecture, pour migrer.
+        theme: None,
+        theme_family: Some(config.theme.family.clone()),
+        theme_variant: Some(config.theme.variant.clone()),
+        high_contrast: Some(config.theme.high_contrast),
+        accent: config.theme.accent.clone(),
         start_path: Some(config.start_path.clone()),
         list: Some(ListConfigFile {
             show_hidden: Some(config.list.show_hidden),

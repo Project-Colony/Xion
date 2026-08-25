@@ -324,7 +324,7 @@ pub fn run(
         // Follows the configured theme. This was hard-coded to `Light`, so
         // picking Dark left every default-styled widget bright.
         .theme(|state: &XionApp| {
-            if state.state.config.theme.is_dark() {
+            if state.state.config.dark_mode {
                 Theme::Dark
             } else {
                 Theme::Light

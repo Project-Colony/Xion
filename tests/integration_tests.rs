@@ -306,7 +306,7 @@ mod services_integration {
 mod config_integration {
     use super::*;
     use xion::core::{
-        ConfigSource, ListConfig, PagingConfig, SortKeyConfig, SortOrderConfig, ThemeConfig,
+        ConfigSource, ListConfig, PagingConfig, SortKeyConfig, SortOrderConfig, ThemeChoice,
         ViewConfig,
     };
 
@@ -392,7 +392,12 @@ mod config_integration {
         let defaults = AppConfig::default();
         let saved = AppConfig {
             dark_mode: true,
-            theme: ThemeConfig::Nord,
+            theme: ThemeChoice {
+                family: "nord".to_string(),
+                variant: "dark".to_string(),
+                high_contrast: false,
+                accent: None,
+            },
             compact_mode: true,
             respect_gitignore: true,
             list: ListConfig {
@@ -646,17 +651,25 @@ mod file_operations {
 
 mod config_defaults {
     use super::*;
-    use xion::core::{SortKeyConfig, SortOrderConfig, ThemeConfig};
+    use xion::core::{SortKeyConfig, SortOrderConfig};
 
     /// What was left of `dark_mode_roundtrip` once the name stopped lying: a
     /// default-value check. The actual round-trip now lives in
     /// `config_integration::saving_then_loading_restores_the_configuration`.
+    /// Le défaut suit celui de l'écosystème.
+    ///
+    /// Xion démarrait en clair sur ses palettes maison. La palette de repli du
+    /// catalogue Colony est `gruvbox/dark`, donc une installation neuve démarre
+    /// désormais en sombre — un changement visible, assumé pour que Xion
+    /// ressemble à ses voisins dès le premier lancement. Les configurations
+    /// existantes conservent leur choix, qui est migré.
     #[test]
-    fn default_theme_is_light_mode() {
+    fn the_default_theme_follows_the_ecosystem_fallback() {
         let config = AppConfig::default();
-        assert!(!config.dark_mode, "default should be light mode");
-        assert_eq!(config.theme, ThemeConfig::Light);
-        assert!(!config.theme.is_dark());
+        assert_eq!(config.theme.family, "gruvbox");
+        assert_eq!(config.theme.variant, "dark");
+        assert!(!config.theme.high_contrast);
+        assert_eq!(config.theme.accent, None);
     }
 
     #[test]
@@ -742,24 +755,27 @@ mod ui_update {
 
     // ── Dark mode ──────────────────────────────────────────────────────────────
 
+    /// `ToggleDarkMode` ne fait plus tourner cinq thèmes en dur : il bascule la
+    /// variante claire ou sombre de la famille courante. Le catalogue en compte
+    /// cinquante-sept ; les parcourir un par un n'aurait plus de sens.
     #[test]
-    fn toggle_dark_mode_cycles_themes() {
-        use xion::core::ThemeConfig;
+    fn toggle_dark_mode_flips_the_variant_of_the_current_family() {
         let mut app = XionApp::new_for_test();
-        // Default is Light (dark_mode = false)
-        assert_eq!(app.state_for_test().config.theme, ThemeConfig::Light);
-        assert!(!app.state_for_test().config.dark_mode);
-        // Light → Dark
-        let _ = app.update_for_test(UiMessage::ToggleDarkMode);
-        assert_eq!(app.state_for_test().config.theme, ThemeConfig::Dark);
+        assert_eq!(app.state_for_test().config.theme.variant, "dark");
         assert!(app.state_for_test().config.dark_mode);
-        // 4 more toggles complete the cycle back to Light
-        let _ = app.update_for_test(UiMessage::ToggleDarkMode); // Nord
-        let _ = app.update_for_test(UiMessage::ToggleDarkMode); // Solarized
-        let _ = app.update_for_test(UiMessage::ToggleDarkMode); // HighContrast
-        let _ = app.update_for_test(UiMessage::ToggleDarkMode); // Light
-        assert_eq!(app.state_for_test().config.theme, ThemeConfig::Light);
+
+        let _ = app.update_for_test(UiMessage::ToggleDarkMode);
+        assert_eq!(app.state_for_test().config.theme.variant, "light");
+        assert_eq!(
+            app.state_for_test().config.theme.family,
+            "gruvbox",
+            "la famille ne doit pas changer"
+        );
         assert!(!app.state_for_test().config.dark_mode);
+
+        let _ = app.update_for_test(UiMessage::ToggleDarkMode);
+        assert_eq!(app.state_for_test().config.theme.variant, "dark");
+        assert!(app.state_for_test().config.dark_mode);
     }
 
     // ── Gitignore ──────────────────────────────────────────────────────────────

@@ -7,7 +7,6 @@ use std::path::PathBuf;
 
 use iced::Task;
 
-use crate::core::ThemeConfig;
 use crate::ui::UiMessage;
 
 use crate::ui::app::helpers::{self};
@@ -48,13 +47,7 @@ impl XionApp {
             }
             // Feature 4: Color themes
             UiMessage::SetTheme(theme) => {
-                self.state.config.dark_mode = matches!(
-                    theme,
-                    ThemeConfig::Dark
-                        | ThemeConfig::Nord
-                        | ThemeConfig::Solarized
-                        | ThemeConfig::HighContrast
-                );
+                self.state.config.dark_mode = crate::ui::theme::resolves_dark(&theme);
                 self.state.config.theme = theme;
                 // Invalidate syntax highlight cache so it's regenerated with the new theme colors
                 self.cached_highlighted_preview = None;
@@ -480,23 +473,34 @@ impl XionApp {
             }
             // ── #18: Tab drag reorder ────────────────────────────────────────
             UiMessage::ToggleDarkMode => {
-                // Cycle through themes
-                let next_theme = match self.state.config.theme {
-                    ThemeConfig::Light => ThemeConfig::Dark,
-                    ThemeConfig::Dark => ThemeConfig::Nord,
-                    ThemeConfig::Nord => ThemeConfig::Solarized,
-                    ThemeConfig::Solarized => ThemeConfig::HighContrast,
-                    ThemeConfig::HighContrast => ThemeConfig::Light,
+                // Bascule clair/sombre dans la famille courante, au lieu de
+                // faire tourner cinq thèmes en dur. Le catalogue en compte
+                // cinquante-sept ; les parcourir un par un n'aurait plus de
+                // sens, et le choix précis appartient au sélecteur.
+                //
+                // Une famille dont la variante ne s'appelle ni `dark` ni
+                // `light` — `catppuccin` et ses quatre saveurs — n'a pas de
+                // contraire évident : `resolve` retombe alors sur le repli, ce
+                // qui serait un saut brutal. On reste sur place dans ce cas.
+                let choice = &self.state.config.theme;
+                let opposite = match choice.variant.as_str() {
+                    "dark" => Some("light"),
+                    "light" => Some("dark"),
+                    _ => None,
                 };
-                self.state.config.dark_mode = matches!(
-                    next_theme,
-                    ThemeConfig::Dark
-                        | ThemeConfig::Nord
-                        | ThemeConfig::Solarized
-                        | ThemeConfig::HighContrast
-                );
-                self.state.config.theme = next_theme;
-                self.config_manager.save(&self.state.config);
+                if let Some(variant) = opposite {
+                    let mut next = choice.clone();
+                    next.variant = variant.to_string();
+                    self.state.config.dark_mode = crate::ui::theme::resolves_dark(&next);
+                    self.state.config.theme = next;
+                    self.cached_highlighted_preview = None;
+                    self.config_manager.save(&self.state.config);
+                } else {
+                    self.last_action = Some(format!(
+                        "« {} » n'a pas de variante claire ou sombre — choisissez dans le menu",
+                        choice.family
+                    ));
+                }
             }
             UiMessage::ToggleCompactMode => {
                 self.state.config.compact_mode = !self.state.config.compact_mode;

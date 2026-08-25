@@ -203,6 +203,17 @@ pub struct UiColors {
     pub address_not_found: Color,
 }
 
+/// Whether a theme choice resolves to a dark palette.
+///
+/// Derived from the background's luminance rather than from the catalogue's
+/// `mode` field: the measurement is what the syntax highlighter actually cares
+/// about, and it keeps working for the fallback palette an unknown family
+/// resolves to.
+pub fn resolves_dark(theme: &crate::core::ThemeChoice) -> bool {
+    let (family, variant) = theme.keys();
+    luminance(colony_ui::resolve(family, variant).bg_primary) < 0.5
+}
+
 /// Perceived brightness, for deciding whether two colours read as different.
 fn luminance(color: Color) -> f32 {
     0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b
@@ -409,20 +420,25 @@ pub struct UiTokens {
 }
 
 impl UiTokens {
-    /// Returns tokens for a specific theme config.
+    /// Returns tokens for a specific theme choice.
     ///
     /// Pure: `resolve` and `with_high_contrast` both are, and this runs once per
     /// rebuild of the widget tree.
-    pub fn for_theme(theme: &crate::core::ThemeConfig) -> Self {
-        let (family, variant) = theme.colony_keys();
+    pub fn for_theme(theme: &crate::core::ThemeChoice) -> Self {
+        let (family, variant) = theme.keys();
         let palette = colony_ui::resolve(family, variant);
-        let palette = if theme.wants_high_contrast() {
+        let palette = if theme.high_contrast {
             palette.with_high_contrast()
         } else {
             palette
         };
+        let accent = theme
+            .accent
+            .as_deref()
+            .and_then(colony_ui::accent_key_to_color)
+            .unwrap_or(palette.accent_blue);
         Self {
-            colors: UiColors::from_colony(palette, palette.accent_blue),
+            colors: UiColors::from_colony(palette, accent),
             ..Default::default()
         }
     }

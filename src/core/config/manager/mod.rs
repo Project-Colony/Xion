@@ -389,7 +389,7 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::config::types::{ListConfig, SortKeyConfig, TabPersistConfig, ThemeConfig};
+    use crate::core::config::types::{ListConfig, SortKeyConfig, TabPersistConfig, ThemeChoice};
 
     /// Every test writes through `with_path`, never through `new()`: the
     /// default path is the developer's real `config.toml`.
@@ -465,7 +465,12 @@ mod tests {
 
         let config = AppConfig {
             start_path: dir.path().to_path_buf(),
-            theme: ThemeConfig::Nord,
+            theme: ThemeChoice {
+                family: "nord".to_string(),
+                variant: "dark".to_string(),
+                high_contrast: false,
+                accent: None,
+            },
             dark_mode: true,
             list: ListConfig {
                 sort_key: SortKeyConfig::Size,
@@ -486,7 +491,7 @@ mod tests {
             "warnings: {:?}",
             loaded.warnings
         );
-        assert_eq!(loaded.config.theme, ThemeConfig::Nord);
+        assert_eq!(loaded.config.theme.keys(), ("nord", "dark"));
         assert_eq!(loaded.config.list.sort_key, SortKeyConfig::Size);
         assert_eq!(loaded.config.tabs.len(), 1);
         assert_eq!(loaded.config.user_favorites, vec![dir.path().to_path_buf()]);
@@ -517,7 +522,12 @@ mod tests {
         let manager = manager_in(dir.path());
 
         let first = AppConfig {
-            theme: ThemeConfig::Nord,
+            theme: ThemeChoice {
+                family: "nord".to_string(),
+                variant: "dark".to_string(),
+                high_contrast: false,
+                accent: None,
+            },
             ..AppConfig::default()
         };
         manager.save(&first);
@@ -525,17 +535,22 @@ mod tests {
         assert!(!manager.backup_path().exists());
 
         let second = AppConfig {
-            theme: ThemeConfig::Light,
+            theme: ThemeChoice {
+                family: "gruvbox".to_string(),
+                variant: "light".to_string(),
+                high_contrast: false,
+                accent: None,
+            },
             ..AppConfig::default()
         };
         manager.save(&second);
 
         let backup = fs::read_to_string(manager.backup_path()).expect("read backup");
         assert!(
-            backup.contains("Nord"),
+            backup.contains("nord"),
             "le .bak doit contenir la version précédente"
         );
-        assert_eq!(manager.load().config.theme, ThemeConfig::Light);
+        assert_eq!(manager.load().config.theme.keys(), ("gruvbox", "light"));
     }
 
     #[test]
@@ -544,7 +559,12 @@ mod tests {
         let manager = manager_in(dir.path());
 
         let good = AppConfig {
-            theme: ThemeConfig::Solarized,
+            theme: ThemeChoice {
+                family: "solarized".to_string(),
+                variant: "dark".to_string(),
+                high_contrast: false,
+                accent: None,
+            },
             ..AppConfig::default()
         };
         manager.save(&good);
@@ -554,7 +574,7 @@ mod tests {
         fs::write(manager.path(), "version = 1\nthis is not toml <<<").expect("corrupt");
         let loaded = manager.load();
 
-        assert_eq!(loaded.config.theme, ThemeConfig::Solarized);
+        assert_eq!(loaded.config.theme.keys(), ("solarized", "dark"));
         assert!(
             !manager.path().exists(),
             "le fichier fautif doit être déplacé"
@@ -644,7 +664,7 @@ mod tests {
         // Legacy V1 file carrying only the boolean.
         fs::write(manager.path(), "version = 1\ndark_mode = true\n").expect("write v1");
         let loaded = manager.load();
-        assert_eq!(loaded.config.theme, ThemeConfig::Dark);
+        assert_eq!(loaded.config.theme.keys(), ("gruvbox", "dark"));
         assert!(loaded.config.dark_mode);
     }
 
@@ -659,7 +679,7 @@ mod tests {
         .expect("write v1");
 
         let loaded = manager.load();
-        assert_eq!(loaded.config.theme, ThemeConfig::Nord);
+        assert_eq!(loaded.config.theme.keys(), ("nord", "dark"));
         assert!(loaded.config.dark_mode, "dark_mode doit suivre le thème");
         assert!(
             loaded

@@ -72,61 +72,47 @@ impl ViewMode {
 
 // ── Theme / shell enums ───────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub enum ThemeConfig {
-    #[default]
-    Light,
-    Dark,
-    Nord,
-    Solarized,
-    HighContrast,
+/// Ce que l'utilisateur a choisi dans l'apparence.
+///
+/// Xion portait cinq palettes écrites à la main derrière un `enum`. Elles sont
+/// devenues une sélection dans le catalogue partagé de `colony-ui` — vingt-cinq
+/// familles, cinquante-sept variantes, huit accents — donc le choix ne peut
+/// plus être un ensemble fermé de cinq noms.
+///
+/// Les clés sont des chaînes et non un type fermé, à dessein : le socle ajoute
+/// des familles sans que Xion soit recompilé, et `colony_ui::resolve` retombe
+/// sur sa palette de repli pour tout couple inconnu — une famille retirée en
+/// amont dégrade au lieu d'empêcher le démarrage.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ThemeChoice {
+    /// Clé de famille du catalogue Colony : `gruvbox`, `nord`, `catppuccin`…
+    pub family: String,
+    /// Clé de variante dans cette famille : `dark`, `light`, `mocha`…
+    pub variant: String,
+    /// Rehausse le contraste. Colony en fait un modificateur applicable à
+    /// n'importe quelle palette, pas un thème à part.
+    pub high_contrast: bool,
+    /// Accent choisi par l'utilisateur ; `None` signifie « celui du thème ».
+    pub accent: Option<String>,
 }
 
-impl ThemeConfig {
-    /// The Colony family and variant this choice selects.
-    ///
-    /// Xion used to carry its own five hand-written palettes. They are now a
-    /// selection into the shared catalogue of `colony-ui` — twenty-five
-    /// families, fifty-seven variants — so a colour fixed upstream reaches Xion
-    /// without being re-typed here, and Xion looks like the rest of the
-    /// ecosystem.
-    ///
-    /// `Light` and `Dark` were generic names with no family behind them; they
-    /// map to the catalogue's own fallback family. `Nord` and `Solarized` map
-    /// exactly. `HighContrast` is not a family at all — see
-    /// [`Self::wants_high_contrast`].
-    pub fn colony_keys(&self) -> (&'static str, &'static str) {
-        match self {
-            Self::Light => ("gruvbox", "light"),
-            Self::Dark => ("gruvbox", "dark"),
-            Self::Nord => ("nord", "dark"),
-            Self::Solarized => ("solarized", "dark"),
-            Self::HighContrast => ("gruvbox", "dark"),
+impl Default for ThemeChoice {
+    fn default() -> Self {
+        // La famille de repli du catalogue, pour que Xion démarre sur ce que
+        // l'écosystème considère comme son défaut plutôt que sur un goût local.
+        Self {
+            family: "gruvbox".to_string(),
+            variant: "dark".to_string(),
+            high_contrast: false,
+            accent: None,
         }
     }
+}
 
-    /// Whether the palette should be boosted for legibility.
-    ///
-    /// Colony treats high contrast as a modifier applied to any palette, not as
-    /// a theme of its own — which is the better model, and it happens to fix a
-    /// real defect of Xion's hand-written version: there, the header background
-    /// and the list background were both pure black, so the two could only be
-    /// told apart by a border.
-    pub fn wants_high_contrast(&self) -> bool {
-        matches!(self, Self::HighContrast)
-    }
-
-    /// Whether this theme uses a dark palette.
-    ///
-    /// `AppConfig::dark_mode` is derived from the theme, but the test was
-    /// duplicated verbatim in the UI update handlers and nowhere in the config
-    /// loader, so a hand-edited file could carry `theme = "Nord"` with
-    /// `dark_mode = false` and keep a light syntax highlighter on a dark UI.
-    pub fn is_dark(&self) -> bool {
-        matches!(
-            self,
-            Self::Dark | Self::Nord | Self::Solarized | Self::HighContrast
-        )
+impl ThemeChoice {
+    /// Le couple que `colony_ui::resolve` attend.
+    pub fn keys(&self) -> (&str, &str) {
+        (&self.family, &self.variant)
     }
 }
 
@@ -256,7 +242,7 @@ pub struct AppConfig {
     pub paging: PagingConfig,
     pub shortcuts: ShortcutBindings,
     pub dark_mode: bool,
-    pub theme: ThemeConfig,
+    pub theme: ThemeChoice,
     pub tabs: Vec<TabPersistConfig>,
     pub active_tab_index: usize,
     pub terminal_shell: ShellConfig,
@@ -285,8 +271,11 @@ impl Default for AppConfig {
             view: ViewConfig::default(),
             paging: PagingConfig::default(),
             shortcuts: ShortcutBindings::default(),
-            dark_mode: false,
-            theme: ThemeConfig::default(),
+            // Dérivé du thème, jamais saisi à part : les deux ont divergé par
+            // le passé, et un surligneur de syntaxe clair a tourné sur une
+            // interface sombre jusqu'au changement de thème suivant.
+            dark_mode: crate::ui::theme::resolves_dark(&ThemeChoice::default()),
+            theme: ThemeChoice::default(),
             tabs: Vec::new(),
             active_tab_index: 0,
             terminal_shell: ShellConfig::default(),
@@ -328,20 +317,26 @@ pub struct AppConfigLoad {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, ThemeConfig};
+    use super::{AppConfig, ThemeChoice};
 
+    /// Le défaut suit le repli du catalogue Colony plutôt qu'un goût local.
     #[test]
-    fn theme_is_dark_covers_every_variant() {
-        assert!(!ThemeConfig::Light.is_dark());
-        assert!(ThemeConfig::Dark.is_dark());
-        assert!(ThemeConfig::Nord.is_dark());
-        assert!(ThemeConfig::Solarized.is_dark());
-        assert!(ThemeConfig::HighContrast.is_dark());
+    fn the_default_choice_is_the_ecosystem_fallback() {
+        let choice = ThemeChoice::default();
+        assert_eq!(choice.keys(), ("gruvbox", "dark"));
+        assert!(!choice.high_contrast);
+        assert_eq!(choice.accent, None, "« auto » veut dire l'accent du thème");
     }
 
+    /// `dark_mode` est dérivé de la palette résolue, pas saisi à part : les
+    /// deux ont divergé par le passé, et un surligneur de syntaxe clair sur une
+    /// interface sombre a survécu jusqu'au changement de thème suivant.
     #[test]
     fn default_config_keeps_dark_mode_and_theme_in_sync() {
         let config = AppConfig::default();
-        assert_eq!(config.dark_mode, config.theme.is_dark());
+        assert_eq!(
+            config.dark_mode,
+            crate::ui::theme::resolves_dark(&config.theme)
+        );
     }
 }

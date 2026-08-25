@@ -32,7 +32,18 @@ pub(super) struct TabPersistConfigFile {
 pub(super) struct AppConfigFileV1 {
     pub(super) version: Option<u32>,
     pub(super) dark_mode: Option<bool>,
+    /// Ancien nom de thème : `Light`, `Nord`, `HighContrast`… Toujours lu, pour
+    /// migrer les fichiers écrits avant l'adoption du catalogue Colony. Plus
+    /// jamais écrit.
     pub(super) theme: Option<String>,
+    /// Clé de famille du catalogue Colony.
+    pub(super) theme_family: Option<String>,
+    /// Clé de variante dans cette famille.
+    pub(super) theme_variant: Option<String>,
+    /// Rehaussement du contraste, applicable à n'importe quelle palette.
+    pub(super) high_contrast: Option<bool>,
+    /// Accent choisi ; absent signifie « celui du thème ».
+    pub(super) accent: Option<String>,
     pub(super) start_path: Option<PathBuf>,
     pub(super) list: Option<ListConfigFile>,
     pub(super) cache: Option<CacheConfigFile>,

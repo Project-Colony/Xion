@@ -320,7 +320,7 @@ pub enum UiMessage {
     },
     CloseProperties,
     // Feature 4: Color themes
-    SetTheme(crate::core::ThemeConfig),
+    SetTheme(crate::core::ThemeChoice),
     // Feature 5: Bulk rename
     OpenBulkRename,
     BulkRenameFindChanged(String),

@@ -331,7 +331,9 @@ pub fn run(
             // Without this the window carries no `app_id` at all on Wayland
             // (nor WM_CLASS on X11): no icon, no taskbar grouping, and no way
             // to write a window rule for it. It matches the basename of the
-            // `.desktop` file, as the platform expects.
+            // `.desktop` file, as the platform expects. The field only exists
+            // in iced's Linux settings; elsewhere the default below applies.
+            #[cfg(target_os = "linux")]
             platform_specific: iced::window::settings::PlatformSpecific {
                 application_id: "xion".to_string(),
                 ..Default::default()

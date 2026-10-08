@@ -59,7 +59,7 @@ impl std::fmt::Debug for Primary {
     }
 }
 
-/// The name both backends agree on.
-///
-/// A D-Bus well-known name on Linux, part of the pipe name on Windows.
+/// The D-Bus well-known name the Linux backend claims. Windows has no backend
+/// yet (see `platform::windows::claim`), so nothing there reads it.
+#[cfg(not(windows))]
 pub(super) const SERVICE_NAME: &str = "org.xion.Xion";

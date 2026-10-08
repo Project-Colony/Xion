@@ -48,7 +48,7 @@ pub fn shell_open(path: &Path) -> io::Result<()> {
             directory
                 .as_ref()
                 .map_or(std::ptr::null(), |dir| dir.as_ptr()),
-            SW_SHOWNORMAL as i32,
+            SW_SHOWNORMAL,
         )
     };
 

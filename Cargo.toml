@@ -24,7 +24,7 @@ ftp = ["dep:suppaftp"]
 # Le socle partagé de l'écosystème Colony : palettes, chemins de configuration,
 # i18n et widgets. Épinglé sur un tag, comme le fait Colony lui-même — un dépôt
 # qui suit `main` casse le jour où le socle bouge.
-colony-ui = { git = "https://github.com/Project-Colony/Project-Colony-Resources", tag = "v0.1.0" }
+colony-ui = { git = "https://github.com/Project-Colony/Project-Colony-Resources", tag = "v0.1.2" }
 # Le même tampon partagé que celui qu'iced attend pour ses images : garder les
 # octets d'une vignette dans un `Bytes` évite d'en donner une copie au handle.
 bytes = "1"

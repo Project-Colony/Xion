@@ -91,7 +91,7 @@ zip = "7"
 # besoin d'une chaîne d'outils MSVC pour ce morceau. L'unification des features
 # de Cargo applique ce choix à l'arête zip → bzip2.
 bzip2 = { version = "0.5", default-features = false, features = ["libbz2-rs-sys"] }
-pdf-extract = "0.7"
+pdf-extract = "0.12"
 tar = "0.4"
 flate2 = "1"
 sevenz-rust = "0.6"

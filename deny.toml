@@ -9,7 +9,19 @@ targets = [
 [advisories]
 version = 2
 yanked = "deny"
-ignore = []
+# Only "unmaintained" notices with no maintained release to move to and no
+# path from untrusted input. Every vulnerability is fixed by upgrading instead.
+ignore = [
+    # bincode 1, through syntect 5.3 (its latest release). syntect only uses it
+    # to load the syntax and theme dumps compiled into the binary
+    # (`load_defaults_newlines`, `load_defaults`); no file a user opens is ever
+    # deserialised with it.
+    { id = "RUSTSEC-2025-0141", reason = "syntect's embedded dumps only; syntect has no release without bincode" },
+    # ttf-parser, through iced 0.14 (cosmic-text, fontdb). It parses the fonts
+    # bundled in the binary and the system's installed fonts, which Xion does
+    # not choose; it cannot be removed without leaving iced.
+    { id = "RUSTSEC-2026-0192", reason = "iced's font stack; no replacement release" },
+]
 
 [bans]
 multiple-versions = "warn"
@@ -37,10 +49,15 @@ allow = [
     "MPL-2.0",
     "CC0-1.0",
     "BSL-1.0",
-    "OpenSSL",
+    # libbz2-rs-sys, the pure-Rust bzip2 that zip and sevenz-rust2 use. A
+    # permissive BSD-style licence, the one the C libbzip2 has always carried.
+    "bzip2-1.0.6",
 ]
 confidence-threshold = 0.9
 
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+# iced_term is pinned on an upstream revision until a release carries the fixes
+# Xion needs; see the note on it in Cargo.toml.
+allow-git = ["https://github.com/Harzu/iced_term"]

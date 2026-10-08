@@ -35,7 +35,8 @@ pub(super) fn list_tar_gz(path: &std::path::Path) -> Option<Vec<ArchiveEntry>> {
 
 /// List entries inside a `.7z` file.
 pub(super) fn list_7z(path: &std::path::Path) -> Option<Vec<ArchiveEntry>> {
-    let mut archive = sevenz_rust::SevenZReader::open(path, sevenz_rust::Password::empty()).ok()?;
+    let mut archive =
+        sevenz_rust2::ArchiveReader::open(path, sevenz_rust2::Password::empty()).ok()?;
     let mut entries = Vec::new();
     archive
         .for_each_entries(|entry, _reader| {
@@ -191,10 +192,10 @@ pub(super) fn create_7z(
     sources: &[std::path::PathBuf],
     dest: &Path,
 ) -> Result<std::path::PathBuf, String> {
-    use sevenz_rust::SevenZWriter;
+    use sevenz_rust2::ArchiveWriter;
 
     let out_path = dest.to_path_buf();
-    let mut writer = SevenZWriter::create(&out_path).map_err(|e| format!("Création 7z: {e}"))?;
+    let mut writer = ArchiveWriter::create(&out_path).map_err(|e| format!("Création 7z: {e}"))?;
 
     for source in sources {
         let root_name = source
@@ -245,14 +246,14 @@ fn archive_entry_name(root_name: &str, relative: &Path) -> String {
 }
 
 fn push_7z_entry(
-    writer: &mut sevenz_rust::SevenZWriter<std::fs::File>,
+    writer: &mut sevenz_rust2::ArchiveWriter<std::fs::File>,
     path: &Path,
     name: String,
     is_dir: bool,
 ) -> Result<(), String> {
-    use sevenz_rust::SevenZArchiveEntry;
+    use sevenz_rust2::ArchiveEntry;
 
-    let entry = SevenZArchiveEntry::from_path(path, name);
+    let entry = ArchiveEntry::from_path(path, name);
     let reader = if is_dir {
         None
     } else {

@@ -221,10 +221,10 @@ impl XionApp {
         }
 
         // Request image preview
-        if let Some(animated) = &self.media.animated {
-            if animated.path == entry_path {
-                return Task::batch(tasks);
-            }
+        if let Some(animated) = &self.media.animated
+            && animated.path == entry_path
+        {
+            return Task::batch(tasks);
         }
 
         if let Some(preview) = self.media.previews.get(&entry_path) {

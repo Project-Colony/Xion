@@ -48,50 +48,50 @@ impl XionApp {
             UiMessage::FileOperationFinished(operation_id, report) => {
                 self.operation_progress = None;
                 // Record undo action based on pending context
-                if let Some(ctx) = self.pending_undo_context.remove(&operation_id) {
-                    if !report.succeeded.is_empty() {
-                        match ctx {
-                            PendingUndoContext::Copy {
-                                sources,
-                                destination,
-                            } => {
-                                let created: Vec<PathBuf> = sources
-                                    .iter()
-                                    .filter_map(|s| s.file_name().map(|n| destination.join(n)))
-                                    .filter(|p| report.succeeded.contains(p))
-                                    .collect();
-                                if !created.is_empty() {
-                                    self.undo_stack.push(UndoAction::Copy { created });
-                                }
+                if let Some(ctx) = self.pending_undo_context.remove(&operation_id)
+                    && !report.succeeded.is_empty()
+                {
+                    match ctx {
+                        PendingUndoContext::Copy {
+                            sources,
+                            destination,
+                        } => {
+                            let created: Vec<PathBuf> = sources
+                                .iter()
+                                .filter_map(|s| s.file_name().map(|n| destination.join(n)))
+                                .filter(|p| report.succeeded.contains(p))
+                                .collect();
+                            if !created.is_empty() {
+                                self.undo_stack.push(UndoAction::Copy { created });
                             }
-                            PendingUndoContext::Move {
-                                sources,
-                                destination,
-                            } => {
-                                let pairs: Vec<(PathBuf, PathBuf)> = sources
-                                    .iter()
-                                    .filter_map(|s| {
-                                        let dest = s.file_name().map(|n| destination.join(n))?;
-                                        if report.succeeded.contains(&dest) {
-                                            Some((s.clone(), dest))
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .collect();
-                                if !pairs.is_empty() {
-                                    self.undo_stack.push(UndoAction::Move {
-                                        original_paths: pairs,
-                                    });
-                                }
+                        }
+                        PendingUndoContext::Move {
+                            sources,
+                            destination,
+                        } => {
+                            let pairs: Vec<(PathBuf, PathBuf)> = sources
+                                .iter()
+                                .filter_map(|s| {
+                                    let dest = s.file_name().map(|n| destination.join(n))?;
+                                    if report.succeeded.contains(&dest) {
+                                        Some((s.clone(), dest))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+                            if !pairs.is_empty() {
+                                self.undo_stack.push(UndoAction::Move {
+                                    original_paths: pairs,
+                                });
                             }
-                            PendingUndoContext::Rename { old_path } => {
-                                if let Some(new_path) = report.succeeded.first() {
-                                    self.undo_stack.push(UndoAction::Renamed {
-                                        old_path,
-                                        new_path: new_path.clone(),
-                                    });
-                                }
+                        }
+                        PendingUndoContext::Rename { old_path } => {
+                            if let Some(new_path) = report.succeeded.first() {
+                                self.undo_stack.push(UndoAction::Renamed {
+                                    old_path,
+                                    new_path: new_path.clone(),
+                                });
                             }
                         }
                     }

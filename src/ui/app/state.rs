@@ -163,25 +163,24 @@ impl XionApp {
             let _ = self.file_watcher.unwatch(&path);
         }
         self.watched_path = target.clone();
-        if let Some(path) = target {
-            if let Err(error) = self.file_watcher.watch(&path) {
-                // Un dossier qu'on n'a pas le droit de lire ne peut évidemment
-                // pas être surveillé, et l'utilisateur ne peut rien y faire :
-                // `/boot` est en `drwx------ root:root` sur la plupart des
-                // distributions. La liste affiche déjà l'échec de lecture ;
-                // répéter la même chose en bas de fenêtre n'apprend rien.
-                //
-                // Les autres échecs restent signalés — une limite d'inotify
-                // atteinte, elle, se corrige.
-                let refused = matches!(
-                    &error,
-                    crate::core::XionError::Io(io)
-                        if io.kind() == std::io::ErrorKind::PermissionDenied
-                );
-                if !refused {
-                    self.last_action =
-                        Some(format!("Surveillance impossible : {}", path.display()));
-                }
+        if let Some(path) = target
+            && let Err(error) = self.file_watcher.watch(&path)
+        {
+            // Un dossier qu'on n'a pas le droit de lire ne peut évidemment
+            // pas être surveillé, et l'utilisateur ne peut rien y faire :
+            // `/boot` est en `drwx------ root:root` sur la plupart des
+            // distributions. La liste affiche déjà l'échec de lecture ;
+            // répéter la même chose en bas de fenêtre n'apprend rien.
+            //
+            // Les autres échecs restent signalés — une limite d'inotify
+            // atteinte, elle, se corrige.
+            let refused = matches!(
+                &error,
+                crate::core::XionError::Io(io)
+                    if io.kind() == std::io::ErrorKind::PermissionDenied
+            );
+            if !refused {
+                self.last_action = Some(format!("Surveillance impossible : {}", path.display()));
             }
         }
     }
@@ -304,10 +303,10 @@ impl XionApp {
             return None;
         }
         let mut target = PathBuf::from(trimmed);
-        if !target.is_absolute() {
-            if let Some(base_path) = self.state.route.local_path() {
-                target = base_path.join(target);
-            }
+        if !target.is_absolute()
+            && let Some(base_path) = self.state.route.local_path()
+        {
+            target = base_path.join(target);
         }
         Some(target)
     }
@@ -520,10 +519,10 @@ impl XionApp {
                         .recurse_untracked_dirs(false)
                         .include_ignored(false)
                         .include_unmodified(false);
-                    if let Ok(relative) = path.strip_prefix(&root) {
-                        if !relative.as_os_str().is_empty() {
-                            options.pathspec(relative);
-                        }
+                    if let Ok(relative) = path.strip_prefix(&root)
+                        && !relative.as_os_str().is_empty()
+                    {
+                        options.pathspec(relative);
                     }
                     let statuses = repo.statuses(Some(&mut options)).ok()?;
                     let mut map: HashMap<PathBuf, GitFileStatus> = HashMap::new();
@@ -580,10 +579,11 @@ impl XionApp {
     pub(super) fn remember_dir_size(&mut self, path: PathBuf, size: DirSize) {
         const MAX_REMEMBERED: usize = 4096;
 
-        if self.dir_sizes.len() >= MAX_REMEMBERED && !self.dir_sizes.contains_key(&path) {
-            if let Some(victim) = self.dir_sizes.keys().next().cloned() {
-                self.dir_sizes.remove(&victim);
-            }
+        if self.dir_sizes.len() >= MAX_REMEMBERED
+            && !self.dir_sizes.contains_key(&path)
+            && let Some(victim) = self.dir_sizes.keys().next().cloned()
+        {
+            self.dir_sizes.remove(&victim);
         }
         self.dir_sizes.insert(path, size);
     }

@@ -232,10 +232,10 @@ impl XionApp {
     /// garder en vie jusqu'au tour suivant laisse à iced le temps de retirer
     /// cette souscription.
     fn retire_terminal(&mut self, index: usize) {
-        if let Some(tab) = self.terminal.tabs.get_mut(index) {
-            if let Some(terminal) = tab.terminal.take() {
-                self.retired_terminals.0.push(terminal);
-            }
+        if let Some(tab) = self.terminal.tabs.get_mut(index)
+            && let Some(terminal) = tab.terminal.take()
+        {
+            self.retired_terminals.0.push(terminal);
         }
     }
 

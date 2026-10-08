@@ -230,10 +230,10 @@ pub fn generate_pdf_thumbnail(path: &Path, max_size: u32) -> Option<Thumbnail> {
             path.as_os_str().to_os_string(),
             OsString::from("1"), // first page only
         ];
-        if let Some(bytes) = run_capturing_stdout(mutool, &args, EXTERNAL_TOOL_TIMEOUT) {
-            if !bytes.is_empty() {
-                return Some(Thumbnail::new(bytes, Some("image/png".to_string())));
-            }
+        if let Some(bytes) = run_capturing_stdout(mutool, &args, EXTERNAL_TOOL_TIMEOUT)
+            && !bytes.is_empty()
+        {
+            return Some(Thumbnail::new(bytes, Some("image/png".to_string())));
         }
     }
 

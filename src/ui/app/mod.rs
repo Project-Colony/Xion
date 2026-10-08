@@ -305,10 +305,10 @@ pub fn run(
     start_path: Option<PathBuf>,
     primary: crate::platform::single_instance::Primary,
 ) -> iced::Result {
-    if let Some(path) = start_path {
-        if let Ok(mut guard) = CLI_START_PATH.lock() {
-            *guard = Some(path);
-        }
+    if let Some(path) = start_path
+        && let Ok(mut guard) = CLI_START_PATH.lock()
+    {
+        *guard = Some(path);
     }
     if let Ok(mut guard) = PRIMARY_CLAIM.lock() {
         *guard = Some(primary);

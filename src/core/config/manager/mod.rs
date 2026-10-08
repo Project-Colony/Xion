@@ -270,10 +270,10 @@ fn migrate_legacy_config_dir(legacy: &Path, target: &Path) -> bool {
         return false;
     }
 
-    if let Some(parent) = target.parent() {
-        if fs::create_dir_all(parent).is_err() {
-            return false;
-        }
+    if let Some(parent) = target.parent()
+        && fs::create_dir_all(parent).is_err()
+    {
+        return false;
     }
 
     // Un renommage suffit tant que les deux vivent sur le même système de

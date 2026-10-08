@@ -205,17 +205,17 @@ impl SearchService {
 
             output.push(SearchEntry { entry });
 
-            if let Some(dir_path) = dir_path {
-                if let Err(e) = self.index_dir_with_options(
+            if let Some(dir_path) = dir_path
+                && let Err(e) = self.index_dir_with_options(
                     filesystem,
                     &dir_path,
                     options,
                     &resolved_options,
                     output,
                     remaining_depth - 1,
-                ) {
-                    tracing::debug!("Recherche: indexation {:?} échouée: {e}", dir_path);
-                }
+                )
+            {
+                tracing::debug!("Recherche: indexation {:?} échouée: {e}", dir_path);
             }
         }
 
@@ -279,16 +279,16 @@ impl SearchService {
             }
         }
 
-        if let Some(min_size) = query.min_size {
-            if entry.entry.metadata.size < min_size {
-                return false;
-            }
+        if let Some(min_size) = query.min_size
+            && entry.entry.metadata.size < min_size
+        {
+            return false;
         }
 
-        if let Some(max_size) = query.max_size {
-            if entry.entry.metadata.size > max_size {
-                return false;
-            }
+        if let Some(max_size) = query.max_size
+            && entry.entry.metadata.size > max_size
+        {
+            return false;
         }
 
         if query.modified_after.is_some() || query.modified_before.is_some() {
@@ -297,16 +297,16 @@ impl SearchService {
                 None => return false,
             };
 
-            if let Some(after) = query.modified_after {
-                if modified < after {
-                    return false;
-                }
+            if let Some(after) = query.modified_after
+                && modified < after
+            {
+                return false;
             }
 
-            if let Some(before) = query.modified_before {
-                if modified > before {
-                    return false;
-                }
+            if let Some(before) = query.modified_before
+                && modified > before
+            {
+                return false;
             }
         }
 

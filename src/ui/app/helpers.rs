@@ -431,12 +431,13 @@ pub fn command_from_key_press_with_shortcuts(
     }
 
     // Ctrl+L → FocusAddress
-    if input.ctrl && !input.alt && !input.shift {
-        if let KeyKind::Character(c) = &input.key {
-            if c == "l" {
-                return Some(KeyboardCommand::FocusAddress);
-            }
-        }
+    if input.ctrl
+        && !input.alt
+        && !input.shift
+        && let KeyKind::Character(c) = &input.key
+        && c == "l"
+    {
+        return Some(KeyboardCommand::FocusAddress);
     }
 
     // Alt+↑ → GoToParent
@@ -449,12 +450,13 @@ pub fn command_from_key_press_with_shortcuts(
     }
 
     // Ctrl+Z → Undo
-    if input.ctrl && !input.alt && !input.shift {
-        if let KeyKind::Character(c) = &input.key {
-            if c == "z" {
-                return Some(KeyboardCommand::Undo);
-            }
-        }
+    if input.ctrl
+        && !input.alt
+        && !input.shift
+        && let KeyKind::Character(c) = &input.key
+        && c == "z"
+    {
+        return Some(KeyboardCommand::Undo);
     }
 
     // Tab management shortcuts (hardcoded, not user-configurable)
@@ -489,54 +491,57 @@ pub fn command_from_key_press_with_shortcuts(
     }
 
     // Ctrl+D → OpenDiff (when 2 files selected)
-    if input.ctrl && !input.alt && !input.shift {
-        if let KeyKind::Character(c) = &input.key {
-            if c == "d" {
-                return Some(KeyboardCommand::OpenDiff);
-            }
-        }
+    if input.ctrl
+        && !input.alt
+        && !input.shift
+        && let KeyKind::Character(c) = &input.key
+        && c == "d"
+    {
+        return Some(KeyboardCommand::OpenDiff);
     }
 
     // Ctrl+Shift+F → OpenGrep
-    if input.ctrl && !input.alt && input.shift {
-        if let KeyKind::Character(c) = &input.key {
-            if c == "f" {
-                return Some(KeyboardCommand::OpenGrep);
-            }
-        }
+    if input.ctrl
+        && !input.alt
+        && input.shift
+        && let KeyKind::Character(c) = &input.key
+        && c == "f"
+    {
+        return Some(KeyboardCommand::OpenGrep);
     }
 
     // Ctrl+Shift+C → CopyPath
-    if input.ctrl && !input.alt && input.shift {
-        if let KeyKind::Character(c) = &input.key {
-            if c == "c" {
-                return Some(KeyboardCommand::CopyPath);
-            }
-        }
+    if input.ctrl
+        && !input.alt
+        && input.shift
+        && let KeyKind::Character(c) = &input.key
+        && c == "c"
+    {
+        return Some(KeyboardCommand::CopyPath);
     }
 
     // Ctrl+1..9 → GoToBookmark (jump to numbered favorite)
-    if input.ctrl && !input.alt && !input.shift {
-        if let KeyKind::Character(c) = &input.key {
-            if let Some(digit) = c.chars().next().and_then(|ch| ch.to_digit(10)) {
-                if (1..=9).contains(&digit) {
-                    return Some(KeyboardCommand::GoToBookmark(digit as usize - 1));
-                }
-            }
-        }
+    if input.ctrl
+        && !input.alt
+        && !input.shift
+        && let KeyKind::Character(c) = &input.key
+        && let Some(digit) = c.chars().next().and_then(|ch| ch.to_digit(10))
+        && (1..=9).contains(&digit)
+    {
+        return Some(KeyboardCommand::GoToBookmark(digit as usize - 1));
     }
 
     // Quick filter: printable single character, no modifiers
-    if !input.ctrl && !input.alt && !input.shift {
-        if let KeyKind::Character(c) = &input.key {
-            if c.len() == 1
-                && c.chars()
-                    .next()
-                    .is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '.')
-            {
-                return Some(KeyboardCommand::QuickFilterChanged(c.clone()));
-            }
-        }
+    if !input.ctrl
+        && !input.alt
+        && !input.shift
+        && let KeyKind::Character(c) = &input.key
+        && c.len() == 1
+        && c.chars()
+            .next()
+            .is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '.')
+    {
+        return Some(KeyboardCommand::QuickFilterChanged(c.clone()));
     }
 
     // Escape clears quick filter (handled in mod.rs via ClearSelection pattern)

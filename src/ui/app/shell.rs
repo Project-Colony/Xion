@@ -54,13 +54,13 @@ pub(super) fn available_shells() -> Vec<ShellChoice> {
 
     // Bash en second, sauf quand c'est déjà le shell de connexion : deux
     // boutons pour le même programme se lisent comme deux choix.
-    if let Some(bash) = bash_path() {
-        if display_name(&bash) != display_name(&system) {
-            choices.push(ShellChoice {
-                label: display_name(&bash),
-                config: ShellConfig::Bash,
-            });
-        }
+    if let Some(bash) = bash_path()
+        && display_name(&bash) != display_name(&system)
+    {
+        choices.push(ShellChoice {
+            label: display_name(&bash),
+            config: ShellConfig::Bash,
+        });
     }
 
     choices
@@ -254,10 +254,10 @@ fn find_powershell() -> String {
 /// `C:\\Windows\\System32\\bash.exe` — the WSL launcher, not Git Bash — on any
 /// machine with WSL enabled.
 pub(super) fn bash_path() -> Option<String> {
-    if let Ok(env_path) = std::env::var("GIT_BASH") {
-        if std::path::Path::new(&env_path).is_file() {
-            return Some(env_path);
-        }
+    if let Ok(env_path) = std::env::var("GIT_BASH")
+        && std::path::Path::new(&env_path).is_file()
+    {
+        return Some(env_path);
     }
 
     #[cfg(windows)]

@@ -35,20 +35,20 @@ impl XionApp {
             }
             KeyboardCommand::Activate => self.activate_focused_entry(),
             KeyboardCommand::Back => {
-                if self.history.can_back() {
-                    if let Some(path) = self.history.back() {
-                        self.update_active_tab_path(path);
-                        return self.refresh_entries();
-                    }
+                if self.history.can_back()
+                    && let Some(path) = self.history.back()
+                {
+                    self.update_active_tab_path(path);
+                    return self.refresh_entries();
                 }
                 Task::none()
             }
             KeyboardCommand::Forward => {
-                if self.history.can_forward() {
-                    if let Some(path) = self.history.forward() {
-                        self.update_active_tab_path(path);
-                        return self.refresh_entries();
-                    }
+                if self.history.can_forward()
+                    && let Some(path) = self.history.forward()
+                {
+                    self.update_active_tab_path(path);
+                    return self.refresh_entries();
                 }
                 Task::none()
             }
@@ -146,10 +146,10 @@ impl XionApp {
                 iced::widget::operation::focus(iced::widget::Id::new("address_input"))
             }
             KeyboardCommand::GoToParent => {
-                if let Some(path) = self.state.route.local_path().cloned() {
-                    if let Some(parent) = path.parent() {
-                        return self.navigate_to(parent.to_path_buf());
-                    }
+                if let Some(path) = self.state.route.local_path().cloned()
+                    && let Some(parent) = path.parent()
+                {
+                    return self.navigate_to(parent.to_path_buf());
                 }
                 Task::none()
             }

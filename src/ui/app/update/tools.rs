@@ -35,11 +35,11 @@ impl XionApp {
                 tasks.push(self.open_properties(path));
             }
             UiMessage::PropertiesHashComputed { path, hash } => {
-                if let Some(dialog) = &mut self.properties_dialog {
-                    if dialog.path == path {
-                        dialog.sha256 = Some(hash);
-                        dialog.computing_hash = false;
-                    }
+                if let Some(dialog) = &mut self.properties_dialog
+                    && dialog.path == path
+                {
+                    dialog.sha256 = Some(hash);
+                    dialog.computing_hash = false;
                 }
             }
             UiMessage::CloseProperties => {
@@ -191,12 +191,12 @@ impl XionApp {
                 entries,
                 truncated,
             } => {
-                if let Some(pane) = &mut self.dual_pane.pane_b {
-                    if pane.path == path {
-                        pane.entries = entries;
-                        pane.truncated = truncated;
-                        pane.is_loading = false;
-                    }
+                if let Some(pane) = &mut self.dual_pane.pane_b
+                    && pane.path == path
+                {
+                    pane.entries = entries;
+                    pane.truncated = truncated;
+                    pane.is_loading = false;
                 }
             }
             UiMessage::PaneBActivate(path) => {
@@ -457,10 +457,10 @@ impl XionApp {
                                     for name in &common_names {
                                         let ma = std::fs::metadata(a.join(name));
                                         let mb = std::fs::metadata(b.join(name));
-                                        if let (Ok(ma), Ok(mb)) = (ma, mb) {
-                                            if ma.len() != mb.len() {
-                                                different.push((*name).clone());
-                                            }
+                                        if let (Ok(ma), Ok(mb)) = (ma, mb)
+                                            && ma.len() != mb.len()
+                                        {
+                                            different.push((*name).clone());
                                         }
                                     }
                                     (only_a, only_b, different, common)

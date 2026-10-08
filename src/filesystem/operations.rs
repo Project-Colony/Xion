@@ -128,17 +128,17 @@ impl LocalFileOperations {
 
     pub fn rename_item(&self, from: &Path, to: &Path) -> OperationReport {
         let mut report = OperationReport::new(FileOperationKind::Rename);
-        if let Some(name) = to.file_name().and_then(|n| n.to_str()) {
-            if is_reserved_windows_name(name) {
-                report.push_failure(
-                    from.to_path_buf(),
-                    XionError::Io(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!("'{}' is a reserved Windows filename", name),
-                    )),
-                );
-                return report;
-            }
+        if let Some(name) = to.file_name().and_then(|n| n.to_str())
+            && is_reserved_windows_name(name)
+        {
+            report.push_failure(
+                from.to_path_buf(),
+                XionError::Io(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("'{}' is a reserved Windows filename", name),
+                )),
+            );
+            return report;
         }
         match move_entry(from, to) {
             Ok(()) => report.succeeded.push(to.to_path_buf()),

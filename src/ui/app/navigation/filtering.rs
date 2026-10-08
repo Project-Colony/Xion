@@ -50,15 +50,15 @@ impl XionApp {
                 // compare without allocating per entry. The previous code built
                 // a fresh String for every name on every pass, and this runs on
                 // each rebuild and each mouse move during a rubber-band drag.
-                if let Some(ref query) = search_query {
-                    if !contains_lowercased(&entry.name, query) {
-                        return None;
-                    }
+                if let Some(ref query) = search_query
+                    && !contains_lowercased(&entry.name, query)
+                {
+                    return None;
                 }
-                if let Some(ref filter) = quick_filter {
-                    if !contains_lowercased(&entry.name, filter) {
-                        return None;
-                    }
+                if let Some(ref filter) = quick_filter
+                    && !contains_lowercased(&entry.name, filter)
+                {
+                    return None;
                 }
                 Some(index)
             })

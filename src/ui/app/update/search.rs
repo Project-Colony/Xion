@@ -173,59 +173,56 @@ impl XionApp {
             // ── Feature P: NTFS Permissions ───────────────────────────────────
             UiMessage::FullTextSearchSubmit => {
                 let query = self.search.input.clone();
-                if query.len() >= 2 {
-                    if let Some(path) = self.state.route.local_path().cloned() {
-                        let query_display = query.clone();
-                        tasks.push(Task::perform(
-                            async move {
-                                tokio::task::spawn_blocking(move || {
-                                    let mut results = Vec::new();
-                                    let walker =
-                                        ignore::WalkBuilder::new(&path).max_depth(Some(5)).build();
-                                    for entry in walker.flatten() {
-                                        if results.len() >= 100 {
-                                            break;
-                                        }
-                                        let p = entry.path();
-                                        if !p.is_file() {
-                                            continue;
-                                        }
-                                        // Only search text files (< 1MB)
-                                        if let Ok(meta) = p.metadata() {
-                                            if meta.len() > 1_048_576 {
-                                                continue;
+                if query.len() >= 2
+                    && let Some(path) = self.state.route.local_path().cloned()
+                {
+                    let query_display = query.clone();
+                    tasks.push(Task::perform(
+                        async move {
+                            tokio::task::spawn_blocking(move || {
+                                let mut results = Vec::new();
+                                let walker =
+                                    ignore::WalkBuilder::new(&path).max_depth(Some(5)).build();
+                                for entry in walker.flatten() {
+                                    if results.len() >= 100 {
+                                        break;
+                                    }
+                                    let p = entry.path();
+                                    if !p.is_file() {
+                                        continue;
+                                    }
+                                    // Only search text files (< 1MB)
+                                    if let Ok(meta) = p.metadata()
+                                        && meta.len() > 1_048_576
+                                    {
+                                        continue;
+                                    }
+                                    if let Ok(content) = helpers::read_text_capped(
+                                        p,
+                                        helpers::MAX_TEXT_PREVIEW_BYTES,
+                                    ) {
+                                        for (i, line) in content.lines().enumerate() {
+                                            if results.len() >= 100 {
+                                                break;
                                             }
-                                        }
-                                        if let Ok(content) = helpers::read_text_capped(
-                                            p,
-                                            helpers::MAX_TEXT_PREVIEW_BYTES,
-                                        ) {
-                                            for (i, line) in content.lines().enumerate() {
-                                                if results.len() >= 100 {
-                                                    break;
-                                                }
-                                                if line
-                                                    .to_lowercase()
-                                                    .contains(&query.to_lowercase())
-                                                {
-                                                    results.push(crate::ui::GrepResult {
-                                                        path: p.to_path_buf(),
-                                                        line_number: i + 1,
-                                                        line: line.to_string(),
-                                                    });
-                                                }
+                                            if line.to_lowercase().contains(&query.to_lowercase()) {
+                                                results.push(crate::ui::GrepResult {
+                                                    path: p.to_path_buf(),
+                                                    line_number: i + 1,
+                                                    line: line.to_string(),
+                                                });
                                             }
                                         }
                                     }
-                                    results
-                                })
-                                .await
-                                .unwrap_or_default()
-                            },
-                            UiMessage::FullTextSearchResults,
-                        ));
-                        self.last_action = Some(format!("Recherche en cours : '{query_display}'…"));
-                    }
+                                }
+                                results
+                            })
+                            .await
+                            .unwrap_or_default()
+                        },
+                        UiMessage::FullTextSearchResults,
+                    ));
+                    self.last_action = Some(format!("Recherche en cours : '{query_display}'…"));
                 }
             }
             UiMessage::FullTextSearchResults(results) => {

@@ -223,11 +223,10 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
                 validated_view_columns(columns, config.view.columns.clone(), warnings);
         }
     }
-    if let Some(paging) = file.paging {
-        if let Some(page_size) = paging.page_size {
-            config.paging.page_size =
-                validated_page_size(page_size, config.paging.page_size, warnings);
-        }
+    if let Some(paging) = file.paging
+        && let Some(page_size) = paging.page_size
+    {
+        config.paging.page_size = validated_page_size(page_size, config.paging.page_size, warnings);
     }
     if let Some(shortcuts) = file.shortcuts {
         config.shortcuts = merge_shortcuts(shortcuts, config.shortcuts, warnings);
@@ -241,10 +240,10 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
             config.tabs = restored;
         }
     }
-    if let Some(idx) = file.active_tab_index {
-        if !config.tabs.is_empty() {
-            config.active_tab_index = idx.min(config.tabs.len() - 1);
-        }
+    if let Some(idx) = file.active_tab_index
+        && !config.tabs.is_empty()
+    {
+        config.active_tab_index = idx.min(config.tabs.len() - 1);
     }
     if let Some(compact_mode) = file.compact_mode {
         config.compact_mode = compact_mode;

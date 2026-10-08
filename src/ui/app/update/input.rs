@@ -59,30 +59,30 @@ impl XionApp {
                             .insert(resize.column.to_string(), new_width);
                     }
                 }
-                if self.pane_resize.tree_resizing {
-                    if let Some((start_y, start_height)) = self.pane_resize.tree_resize_anchor {
-                        let next_height = start_height + (position.y - start_y);
-                        self.pane_resize.tree_height =
-                            next_height.clamp(TREE_MIN_HEIGHT, TREE_MAX_HEIGHT);
-                        self.scroll.tree_height = self.pane_resize.tree_height.max(1.0);
-                    }
+                if self.pane_resize.tree_resizing
+                    && let Some((start_y, start_height)) = self.pane_resize.tree_resize_anchor
+                {
+                    let next_height = start_height + (position.y - start_y);
+                    self.pane_resize.tree_height =
+                        next_height.clamp(TREE_MIN_HEIGHT, TREE_MAX_HEIGHT);
+                    self.scroll.tree_height = self.pane_resize.tree_height.max(1.0);
                 }
-                if self.pane_resize.terminal_resizing {
-                    if let Some((start_y, start_height)) = self.pane_resize.terminal_resize_anchor {
-                        // La poignée est en haut du panneau : le tirer vers le
-                        // haut l'agrandit, donc la hauteur croît quand y décroît.
-                        let delta = position.y - start_y;
-                        self.pane_resize.terminal_height =
-                            (start_height - delta).clamp(TERMINAL_MIN_HEIGHT, TERMINAL_MAX_HEIGHT);
-                    }
+                if self.pane_resize.terminal_resizing
+                    && let Some((start_y, start_height)) = self.pane_resize.terminal_resize_anchor
+                {
+                    // La poignée est en haut du panneau : le tirer vers le
+                    // haut l'agrandit, donc la hauteur croît quand y décroît.
+                    let delta = position.y - start_y;
+                    self.pane_resize.terminal_height =
+                        (start_height - delta).clamp(TERMINAL_MIN_HEIGHT, TERMINAL_MAX_HEIGHT);
                 }
-                if self.pane_resize.preview_resizing {
-                    if let Some((start_x, start_width)) = self.pane_resize.preview_resize_anchor {
-                        let delta = position.x - start_x;
-                        let next_width =
-                            (start_width - delta).clamp(PREVIEW_MIN_WIDTH, PREVIEW_MAX_WIDTH);
-                        self.pane_resize.preview_width = next_width;
-                    }
+                if self.pane_resize.preview_resizing
+                    && let Some((start_x, start_width)) = self.pane_resize.preview_resize_anchor
+                {
+                    let delta = position.x - start_x;
+                    let next_width =
+                        (start_width - delta).clamp(PREVIEW_MIN_WIDTH, PREVIEW_MAX_WIDTH);
+                    self.pane_resize.preview_width = next_width;
                 }
                 if self.selection_box_start.is_some() && self.drag_candidate.is_none() {
                     self.begin_user_selection();

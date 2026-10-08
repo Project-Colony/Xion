@@ -320,20 +320,19 @@ impl XionApp {
                 self.tab_drag_source = Some(index);
             }
             UiMessage::TabDragOver(target) => {
-                if let Some(source) = self.tab_drag_source {
-                    if source != target
-                        && source < self.tab_manager.tabs.len()
-                        && target < self.tab_manager.tabs.len()
-                    {
-                        self.tab_manager.tabs.swap(source, target);
-                        // Update active index if needed
-                        if self.tab_manager.active == source {
-                            self.tab_manager.active = target;
-                        } else if self.tab_manager.active == target {
-                            self.tab_manager.active = source;
-                        }
-                        self.tab_drag_source = Some(target);
+                if let Some(source) = self.tab_drag_source
+                    && source != target
+                    && source < self.tab_manager.tabs.len()
+                    && target < self.tab_manager.tabs.len()
+                {
+                    self.tab_manager.tabs.swap(source, target);
+                    // Update active index if needed
+                    if self.tab_manager.active == source {
+                        self.tab_manager.active = target;
+                    } else if self.tab_manager.active == target {
+                        self.tab_manager.active = source;
                     }
+                    self.tab_drag_source = Some(target);
                 }
             }
             UiMessage::TabDragDrop => {

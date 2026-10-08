@@ -78,7 +78,7 @@ impl XionApp {
 
                     match kind {
                         ArchiveType::SevenZ => {
-                            // 7Z: inline because sevenz-rust has no single-entry extract.
+                            // 7Z: inline because sevenz-rust2 has no single-entry extract.
                             // The guard here used to be `inner_path.contains("..")`
                             // alone, which let an ABSOLUTE entry name through:
                             // `dest_dir.join("C:\\Windows\\...")` discards the base and
@@ -88,9 +88,9 @@ impl XionApp {
                             archive::create_parent_within(&dest_dir, &out_path)?;
                             archive::ensure_absent(&out_path)?;
                             let mut found = false;
-                            let mut arch = sevenz_rust::SevenZReader::open(
+                            let mut arch = sevenz_rust2::ArchiveReader::open(
                                 &archive,
-                                sevenz_rust::Password::empty(),
+                                sevenz_rust2::Password::empty(),
                             )
                             .map_err(|e| e.to_string())?;
                             arch.for_each_entries(|entry, reader| {

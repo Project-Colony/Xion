@@ -115,11 +115,11 @@ impl XionApp {
 
     pub(in crate::ui::app) fn copy_selection_path(&mut self) {
         let selection = &self.state.navigation.selection;
-        if selection.selected.len() == 1 {
-            if let Some(path) = selection.selected.iter().next() {
-                self.last_action = Some(format!("Chemin copié : {}", path.display()));
-                return;
-            }
+        if selection.selected.len() == 1
+            && let Some(path) = selection.selected.iter().next()
+        {
+            self.last_action = Some(format!("Chemin copié : {}", path.display()));
+            return;
         }
         self.last_action = Some("Sélectionnez un élément pour copier le chemin".to_string());
     }

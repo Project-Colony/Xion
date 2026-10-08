@@ -2,7 +2,7 @@
 name = "xion"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 authors = ["Xion Contributors"]
 description = "A modern, performant file explorer written in Rust"
 repository = "https://github.com/Project-Colony/Xion"
@@ -21,19 +21,18 @@ test-util = []
 ftp = ["dep:suppaftp"]
 
 [dependencies]
-# Le socle partagé de l'écosystème Colony : palettes, chemins de configuration,
-# i18n et widgets. Épinglé sur un tag, comme le fait Colony lui-même — un dépôt
-# qui suit `main` casse le jour où le socle bouge.
-colony-ui = { git = "https://github.com/Project-Colony/Project-Colony-Resources", tag = "v0.1.0" }
+# The shared Colony foundation: palettes, configuration paths, i18n and
+# widgets. Taken from crates.io, as Colony itself does.
+colony-ui = "0.1.5"
 # Le même tampon partagé que celui qu'iced attend pour ses images : garder les
 # octets d'une vignette dans un `Bytes` évite d'en donner une copie au handle.
-bytes = "1"
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-directories = "6.0"
+bytes = "1.12.1"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+directories = "6.0.0"
 # `image-without-codecs` rather than `image`: the latter turns on image's own
 # default feature set, which re-enabled every codec the line below deliberately
 # refuses (exr, avif, qoi...). They were compiled and linked regardless.
-iced = { version = "0.14", features = ["image-without-codecs", "wgpu", "tokio"] }
+iced = { version = "0.14.0", features = ["image-without-codecs", "wgpu", "tokio"] }
 # Uniquement pour demander à wgpu s'il trouve un adaptateur Vulkan, avant de le
 # restreindre à Vulkan — voir `prefer_vulkan_when_available` dans main.rs. Mêmes
 # version et mêmes features que ce qu'iced_wgpu déclare, donc la caisse déjà
@@ -62,57 +61,53 @@ wgpu = { version = "27", default-features = false, features = ["std"] }
 # #69 (interblocage sur l'envoi d'événements) et #89 (Ctrl+U envoyait « Q »).
 #
 # À repasser sur une version publiée dès qu'elle sort.
-iced_term = { git = "https://github.com/Harzu/iced_term", rev = "1df60bb08a6a0ffcf3dfc1a74ee568947fc48cb8" }
-tokio = { version = "1", features = ["rt", "time", "sync", "process", "io-util"] }
+iced_term = { git = "https://github.com/Harzu/iced_term", rev = "1df60bb08a6a0ffcf3dfc1a74ee568947fc48cb8", version = "0.8.0" }
+tokio = { version = "1.53.2", features = ["rt", "time", "sync", "process", "io-util"] }
 # No "tiff": it was the only thing pulling tiff -> zune-jpeg 0.4, a SECOND
 # complete JPEG decoder alongside the zune-jpeg 0.5 that image itself uses.
-image = { version = "0.25", default-features = false, features = [
+image = { version = "0.25.10", default-features = false, features = [
     "bmp",
     "gif",
     "jpeg",
     "png",
     "webp",
 ] }
-notify = "8"
-serde = { version = "1.0", features = ["derive"] }
-sysinfo = "0.39"
-toml = "1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-trash = "5"
-sha2 = "0.11"
-syntect = { version = "5", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
-git2 = { version = "0.21", default-features = false }
-walkdir = "2"
-zip = "7"
-# `zip` tire bzip2 pour les archives compressées ainsi ; par défaut celui-ci
-# compile la bibliothèque C. Le backend Rust pur enlève la seule dépendance C
-# de la chaîne d'archives, donc une compilation croisée vers Windows n'a plus
-# besoin d'une chaîne d'outils MSVC pour ce morceau. L'unification des features
-# de Cargo applique ce choix à l'arête zip → bzip2.
-bzip2 = { version = "0.5", default-features = false, features = ["libbz2-rs-sys"] }
-pdf-extract = "0.7"
-tar = "0.4"
-flate2 = "1"
-sevenz-rust = "0.6"
-ignore = "0.4"
-encoding_rs = "0.8"
+notify = "8.2.0"
+serde = { version = "1.0.229", features = ["derive"] }
+sysinfo = "0.39.6"
+toml = "1.1.7"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+trash = "5.2.9"
+sha2 = "0.11.0"
+syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
+git2 = { version = "0.21.0", default-features = false }
+walkdir = "2.5.0"
+zip = "8.6.0"
+pdf-extract = "0.12.1"
+tar = "0.4.46"
+flate2 = "1.1.10"
+# The maintained fork of sevenz-rust, which is unmaintained (RUSTSEC-2026-0246).
+# No "aes256": Xion opens archives without a password.
+sevenz-rust2 = { version = "0.23.0", default-features = false, features = ["bzip2", "compress", "ppmd"] }
+ignore = "0.4.33"
+encoding_rs = "0.8.42"
 # Optional, and off by default. `list_ftp_directory` has no caller anywhere in
 # src/ui/: nothing in the interface can reach it. Enabling it by default cost
 # twelve crates including the whole openssl chain — and a build dependency on
 # the system OpenSSL — for code that never runs. Turn it back on with
 # `--features ftp` once there is a command that calls it.
-suppaftp = { version = "6", features = ["native-tls"], optional = true }
-mdns-sd = "0.11"
+suppaftp = { version = "12.1.1", features = ["native-tls"], optional = true }
+mdns-sd = "0.21.5"
 
 # Déjà compilé dans le binaire — iced le tire via mundy, qui lit les réglages
 # d'apparence du bureau. L'instance unique ne coûte donc aucune dépendance
 # supplémentaire, seulement la version sur laquelle Cargo s'accorde déjà.
 [target.'cfg(unix)'.dependencies]
-zbus = "5"
+zbus = "5.19.0"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = [
+windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_NetworkManagement_WNet",
     "Win32_Storage_FileSystem",
@@ -125,7 +120,7 @@ windows-sys = { version = "0.61", features = [
 [dev-dependencies]
 # Tests must never touch the user's real config directory or home; every test
 # that needs a filesystem gets a tempdir that cleans itself up.
-tempfile = "3"
+tempfile = "3.27.0"
 # A package may dev-depend on itself: this is what turns `test-util` on for
 # tests/ without ever enabling it for the shipped binary.
 xion = { path = ".", features = ["test-util"] }
@@ -135,7 +130,7 @@ xion = { path = ".", features = ["test-util"] }
 # the crate unavailable exactly when cross-compiling Linux -> Windows. build.rs
 # gates the call itself on CARGO_CFG_TARGET_OS instead.
 [build-dependencies]
-embed-resource = "3"
+embed-resource = "3.0.12"
 
 [profile.release]
 lto = true

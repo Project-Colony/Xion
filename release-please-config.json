@@ -47,6 +47,6 @@
       ]
     }
   },
-  "separate-pull-requests": false,
+  "bootstrap-sha": "cffa90a9504dd57c14a712775684ff1d5cae8d34",
   "pull-request-header": "The next release, assembled from the commits since the last one. Merging this tags it, and the tag is what builds and publishes."
 }

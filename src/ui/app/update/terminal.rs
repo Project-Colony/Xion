@@ -471,6 +471,9 @@ mod tests {
 
     /// Et ce nom doit exister dans la base du système, sans quoi le shell
     /// cherche des capacités introuvables — pire que de ne rien annoncer.
+    ///
+    /// Unix only: Windows has no terminfo database, ConPTY does the translating.
+    #[cfg(not(windows))]
     #[test]
     fn the_announced_terminfo_entry_exists_on_this_machine() {
         let name = super::terminfo_name();

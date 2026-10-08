@@ -559,6 +559,23 @@ mod tests {
         fs::write(path, contents).expect("write file");
     }
 
+    /// Hides `path` the way its platform does. On Unix the leading dot already
+    /// does; Windows ignores the dot and reads the hidden attribute, which Git
+    /// for Windows sets on `.git` itself.
+    fn hide(path: &Path) {
+        #[cfg(windows)]
+        assert!(
+            std::process::Command::new(crate::platform::system_binary("attrib.exe"))
+                .arg("+h")
+                .arg(path)
+                .status()
+                .expect("run attrib")
+                .success()
+        );
+        #[cfg(not(windows))]
+        let _ = path;
+    }
+
     #[test]
     fn list_dir_filters_and_sorts() {
         let root = create_temp_dir();
@@ -567,6 +584,7 @@ mod tests {
         write_file(&root.join("alpha.txt"), "alpha");
         write_file(&root.join("beta.log"), "beta");
         write_file(&root.join(".hidden"), "hidden");
+        hide(&root.join(".hidden"));
 
         let fs = LocalFileSystem::new();
         let entries = fs
@@ -629,6 +647,7 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let repo = root.path();
         fs::create_dir_all(repo.join(".git").join("info")).expect("create .git/info");
+        hide(&repo.join(".git"));
         fs::write(
             repo.join(".git").join("info").join("exclude"),
             "secret.txt\n",
@@ -692,6 +711,7 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let repo = root.path();
         fs::create_dir_all(repo.join(".git")).expect("create .git");
+        hide(&repo.join(".git"));
         fs::write(repo.join(".gitignore"), "*.log\n").expect("write .gitignore");
         write_file(&repo.join("debug.log"), "noise");
 
@@ -703,7 +723,13 @@ mod tests {
             .map(|entry| entry.name.clone())
             .collect();
 
-        assert_eq!(names, vec!["debug.log"]);
+        // Windows shows `.gitignore`, as Explorer does: only the attribute hides.
+        let expected = if cfg!(windows) {
+            vec![".gitignore", "debug.log"]
+        } else {
+            vec!["debug.log"]
+        };
+        assert_eq!(names, expected);
     }
 
     #[test]

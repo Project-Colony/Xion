@@ -10,6 +10,8 @@ pub use credentials::*;
 pub use ftp::*;
 pub use mdns::*;
 use net_view::*;
+#[cfg(windows)]
+use wnet::*;
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};

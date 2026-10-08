@@ -3,6 +3,9 @@
 //! All the `unsafe` in this service lives here, each block with its own
 //! SAFETY note.
 
+#[cfg(windows)]
+use super::{NetworkResource, NetworkStatus};
+
 // ── WinAPI discovery (WNetEnumResource) ─────────────────────────────────────
 
 /// Entries the first `WNetEnumResourceW` buffer can hold. The API packs the

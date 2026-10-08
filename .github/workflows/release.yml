@@ -91,10 +91,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libxkbcommon-dev pkg-config
 
-      # Colony derives the asset name from the repository name, lowercased —
-      # `<repo>-linux` and `<repo>-windows.exe` — not from the binary name. Here
-      # the two differ: the binary is `xion`, the repository is `Xion-Private`,
-      # so the assets are `xion-private-linux` and `xion-private-windows.exe`.
+      # Colony derives the asset name from the repository name, lowercased:
+      # `<repo>-linux` and `<repo>-windows.exe`, not from the binary name. For
+      # Project-Colony/Xion that gives `xion-linux` and `xion-windows.exe`.
       #
       # Computed from $GITHUB_REPOSITORY rather than written out, so renaming or
       # publishing the repository under another name moves the asset names with

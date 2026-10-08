@@ -7,9 +7,6 @@ Dolphin.
 
 ## Règles persistantes
 
-Elles sont énoncées ici et **suivies** dans `tasks/tasks.md`, qui indique pour
-chacune si elle est tenue et par quel mécanisme.
-
 - Rust édition 2024.
 - Dépendances, `Cargo.toml` et `Cargo.lock` maintenus à jour.
 - Projet léger en RAM et en CPU, et réactif.
@@ -116,14 +113,11 @@ qui fait foi.
 - `docs/config.md` : chemins de configuration, format TOML complet, migration
   (dossier et thème), validation, raccourcis.
 - `docs/search.md` : indexation, filtres, intégration UI asynchrone.
-- `tasks/roadmap.md` : source unique de l'état d'avancement.
-- `tasks/tasks.md` : obligations permanentes et suivi documentaire.
-- `AUDIT.txt` : items d'audit avec leurs preuves.
 
 ## Écarts à la convention de l'écosystème
 
 `design/documentation.md` de Project-Colony-Resources fixe la disposition des
-dépôts Colony. Xion s'en écarte sur quatre points, tous connus et aucun corrigé
+dépôts Colony. Xion s'en écarte sur deux points, tous connus et aucun corrigé
 à ce jour, parce que chacun demande une décision plutôt qu'une correction :
 
 1. **La documentation est en français.** La convention veut l'anglais pour le
@@ -133,12 +127,6 @@ dépôts Colony. Xion s'en écarte sur quatre points, tous connus et aucun corri
 2. **`docs/` n'est pas trié par lecteur.** La convention demande `guide/`,
    `internals/` et `project/`, plus un `docs/README.md` en index. Xion a cinq
    pages à plat, triées par sujet.
-3. **`tasks/` et `AUDIT.txt` n'existent pas dans la convention.**
-   `tasks/roadmap.md` correspond à `docs/project/status.md`, et `AUDIT.txt`
-   devrait être un `.md` sous `docs/project/`, en kebab-case minuscule.
-4. **`docs/superpowers/specs/2026-08-25-*.md`** porte une date dans son nom, ce
-   que la convention interdit explicitement : un nom qui dit *quand* le fichier
-   a été écrit cesse d'être utile à l'instant où il l'est.
 
 Le `README.md` s'écarte aussi du gabarit : ni bloc d'en-tête centré, ni badges,
 ni section `## Installation`. Il a en revanche reçu son bloc **Status**, que la

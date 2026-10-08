@@ -103,7 +103,7 @@ encoding_rs = "0.8"
 # the system OpenSSL — for code that never runs. Turn it back on with
 # `--features ftp` once there is a command that calls it.
 suppaftp = { version = "6", features = ["native-tls"], optional = true }
-mdns-sd = "0.11"
+mdns-sd = "0.20"
 
 # Déjà compilé dans le binaire — iced le tire via mundy, qui lit les réglages
 # d'apparence du bureau. L'instance unique ne coûte donc aucune dépendance

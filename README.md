@@ -58,13 +58,10 @@ chmod +x xion-linux && ./xion-linux
 ### Build from source
 
 The Rust toolchain is pinned in `rust-toolchain.toml`; rustup installs it on the
-first build. On Debian or Ubuntu, install the system libraries first:
-
-```sh
-sudo apt-get install libgtk-3-dev libxkbcommon-dev pkg-config
-```
-
-Then:
+first build. Beyond it, the build only needs a C compiler (`build-essential` on
+Debian or Ubuntu) for the bundled C code of libgit2, zlib and zstd. The
+windowing libraries are loaded at run time, so no development package is
+required.
 
 ```sh
 git clone https://github.com/Project-Colony/Xion.git

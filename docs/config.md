@@ -62,9 +62,11 @@ silently lose it. It follows rule FS-7 of Project-Colony-Resources
 (`design/filesystem.md`):
 
 1. Every file is copied (and synced) into a temporary sibling of the target,
-   `Colony/Xion.migrating-<pid>`. Only once **every** file made it is that
-   directory renamed to `Colony/Xion`, so a half-copied profile is never picked
-   up.
+   `Colony/Xion.migrating`. Only once **every** file made it is that directory
+   renamed to `Colony/Xion`, so a half-copied profile is never picked up. A
+   `Colony/Xion.migrating` older than a minute was left by a start that
+   crashed and is replaced; a younger one may be another start copying at the
+   same moment, so it is left alone and this run uses the old directory.
 2. A `.migrated` marker is then written into the old directory. Later starts see
    it and skip the migration.
 3. The old directory is **never moved or deleted** in this release. If the
@@ -76,6 +78,13 @@ silently lose it. It follows rule FS-7 of Project-Colony-Resources
    user keeps their profile instead of getting an empty one. The next start
    tries again.
 
+On Windows and macOS the data directory is the same folder as the
+configuration (see the session file below), so a run that fell back to the old
+directory still creates `Colony/Xion` to save `session.toml` there. That is why
+only a `config.toml` counts as a configuration already in place: the next
+successful copy moves its files into the existing folder one by one,
+`config.toml` last, and keeps `session.toml`.
+
 The copy only handles **files**. A sub-directory counts as a failure rather
 than something to skip: Xion creates none (`config.toml`, its `.bak` and the
 `.corrupt-*` files are all flat), so one is unexpected, and skipping it while
@@ -85,8 +94,8 @@ copied as the file they point to.
 The migration does nothing when:
 
 - the marker is present;
-- the destination already exists: a newer configuration never loses to an older
-  one left behind;
+- the destination already holds a `config.toml`: a newer configuration never
+  loses to an older one left behind;
 - the old directory is absent, which is the case of every fresh install;
 - the old and new paths are the same.
 
@@ -94,7 +103,14 @@ Tests: `a_pre_colony_configuration_is_copied_with_its_backup`,
 `a_second_start_does_not_migrate_again`, `an_existing_colony_configuration_wins`,
 `a_sub_directory_fails_the_copy_and_keeps_the_old_profile`,
 `an_unreadable_file_fails_the_copy_and_keeps_the_old_profile`,
+`a_folder_holding_only_the_session_is_not_a_migrated_profile`,
+`a_recent_staging_folder_is_left_to_its_owner`,
+`a_staging_folder_left_by_a_crash_is_replaced`,
 `a_fresh_installation_migrates_nothing` (`manager/mod.rs`).
+
+`ConfigManager::new()` runs this migration against the real home directory, so
+tests build their manager with `ConfigManager::with_path` on a temporary
+directory instead.
 
 ### Quand le chemin ne peut pas être calculé
 
@@ -416,18 +432,18 @@ elle est prise telle quelle comme `ShellConfig::Custom`
 (`src/ui/app/navigation/buffers.rs`) avant de relister le dossier
 (`src/ui/app/update/navigation.rs`). Le fichier est donc relu sans redémarrage.
 
-L'écriture est déclenchée par les actions qui modifient un réglage (thème, mode
-compact, favoris, shell…). The tabs go to `session.toml` instead.
-`ConfigManager::save` sérialise l'intégralité de `AppConfigFileV1` et remplace le fichier. Deux conséquences à
-connaître :
+The file is written by the actions that change a setting (theme, compact mode,
+favourites, shell, sort order, view mode...). The open tabs go to
+`session.toml` instead. `ConfigManager::save` serialises the whole
+`AppConfigFileV1` and replaces the file. Two consequences:
 
-- **Les commentaires d'un fichier édité à la main sont perdus** au premier
-  changement de réglage. Le fichier est réécrit en entier, pas fusionné.
-- L'écriture est **atomique** : `write_atomic` écrit dans un fichier temporaire
-  voisin (`.tmp-<pid>`, dans le même dossier pour que `rename` reste atomique),
-  le `sync_all`, copie l'ancien fichier en `.bak`, puis renomme. Une coupure
-  pendant la sauvegarde ne laisse donc pas de configuration tronquée.
-  Tests : `save_is_atomic_and_leaves_no_temporary_file`,
+- **Comments in a hand-edited file are lost** at the first setting change. The
+  file is rewritten as a whole, not merged.
+- The write is **atomic**: `write_atomic` writes a temporary sibling file
+  (`.tmp-<pid>`, in the same directory so that `rename` stays atomic), calls
+  `sync_all` on it, copies the previous file to `.bak`, then renames. A power
+  cut during the save never leaves a truncated configuration.
+  Tests: `save_is_atomic_and_leaves_no_temporary_file`,
   `save_keeps_the_previous_version_as_backup`.
 
 ## Récupération d'un fichier illisible
@@ -445,16 +461,16 @@ remonte le tout en avertissements. Test :
 - [x] Validation des champs avec avertissements — constantes `MIN_*`/`MAX_*` et
       fonctions `validated_*`, appelées depuis `merge_from_v1`.
 - [x] Rechargement à chaud — `src/ui/app/navigation/buffers.rs`.
-- [x] Persistance du thème, du shell et des favoris : `config_to_file`.
-- [x] Restored tabs kept in `session.toml` under the data directory -
+- [x] Theme, shell and favourites saved: `config_to_file`.
+- [x] Restored tabs kept in `session.toml` under the data directory:
       `SessionStore`.
-- [x] Emplacement aligné sur `<racine>/Colony/Xion/`, with the old directory
-      copied, marked and kept - `migrate_legacy_config_dir`.
+- [x] Location aligned on `<root>/Colony/Xion/`, with the old directory copied,
+      marked and kept: `migrate_legacy_config_dir`.
 - [x] Thème choisi dans le catalogue partagé `colony-ui` (famille, variante,
       contraste élevé, accent) — `ThemeChoice`, `src/core/config/types.rs`.
-- [x] Tests de la migration, de la validation, de l'écriture atomique et de la
-      récupération : 17 tests unitaires dans `manager/mod.rs` (count of
-      2026-10-09; `grep -c '#\[test\]' src/core/config/manager/mod.rs`).
+- [x] Tests for the migration, validation, atomic write and recovery: 20 unit
+      tests in `manager/mod.rs` (count of 2026-10-09;
+      `grep -c '#\[test\]' src/core/config/manager/mod.rs`).
 - [ ] Affichage du chemin de configuration résolu dans l'interface.
 - [ ] Remplacement du repli relatif `config.toml` par un chemin absolu sûr.
 - [ ] Éditeur de configuration intégré à l'interface.

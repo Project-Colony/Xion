@@ -52,6 +52,10 @@ impl Default for ConfigManager {
 
 impl ConfigManager {
     /// Creates a new configuration manager with the default config path.
+    ///
+    /// Computing that path runs the one-time copy of the pre-Colony folder
+    /// (`migrate_legacy_config_dir`) against the real home directory, so tests
+    /// use [`Self::with_path`] instead.
     pub fn new() -> Self {
         Self::with_path(default_config_path())
     }
@@ -259,12 +263,12 @@ fn default_config_path() -> PathBuf {
     // vivraient ne doit pas faire exister le dossier ». `save` crée son parent
     // lui-même, donc personne n'a besoin de le devancer.
     let Ok(dir) = colony_ui::paths::locate::config_dir(COLONY_PROGRAM) else {
-        return PathBuf::from("config.toml");
+        return PathBuf::from(CONFIG_FILE);
     };
 
     match legacy_config_dir() {
-        Some(legacy) => migrate_legacy_config_dir(&legacy, &dir).join("config.toml"),
-        None => dir.join("config.toml"),
+        Some(legacy) => migrate_legacy_config_dir(&legacy, &dir).join(CONFIG_FILE),
+        None => dir.join(CONFIG_FILE),
     }
 }
 
@@ -289,6 +293,8 @@ fn legacy_config_dir() -> Option<PathBuf> {
 /// old directory is safe to remove.
 const MIGRATED_MARKER: &str = ".migrated";
 
+const CONFIG_FILE: &str = "config.toml";
+
 /// Copies a pre-Colony configuration to its Colony location and returns the
 /// directory to use for this run.
 ///
@@ -303,25 +309,40 @@ const MIGRATED_MARKER: &str = ".migrated";
 /// file made it, so a half-copied profile is never picked up.
 ///
 /// Returns `target` when there is nothing to do: the marker is present, the
-/// target already exists (a newer configuration never loses to an older one),
-/// or there is no legacy directory, which is the case of every fresh install.
-/// Returns `legacy` when the copy failed, so the user keeps their profile for
-/// this run instead of getting an empty one; the next start tries again.
+/// target already holds a `config.toml` (a newer configuration never loses to
+/// an older one), or there is no legacy directory, which is the case of every
+/// fresh install. Returns `legacy` when the copy failed, so the user keeps their
+/// profile for this run instead of getting an empty one; the next start tries
+/// again.
 fn migrate_legacy_config_dir<'a>(legacy: &'a Path, target: &'a Path) -> &'a Path {
+    // `config.toml`, not the folder itself: on Windows and macOS the data
+    // directory is this same folder, so a run that fell back to `legacy` still
+    // creates it to save `session.toml`. Taking that folder for a migrated
+    // profile would skip the migration for good and start on defaults.
     if legacy == target
-        || target.exists()
+        || target.join(CONFIG_FILE).exists()
         || !legacy.is_dir()
         || legacy.join(MIGRATED_MARKER).exists()
     {
         return target;
     }
 
-    let staging = sibling_path(target, &format!(".migrating-{}", std::process::id()));
-    let copied = target
+    let staging = sibling_path(target, ".migrating");
+    let claimed = target
         .parent()
         .map_or(Ok(()), fs::create_dir_all)
-        .and_then(|()| copy_flat_directory(legacy, &staging))
-        .and_then(|()| fs::rename(&staging, target));
+        .and_then(|()| claim_staging(&staging));
+    if let Err(error) = claimed {
+        // The staging folder may belong to another start: leave it alone.
+        tracing::warn!(
+            "Config: cannot prepare {}, using the old location for now: {error}",
+            staging.display()
+        );
+        return legacy;
+    }
+
+    let copied =
+        copy_flat_directory(legacy, &staging).and_then(|()| publish_staging(&staging, target));
     if let Err(error) = copied {
         tracing::warn!(
             "Config: copy of {} to {} failed, using the old location for now: {error}",
@@ -336,8 +357,9 @@ fn migrate_legacy_config_dir<'a>(legacy: &'a Path, target: &'a Path) -> &'a Path
         return legacy;
     }
 
-    // `target` now exists, which already stops the next start from migrating
-    // again: a missing marker costs nothing but the hint for a later release.
+    // `target` now holds `config.toml`, which already stops the next start
+    // from migrating again: a missing marker costs nothing but the hint for a
+    // later release.
     if let Err(error) = fs::write(
         legacy.join(MIGRATED_MARKER),
         format!("Copied to {}\n", target.display()),
@@ -347,7 +369,53 @@ fn migrate_legacy_config_dir<'a>(legacy: &'a Path, target: &'a Path) -> &'a Path
     target
 }
 
-/// Copies every file of `source` into the new directory `destination`.
+/// A staging folder older than this was left by a start that crashed, and is
+/// removed. A younger one may belong to another Xion starting at the same
+/// moment: removing it could publish that start's half-done copy.
+const STALE_STAGING: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Creates the staging folder, replacing one a crashed start left behind.
+///
+/// The name is fixed, so a leftover is found again rather than piling up in the
+/// shared `Colony/` folder. `create_dir` fails when the folder exists, which is
+/// what keeps two starts from copying into the same one.
+fn claim_staging(staging: &Path) -> std::io::Result<()> {
+    match fs::create_dir(staging) {
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let stale = fs::metadata(staging)
+                .and_then(|metadata| metadata.modified())
+                .ok()
+                .and_then(|modified| modified.elapsed().ok())
+                .is_some_and(|age| age > STALE_STAGING);
+            if !stale {
+                return Err(error);
+            }
+            fs::remove_dir_all(staging)?;
+            fs::create_dir(staging)
+        }
+        result => result,
+    }
+}
+
+/// Puts the complete copy in `staging` at `target`.
+fn publish_staging(staging: &Path, target: &Path) -> std::io::Result<()> {
+    if !target.exists() {
+        return fs::rename(staging, target);
+    }
+    // `target` exists without a `config.toml` (see `migrate_legacy_config_dir`):
+    // its files stay, and the copies are moved in one by one. `config.toml`
+    // goes last, since it is what tells a later start the migration is done.
+    let mut names = fs::read_dir(staging)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    names.sort_by_key(|name| name.as_os_str() == CONFIG_FILE);
+    for name in &names {
+        fs::rename(staging.join(name), target.join(name))?;
+    }
+    fs::remove_dir(staging)
+}
+
+/// Copies every file of `source` into the empty directory `destination`.
 ///
 /// Only knows files, so a sub-directory is an error rather than something to
 /// skip: skipping it while reporting success is how an earlier version deleted
@@ -357,7 +425,6 @@ fn migrate_legacy_config_dir<'a>(legacy: &'a Path, target: &'a Path) -> &'a Path
 /// place next, and a power cut must not leave a published profile of empty
 /// files.
 fn copy_flat_directory(source: &Path, destination: &Path) -> std::io::Result<()> {
-    fs::create_dir(destination)?;
     for entry in fs::read_dir(source)? {
         let entry = entry?;
         // `metadata` follows symlinks: a config file linked in by a dotfile
@@ -584,6 +651,83 @@ mod tests {
         assert_failed_copy_falls_back(&legacy, &target);
     }
 
+    /// On Windows and macOS the data directory is the Colony config folder
+    /// itself, so a run that fell back to the old location still creates that
+    /// folder to save `session.toml`. The folder alone must not pass for a
+    /// migrated profile, or every later start would open on defaults.
+    #[test]
+    fn a_folder_holding_only_the_session_is_not_a_migrated_profile() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (legacy, target) = legacy_and_target(root.path());
+        let blocker = legacy.join("sous-dossier");
+        fs::create_dir_all(&blocker).unwrap();
+        assert_failed_copy_falls_back(&legacy, &target);
+
+        // What that run saved, where the data directory is off Linux.
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("session.toml"), "active_tab_index = 0\n").unwrap();
+
+        assert_eq!(
+            super::migrate_legacy_config_dir(&legacy, &target),
+            legacy,
+            "the copy still fails, so the old profile is still the one used"
+        );
+        assert!(!target.join("config.toml").exists());
+
+        fs::remove_dir(&blocker).unwrap();
+        assert_eq!(super::migrate_legacy_config_dir(&legacy, &target), target);
+        assert_eq!(
+            fs::read_to_string(target.join("config.toml")).unwrap(),
+            "theme = \"Nord\""
+        );
+        assert!(target.join("config.toml.bak").exists());
+        assert!(
+            target.join("session.toml").exists(),
+            "the session saved meanwhile is kept"
+        );
+        assert!(legacy.join(MIGRATED_MARKER).exists());
+        assert!(!sibling_path(&target, ".migrating").exists());
+    }
+
+    /// A staging folder this recent may be another start copying right now:
+    /// it is left alone, and this run keeps the old profile.
+    #[test]
+    fn a_recent_staging_folder_is_left_to_its_owner() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (legacy, target) = legacy_and_target(root.path());
+        let staging = sibling_path(&target, ".migrating");
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(staging.join("config.toml"), "partial").unwrap();
+
+        assert_eq!(super::migrate_legacy_config_dir(&legacy, &target), legacy);
+        assert!(staging.join("config.toml").exists());
+        assert!(!target.exists());
+        assert!(!legacy.join(MIGRATED_MARKER).exists());
+    }
+
+    /// A staging folder left by a start that crashed is replaced, so it does
+    /// not stay in the shared `Colony/` folder forever.
+    #[cfg(unix)]
+    #[test]
+    fn a_staging_folder_left_by_a_crash_is_replaced() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (legacy, target) = legacy_and_target(root.path());
+        let staging = sibling_path(&target, ".migrating");
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(staging.join("config.toml"), "partial").unwrap();
+        let long_ago = std::time::SystemTime::now() - 2 * STALE_STAGING;
+        fs::File::open(&staging)
+            .and_then(|dir| dir.set_modified(long_ago))
+            .unwrap();
+
+        assert_eq!(super::migrate_legacy_config_dir(&legacy, &target), target);
+        assert_eq!(
+            fs::read_to_string(target.join("config.toml")).unwrap(),
+            "theme = \"Nord\""
+        );
+        assert!(!staging.exists());
+    }
+
     /// A fresh install has nothing to migrate and must create nothing.
     #[test]
     fn a_fresh_installation_migrates_nothing() {
@@ -599,7 +743,12 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let manager = manager_in(dir.path());
         assert_eq!(manager.path(), dir.path().join("config.toml"));
-        assert_ne!(manager.path(), ConfigManager::new().path());
+        // Not `ConfigManager::new()`: it runs the migration against the real
+        // home directory.
+        let user_config = colony_ui::paths::locate::config_dir(COLONY_PROGRAM)
+            .map(|dir| dir.join(CONFIG_FILE))
+            .ok();
+        assert_ne!(Some(manager.path().to_path_buf()), user_config);
     }
 
     #[test]

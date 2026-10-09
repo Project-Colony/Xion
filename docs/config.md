@@ -83,7 +83,9 @@ configuration (see the session file below), so a run that fell back to the old
 directory still creates `Colony/Xion` to save `session.toml` there. That is why
 only a `config.toml` counts as a configuration already in place: the next
 successful copy moves its files into the existing folder one by one,
-`config.toml` last, and keeps `session.toml`.
+`config.toml` last, and keeps `session.toml`. Right before that move, the
+destination is checked for a `config.toml` again: if another start published
+its copy in the meantime, that copy wins and this one is dropped.
 
 The copy only handles **files**. A sub-directory counts as a failure rather
 than something to skip: Xion creates none (`config.toml`, its `.bak` and the
@@ -106,6 +108,7 @@ Tests: `a_pre_colony_configuration_is_copied_with_its_backup`,
 `a_folder_holding_only_the_session_is_not_a_migrated_profile`,
 `a_recent_staging_folder_is_left_to_its_owner`,
 `a_staging_folder_left_by_a_crash_is_replaced`,
+`a_copy_published_meanwhile_by_another_start_wins`,
 `a_fresh_installation_migrates_nothing` (`manager/mod.rs`).
 
 `ConfigManager::new()` runs this migration against the real home directory, so
@@ -299,10 +302,14 @@ and `active_tab_index`. When `session.toml` is absent at startup,
 (`ConfigManager::legacy_session`, `manager/mod.rs`) and writes them to
 `session.toml`. The V1 reader still accepts both keys without a warning, and the
 next config save drops them, since `config_to_file` no longer writes them.
+When `config.toml` is missing or does not parse (the loader has just moved an
+unreadable one aside and restored the settings from `config.toml.bak`), the tabs
+are read from `config.toml.bak` instead.
 Once `session.toml` exists, `config.toml` is never consulted for tabs again.
 
 Tests: `a_session_round_trips`,
 `tabs_move_from_an_older_config_to_the_session_file`,
+`tabs_come_back_from_the_backup_of_an_unreadable_config`,
 `an_existing_session_file_wins_over_an_older_config`,
 `a_missing_session_and_no_legacy_tabs_load_empty_and_write_nothing`
 (`session.rs`).

@@ -176,6 +176,37 @@ mod tests {
         assert_eq!(store.load(&config), expected);
     }
 
+    /// An unreadable `config.toml` is moved aside and the settings come back
+    /// from the `.bak`: the tabs that copy holds come back with them.
+    #[test]
+    fn tabs_come_back_from_the_backup_of_an_unreadable_config() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = ConfigManager::with_path(dir.path().join("config.toml"));
+        let store = SessionStore::with_path(dir.path().join(SESSION_FILE));
+        fs::write(config.path(), "version = 1\n[[tabs]\n").expect("write config");
+        fs::write(
+            config.backup_path(),
+            "version = 1\nactive_tab_index = 0\n\n[[tabs]]\npath = \"/a\"\n",
+        )
+        .expect("write backup");
+
+        let loaded = config.load();
+        assert!(
+            !config.path().exists(),
+            "the unreadable file is moved aside"
+        );
+        assert!(!loaded.warnings.is_empty());
+
+        assert_eq!(
+            store.load(&config),
+            Session {
+                active_tab_index: 0,
+                tabs: tabs(&["/a"]),
+            }
+        );
+        assert!(store.path().exists());
+    }
+
     #[test]
     fn an_existing_session_file_wins_over_an_older_config() {
         let dir = tempfile::tempdir().expect("tempdir");

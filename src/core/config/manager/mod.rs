@@ -108,9 +108,14 @@ impl ConfigManager {
     ///
     /// [`SessionStore::load`](super::SessionStore::load) reads them once, when
     /// there is no session file yet. [`Self::save`] never writes them back.
+    ///
+    /// Falls back to the `.bak` when `config.toml` is missing or does not
+    /// parse: [`Self::load`] moves an unreadable file aside and restores the
+    /// settings from that copy, and its tabs must not be the only thing lost.
     pub fn legacy_session(&self) -> Option<Session> {
-        let contents = fs::read_to_string(&self.path).ok()?;
-        let file: LegacySessionFile = toml::from_str(&contents).ok()?;
+        let file: LegacySessionFile = [self.path.clone(), self.backup_path()]
+            .iter()
+            .find_map(|path| toml::from_str(&fs::read_to_string(path).ok()?).ok())?;
         let tabs: Vec<TabPersistConfig> = file
             .tabs?
             .into_iter()
@@ -401,6 +406,16 @@ fn claim_staging(staging: &Path) -> std::io::Result<()> {
 fn publish_staging(staging: &Path, target: &Path) -> std::io::Result<()> {
     if !target.exists() {
         return fs::rename(staging, target);
+    }
+    // Another start may have published its own copy since the check in
+    // `migrate_legacy_config_dir`: its `config.toml` may already be in use, so
+    // it is left alone and this copy dropped.
+    if target.join(CONFIG_FILE).exists() {
+        // A leftover is replaced by a later start (`claim_staging`).
+        if let Err(error) = fs::remove_dir_all(staging) {
+            tracing::debug!("Config: cleanup of {} failed: {error}", staging.display());
+        }
+        return Ok(());
     }
     // `target` exists without a `config.toml` (see `migrate_legacy_config_dir`):
     // its files stay, and the copies are moved in one by one. `config.toml`
@@ -724,6 +739,27 @@ mod tests {
         assert_eq!(
             fs::read_to_string(target.join("config.toml")).unwrap(),
             "theme = \"Nord\""
+        );
+        assert!(!staging.exists());
+    }
+
+    /// Another start published its copy, and may already be using it, between
+    /// this start's check and its publish: that `config.toml` is not replaced.
+    #[test]
+    fn a_copy_published_meanwhile_by_another_start_wins() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let target = root.path().join("Xion");
+        let staging = sibling_path(&target, ".migrating");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("config.toml"), "theme = \"Actuel\"").unwrap();
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(staging.join("config.toml"), "theme = \"Nord\"").unwrap();
+
+        super::publish_staging(&staging, &target).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(target.join("config.toml")).unwrap(),
+            "theme = \"Actuel\""
         );
         assert!(!staging.exists());
     }

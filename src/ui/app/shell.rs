@@ -26,10 +26,10 @@ pub(super) fn resolve(shell: &ShellConfig) -> std::io::Result<(String, Vec<Strin
     let resolved = match shell {
         ShellConfig::System => (system_shell(), Vec::new()),
         ShellConfig::PowerShell => (
-            find_powershell(),
+            find_powershell().ok_or_else(|| not_found("pwsh"))?,
             vec!["-NoLogo".to_string(), "-NoProfile".to_string()],
         ),
-        ShellConfig::Bash => (find_bash(), Vec::new()),
+        ShellConfig::Bash => (bash_path().ok_or_else(|| not_found("bash"))?, Vec::new()),
         ShellConfig::Custom(path) => {
             // Un shell personnalisé est un chemin arbitraire lu dans
             // config.toml : il est résolu et vérifié avant d'être transmis.
@@ -37,6 +37,13 @@ pub(super) fn resolve(shell: &ShellConfig) -> std::io::Result<(String, Vec<Strin
         }
     };
     Ok(resolved)
+}
+
+/// A shell that could not be located. `iced_term` only ever receives absolute
+/// paths: a bare name would be resolved by Windows from the running
+/// executable's directory first.
+fn not_found(name: &str) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::NotFound, name.to_string())
 }
 
 /// Les interpréteurs proposés sur cette machine, dans l'ordre d'affichage.
@@ -98,7 +105,9 @@ pub(super) fn label_for(shell: &ShellConfig) -> String {
     match shell {
         ShellConfig::System => display_name(&system_shell()),
         ShellConfig::PowerShell => "PowerShell".to_string(),
-        ShellConfig::Bash => display_name(&find_bash()),
+        ShellConfig::Bash => {
+            bash_path().map_or_else(|| "bash".to_string(), |path| display_name(&path))
+        }
         ShellConfig::Custom(path) => display_name(path),
     }
 }
@@ -224,14 +233,14 @@ fn validated_custom_shell(path: &str) -> std::io::Result<String> {
 /// Pas le nom nu : sous Windows la recherche visite le dossier de l'exécutable
 /// en cours avant celui du système, ce qui est le même piège que pour un shell
 /// personnalisé. `pwsh` d'abord, c'est la version maintenue.
-fn find_powershell() -> String {
+fn find_powershell() -> Option<String> {
     #[cfg(windows)]
     {
         if let Ok(root) = std::env::var("SystemRoot") {
             let canonical =
                 std::path::Path::new(&root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
             if canonical.is_file() {
-                return canonical.to_string_lossy().into_owned();
+                return Some(canonical.to_string_lossy().into_owned());
             }
         }
     }
@@ -242,13 +251,13 @@ fn find_powershell() -> String {
         "/opt/microsoft/powershell/7/pwsh",
     ] {
         if std::path::Path::new(candidate).is_file() {
-            return candidate.to_string();
+            return Some(candidate.to_string());
         }
     }
 
-    // Dernier recours : laisser le système résoudre et rapporter une erreur
-    // claire s'il n'y parvient pas.
-    "pwsh".to_string()
+    // Last resort: an absolute path from PATH, never the bare name.
+    crate::services::thumbnails::find_in_path("pwsh")
+        .map(|path| path.to_string_lossy().into_owned())
 }
 
 /// Où se trouve bash, ou `None` s'il n'est pas installé.
@@ -292,14 +301,14 @@ pub(super) fn bash_path() -> Option<String> {
                 return Some(candidate.to_string());
             }
         }
+        // NixOS and friends keep bash out of /bin. Not on Windows: there the
+        // PATH answer is System32\bash.exe, the WSL launcher.
+        if let Some(path) = crate::services::thumbnails::find_in_path("bash") {
+            return Some(path.to_string_lossy().into_owned());
+        }
     }
 
     None
-}
-
-/// Bash, avec un repli qui laisse le système trancher et échouer lisiblement.
-pub(super) fn find_bash() -> String {
-    bash_path().unwrap_or_else(|| "bash".to_string())
 }
 
 #[cfg(test)]
@@ -358,12 +367,13 @@ mod tests {
         for choice in available_shells() {
             let resolved = resolve(&choice.config);
             let (program, _) = resolved.expect("un interpréteur proposé doit se résoudre");
-            // The path stays out of the message: it can come from the user's
-            // account entry, and CodeQL flags formatting it as cleartext logging.
+            // Neither the path nor the label goes into the message: both can
+            // come from the user's account entry, and CodeQL flags formatting
+            // them as cleartext logging. The variant names the shell.
             assert!(
                 std::path::Path::new(&program).is_file(),
-                "\"{}\" is offered but its program does not exist",
-                choice.label
+                "{:?} is offered but its program does not exist",
+                choice.config
             );
         }
     }

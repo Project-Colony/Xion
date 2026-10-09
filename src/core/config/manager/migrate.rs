@@ -5,7 +5,7 @@
 
 use crate::core::config::types::{
     AppConfig, ConfigWarning, EntryFilterConfig, ShellConfig, SortKeyConfig, SortOrderConfig,
-    TabPersistConfig, ViewColumn, ViewMode,
+    ViewColumn, ViewMode,
 };
 
 use super::*;
@@ -231,20 +231,6 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
     if let Some(shortcuts) = file.shortcuts {
         config.shortcuts = merge_shortcuts(shortcuts, config.shortcuts, warnings);
     }
-    if let Some(tabs) = file.tabs {
-        let restored: Vec<TabPersistConfig> = tabs
-            .into_iter()
-            .filter_map(|t| t.path.map(|p| TabPersistConfig { path: p }))
-            .collect();
-        if !restored.is_empty() {
-            config.tabs = restored;
-        }
-    }
-    if let Some(idx) = file.active_tab_index
-        && !config.tabs.is_empty()
-    {
-        config.active_tab_index = idx.min(config.tabs.len() - 1);
-    }
     if let Some(compact_mode) = file.compact_mode {
         config.compact_mode = compact_mode;
         // Keep row_height in sync with persisted compact_mode
@@ -366,16 +352,6 @@ pub(super) fn config_to_file(config: &AppConfig) -> AppConfigFileV1 {
         paging: Some(PagingConfigFile {
             page_size: Some(config.paging.page_size),
         }),
-        tabs: Some(
-            config
-                .tabs
-                .iter()
-                .map(|t| TabPersistConfigFile {
-                    path: Some(t.path.clone()),
-                })
-                .collect(),
-        ),
-        active_tab_index: Some(config.active_tab_index),
         compact_mode: Some(config.compact_mode),
         terminal_shell: Some(match &config.terminal_shell {
             ShellConfig::System => "System".to_string(),

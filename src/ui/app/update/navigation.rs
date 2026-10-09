@@ -337,7 +337,7 @@ impl XionApp {
             }
             UiMessage::TabDragDrop => {
                 self.tab_drag_source = None;
-                self.save_tabs_to_config();
+                self.save_session();
             }
             // ── #12: External drag & drop from Windows Explorer ──────────
             UiMessage::ToggleSidebarSection(section) => {

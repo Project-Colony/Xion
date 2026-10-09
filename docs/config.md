@@ -49,36 +49,52 @@ configuration déjà en place, la migration serait sautée et Xion écrirait des
 valeurs par défaut à côté d'une configuration existante. `save` crée son parent
 lui-même (`write_atomic`), donc personne n'a besoin de le devancer.
 
-### Déménagement depuis l'ancien emplacement
+### Migration from the old location
 
-Xion écrivait auparavant sous `ProjectDirs::from("io", "xion", "Xion")`, soit
-`~/.config/xion/` sous Linux. Ce chemin n'est plus qu'une **source de
-migration** (`legacy_config_dir`, `manager/mod.rs`).
+Xion used to write under `ProjectDirs::from("io", "xion", "Xion")`, that is
+`~/.config/xion/` on Linux. That path is now only a **migration source**
+(`legacy_config_dir`, `manager/mod.rs`).
 
-Au premier calcul du chemin, `migrate_legacy_config_dir` (`manager/mod.rs`)
-déplace le **dossier entier**, pas seulement `config.toml` : le `.bak` posé à
-côté est le recours quand le fichier principal est illisible, et le laisser
-derrière reviendrait à s'en priver sans le dire. Un `fs::rename` suffit quand
-les deux vivent sur le même système de fichiers, ce qui est le cas ordinaire ;
-sinon les fichiers sont copiés un à un, et l'ancien dossier n'est supprimé que
-si **tout** est passé.
+When the path is first computed, `migrate_legacy_config_dir` (`manager/mod.rs`)
+copies the **whole directory**, not only `config.toml`: the `.bak` next to it is
+the fallback when the main file is unreadable, and leaving it behind would
+silently lose it. It follows rule FS-7 of Project-Colony-Resources
+(`design/filesystem.md`):
 
-Ce repli par copie ne traite que les **fichiers** du dossier : un éventuel
-sous-dossier est ignoré et compte quand même comme « passé ». Xion n'en crée
-aucun — `config.toml`, son `.bak` et les `.corrupt-*` sont tous à plat — donc le
-cas ne se produit pas aujourd'hui ; il se produirait le jour où une version
-poserait un sous-dossier.
+1. Every file is copied (and synced) into a temporary sibling of the target,
+   `Colony/Xion.migrating-<pid>`. Only once **every** file made it is that
+   directory renamed to `Colony/Xion`, so a half-copied profile is never picked
+   up.
+2. A `.migrated` marker is then written into the old directory. Later starts see
+   it and skip the migration.
+3. The old directory is **never moved or deleted** in this release. If the
+   migration turns out to be wrong, the files are still where they were. Its
+   removal is left to a later release, for directories that carry the marker.
+4. If anything fails (an unreadable file, a sub-directory, a full disk), the
+   temporary directory is removed, no `Colony/Xion` is created, and
+   `default_config_path` returns `~/.config/xion/config.toml` for this run: the
+   user keeps their profile instead of getting an empty one. The next start
+   tries again.
 
-Trois cas où la migration ne fait rien :
+The copy only handles **files**. A sub-directory counts as a failure rather
+than something to skip: Xion creates none (`config.toml`, its `.bak` and the
+`.corrupt-*` files are all flat), so one is unexpected, and skipping it while
+reporting success is how an earlier version lost data. Symlinked files are
+copied as the file they point to.
 
-- la destination existe déjà — une configuration récente n'est jamais écrasée
-  par une ancienne restée là ;
-- l'ancien dossier est absent, ce qui est le cas de toute installation neuve ;
-- l'ancien et le nouveau chemin sont identiques.
+The migration does nothing when:
 
-Tests : `a_pre_colony_configuration_moves_with_its_backup`,
-`an_existing_colony_configuration_wins`, `a_fresh_installation_migrates_nothing`
-(`manager/mod.rs`).
+- the marker is present;
+- the destination already exists: a newer configuration never loses to an older
+  one left behind;
+- the old directory is absent, which is the case of every fresh install;
+- the old and new paths are the same.
+
+Tests: `a_pre_colony_configuration_is_copied_with_its_backup`,
+`a_second_start_does_not_migrate_again`, `an_existing_colony_configuration_wins`,
+`a_sub_directory_fails_the_copy_and_keeps_the_old_profile`,
+`an_unreadable_file_fails_the_copy_and_keeps_the_old_profile`,
+`a_fresh_installation_migrates_nothing` (`manager/mod.rs`).
 
 ### Quand le chemin ne peut pas être calculé
 
@@ -138,10 +154,6 @@ dark_mode = false
 # Dossier d'ouverture. Défaut : le répertoire courant du processus.
 start_path = "/home/utilisateur"
 
-# Onglet actif au démarrage, ramené dans les bornes de [[tabs]] au chargement
-# par `merge_from_v1`.
-active_tab_index = 0
-
 # true force aussi view.row_height à 22.0, dans `merge_from_v1`.
 compact_mode = false
 
@@ -185,10 +197,6 @@ columns = ["name", "type", "size", "modified"]
 [paging]
 page_size = 120              # 24..2048
 
-# Onglets restaurés au démarrage. Une liste vide est ignorée.
-[[tabs]]
-path = "/home/utilisateur"
-
 # Étiquettes de couleur, indexées par chemin.
 # Valeurs : Red | Orange | Yellow | Green | Blue | Purple | Gray
 [labels]
@@ -230,6 +238,58 @@ focus_search = "Ctrl+E"
 `[labels]`, `[column_widths]` et `user_favorites` ne sont écrits que lorsqu'ils
 ne sont pas vides (`config_to_file` les met à `None` sinon) : leur absence d'un
 fichier existant est normale.
+
+The restored tabs are no longer part of this file: see the next section.
+
+## Session file (`session.toml`)
+
+The tabs Xion reopens at the next start are something Xion produced, not a
+choice the user made, so they live in the **data** directory rather than next to
+the preferences (rule FS-5 of Project-Colony-Resources, `design/filesystem.md`).
+`SessionStore` (`src/core/config/session.rs`) reads and writes:
+
+```rust
+colony_ui::paths::locate::data_dir("Xion")?.join("session.toml")
+```
+
+- **Linux**: `~/.local/share/Colony/Xion/session.toml`
+  (`$XDG_DATA_HOME/Colony/Xion/session.toml` when the variable is set).
+- **Windows**: `%LOCALAPPDATA%\Colony\Xion\session.toml`.
+- **macOS**: `~/Library/Application Support/Colony/Xion/session.toml`.
+
+On Windows and macOS this is the same directory as `config.toml`; the two file
+names keep them apart.
+
+```toml
+# Active tab at startup. Clamped to the tabs below when they are rebuilt
+# (`initial_tabs`, `src/ui/app/construction.rs`), since the file can be edited.
+active_tab_index = 0
+
+# Tabs restored at startup. An empty list opens a single tab on `start_path`.
+[[tabs]]
+path = "/home/utilisateur"
+```
+
+The file is rewritten on every tab change and navigation (`save_session`,
+`src/ui/app/state.rs`), atomically like `config.toml` (temporary file, then
+rename) but without a `.bak`. An unreadable file is logged and Xion starts from
+a single tab; the next save replaces it.
+
+### Tabs carried over from `config.toml`
+
+Before this file existed, the tabs were stored in `config.toml` as `[[tabs]]`
+and `active_tab_index`. When `session.toml` is absent at startup,
+`SessionStore::load` reads them once from `config.toml`
+(`ConfigManager::legacy_session`, `manager/mod.rs`) and writes them to
+`session.toml`. The V1 reader still accepts both keys without a warning, and the
+next config save drops them, since `config_to_file` no longer writes them.
+Once `session.toml` exists, `config.toml` is never consulted for tabs again.
+
+Tests: `a_session_round_trips`,
+`tabs_move_from_an_older_config_to_the_session_file`,
+`an_existing_session_file_wins_over_an_older_config`,
+`a_missing_session_and_no_legacy_tabs_load_empty_and_write_nothing`
+(`session.rs`).
 
 ## Ce qui écrit les quatre clés d'apparence
 
@@ -357,8 +417,8 @@ elle est prise telle quelle comme `ShellConfig::Custom`
 (`src/ui/app/update/navigation.rs`). Le fichier est donc relu sans redémarrage.
 
 L'écriture est déclenchée par les actions qui modifient un réglage (thème, mode
-compact, onglets, favoris, shell…). `ConfigManager::save` sérialise
-l'intégralité de `AppConfigFileV1` et remplace le fichier. Deux conséquences à
+compact, favoris, shell…). The tabs go to `session.toml` instead.
+`ConfigManager::save` sérialise l'intégralité de `AppConfigFileV1` et remplace le fichier. Deux conséquences à
 connaître :
 
 - **Les commentaires d'un fichier édité à la main sont perdus** au premier
@@ -385,15 +445,16 @@ remonte le tout en avertissements. Test :
 - [x] Validation des champs avec avertissements — constantes `MIN_*`/`MAX_*` et
       fonctions `validated_*`, appelées depuis `merge_from_v1`.
 - [x] Rechargement à chaud — `src/ui/app/navigation/buffers.rs`.
-- [x] Persistance des onglets, du thème, du shell et des favoris —
-      `config_to_file`.
-- [x] Emplacement aligné sur `<racine>/Colony/Xion/`, avec déménagement
-      automatique de l'ancien dossier — `migrate_legacy_config_dir`.
+- [x] Persistance du thème, du shell et des favoris : `config_to_file`.
+- [x] Restored tabs kept in `session.toml` under the data directory -
+      `SessionStore`.
+- [x] Emplacement aligné sur `<racine>/Colony/Xion/`, with the old directory
+      copied, marked and kept - `migrate_legacy_config_dir`.
 - [x] Thème choisi dans le catalogue partagé `colony-ui` (famille, variante,
       contraste élevé, accent) — `ThemeChoice`, `src/core/config/types.rs`.
 - [x] Tests de la migration, de la validation, de l'écriture atomique et de la
-      récupération — 14 tests unitaires dans `manager/mod.rs` (relevé du
-      2026-08-25 ; `grep -c '#\[test\]' src/core/config/manager/mod.rs`).
+      récupération : 17 tests unitaires dans `manager/mod.rs` (count of
+      2026-10-09; `grep -c '#\[test\]' src/core/config/manager/mod.rs`).
 - [ ] Affichage du chemin de configuration résolu dans l'interface.
 - [ ] Remplacement du repli relatif `config.toml` par un chemin absolu sûr.
 - [ ] Éditeur de configuration intégré à l'interface.

@@ -23,9 +23,21 @@ pub(super) struct AppConfigFileV0 {
     pub(super) thumbnail_cache_ttl_seconds: Option<u64>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub(super) struct TabPersistConfigFile {
     pub(super) path: Option<PathBuf>,
+}
+
+/// The restored tabs, as V1 files carried them before they moved to
+/// `session.toml`.
+///
+/// Read once, to carry them over, and never written: `AppConfigFileV1` no
+/// longer declares these keys, so serde skips them when it reads an older file
+/// and the next save leaves them out.
+#[derive(Debug, Deserialize)]
+pub(super) struct LegacySessionFile {
+    pub(super) tabs: Option<Vec<TabPersistConfigFile>>,
+    pub(super) active_tab_index: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -51,8 +63,6 @@ pub(super) struct AppConfigFileV1 {
     pub(super) view: Option<ViewConfigFile>,
     pub(super) paging: Option<PagingConfigFile>,
     pub(super) shortcuts: Option<ShortcutBindingsFile>,
-    pub(super) tabs: Option<Vec<TabPersistConfigFile>>,
-    pub(super) active_tab_index: Option<usize>,
     pub(super) compact_mode: Option<bool>,
     pub(super) terminal_shell: Option<String>,
     pub(super) respect_gitignore: Option<bool>,

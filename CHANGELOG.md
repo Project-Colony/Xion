@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/Project-Colony/Xion/compare/v0.1.0...v0.1.1) (2026-10-09)
+
+
+### Fixes
+
+* **config:** keep the old settings folder until its copy is complete, and store restored tabs as session data ([#21](https://github.com/Project-Colony/Xion/issues/21)) ([3668fac](https://github.com/Project-Colony/Xion/commit/3668fac6fef79b8d7d055aaffdffb80063cb5fd6))
+* **windows:** run reg.exe and terminal shells by absolute path ([#19](https://github.com/Project-Colony/Xion/issues/19)) ([d7aee68](https://github.com/Project-Colony/Xion/commit/d7aee682030721b32009d9cf8c56b7752e5edd71))
+
 ## [0.1.0](https://github.com/Project-Colony/Xion/compare/v0.1.0...v0.1.0) (2026-10-09)
 
 

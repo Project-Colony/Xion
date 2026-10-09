@@ -133,14 +133,15 @@ xion = { path = ".", features = ["test-util"] }
 embed-resource = "3.0.12"
 
 [profile.release]
-lto = true
+# The profile design/releases.md in Project-Colony-Resources recommends.
+lto = "thin"
 codegen-units = 1
 # No `panic = "abort"`: pdf-extract, zip, sevenz-rust, image and syntect all
 # parse attacker-supplied files inside `spawn_blocking`, and none of them
 # promises to be panic-free. Aborting turned a malformed thumbnail into the loss
 # of every tab, the terminal session and any running copy; unwinding lets tokio
 # surface the panic as a JoinError and the preview simply fails.
-strip = true
+strip = "symbols"
 
 [profile.dev]
 opt-level = 1

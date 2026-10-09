@@ -343,18 +343,6 @@ mod config_integration {
         assert!((1..=32).contains(&config.filesystem.metadata_parallelism));
     }
 
-    #[test]
-    fn config_manager_targets_a_toml_file() {
-        let path = ConfigManager::new().path().to_path_buf();
-
-        assert_eq!(
-            path.file_name().and_then(|name| name.to_str()),
-            Some("config.toml"),
-            "chemin de config inattendu : {}",
-            path.display()
-        );
-    }
-
     /// Replaces `config_manager_loads_defaults_on_missing_file`, which built
     /// its manager with `ConfigManager::new()` and therefore read the
     /// developer's own file: if Xion had ever run, it loaded the user's

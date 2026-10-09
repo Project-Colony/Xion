@@ -21,7 +21,7 @@ use iced::alignment::Horizontal;
 // Tracing is available for future use
 use iced::{Font, Length, Point, Rectangle, Theme, keyboard, mouse};
 
-use crate::core::{ConfigManager, SortKeyConfig, ViewColumn};
+use crate::core::{ConfigManager, SessionStore, SortKeyConfig, ViewColumn};
 use crate::services::{DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService};
 use crate::ui::{AppState, ModifiersState, UiMessage};
 
@@ -84,6 +84,8 @@ pub struct XionApp {
     address_input: String,
     search: SearchState,
     config_manager: ConfigManager,
+    /// The open tabs, saved to `session.toml` rather than to the config.
+    session_store: SessionStore,
     favorites: FavoritesService,
     tab_manager: TabManager,
     clipboard: ClipboardState,

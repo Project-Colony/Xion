@@ -293,7 +293,7 @@ impl XionApp {
     pub(super) fn navigate_to(&mut self, path: PathBuf) -> Task<UiMessage> {
         self.update_active_tab_path(path.clone());
         self.history.record(path);
-        self.save_tabs_to_config();
+        self.save_session();
         self.refresh_entries()
     }
 
@@ -419,7 +419,7 @@ impl XionApp {
             .unwrap_or_else(|| self.state.config.start_path.clone());
         self.update_active_tab_path(active_path.clone());
         self.history.record(active_path);
-        self.save_tabs_to_config();
+        self.save_session();
         self.refresh_entries()
     }
 
@@ -449,7 +449,7 @@ impl XionApp {
         self.tab_manager.active = self.tab_manager.count().saturating_sub(1);
         self.update_active_tab_path(path.clone());
         self.history.record(path);
-        self.save_tabs_to_config();
+        self.save_session();
         self.refresh_entries()
     }
 
@@ -461,7 +461,7 @@ impl XionApp {
         let path = self.tab_manager.tabs[index].path.clone();
         self.update_active_tab_path(path.clone());
         self.history.record(path);
-        self.save_tabs_to_config();
+        self.save_session();
         self.refresh_entries()
     }
 
@@ -480,24 +480,25 @@ impl XionApp {
             let path = tab.path.clone();
             self.update_active_tab_path(path.clone());
             self.history.record(path);
-            self.save_tabs_to_config();
+            self.save_session();
             return self.refresh_entries();
         }
         Task::none()
     }
 
-    /// Persists current tab state to config on disk.
-    pub(super) fn save_tabs_to_config(&mut self) {
-        self.state.config.tabs = self
-            .tab_manager
-            .tabs
-            .iter()
-            .map(|t| crate::core::TabPersistConfig {
-                path: t.path.clone(),
-            })
-            .collect();
-        self.state.config.active_tab_index = self.tab_manager.active;
-        self.config_manager.save(&self.state.config);
+    /// Persists the open tabs to `session.toml`.
+    pub(super) fn save_session(&self) {
+        self.session_store.save(&crate::core::Session {
+            active_tab_index: self.tab_manager.active,
+            tabs: self
+                .tab_manager
+                .tabs
+                .iter()
+                .map(|t| crate::core::TabPersistConfig {
+                    path: t.path.clone(),
+                })
+                .collect(),
+        });
     }
 
     pub(super) fn load_git_status(&self) -> Task<UiMessage> {

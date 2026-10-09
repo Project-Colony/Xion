@@ -18,7 +18,8 @@ use migrate::*;
 use shortcuts_io::*;
 use validate::*;
 
-use super::types::{AppConfig, AppConfigLoad, ConfigSource, ConfigWarning};
+use super::session::Session;
+use super::types::{AppConfig, AppConfigLoad, ConfigSource, ConfigWarning, TabPersistConfig};
 
 // ── Validation constants ──────────────────────────────────────────────────────
 
@@ -51,6 +52,10 @@ impl Default for ConfigManager {
 
 impl ConfigManager {
     /// Creates a new configuration manager with the default config path.
+    ///
+    /// Computing that path runs the one-time copy of the pre-Colony folder
+    /// (`migrate_legacy_config_dir`) against the real home directory, so tests
+    /// use [`Self::with_path`] instead.
     pub fn new() -> Self {
         Self::with_path(default_config_path())
     }
@@ -90,12 +95,37 @@ impl ConfigManager {
                 return;
             }
         };
-        if let Err(error) = write_atomic(&self.path, &contents) {
+        if let Err(error) = write_atomic(&self.path, &contents, true) {
             tracing::warn!(
                 "Config: impossible d'écrire {}: {error}",
                 self.path.display()
             );
         }
+    }
+
+    /// The tabs a `config.toml` written before `session.toml` existed still
+    /// carries, or `None` when it has none.
+    ///
+    /// [`SessionStore::load`](super::SessionStore::load) reads them once, when
+    /// there is no session file yet. [`Self::save`] never writes them back.
+    ///
+    /// Falls back to the `.bak` when `config.toml` is missing or does not
+    /// parse: [`Self::load`] moves an unreadable file aside and restores the
+    /// settings from that copy, and its tabs must not be the only thing lost.
+    pub fn legacy_session(&self) -> Option<Session> {
+        let file: LegacySessionFile = [self.path.clone(), self.backup_path()]
+            .iter()
+            .find_map(|path| toml::from_str(&fs::read_to_string(path).ok()?).ok())?;
+        let tabs: Vec<TabPersistConfig> = file
+            .tabs?
+            .into_iter()
+            .filter_map(|tab| tab.path.map(|path| TabPersistConfig { path }))
+            .collect();
+        let last = tabs.len().checked_sub(1)?;
+        Some(Session {
+            active_tab_index: file.active_tab_index.unwrap_or(0).min(last),
+            tabs,
+        })
     }
 
     /// A config that fails to parse used to be left in place and silently
@@ -178,7 +208,14 @@ fn remove_stale_temp(path: &Path) {
 /// The previous `fs::write` truncated the live config first, so a crash or a
 /// power cut during any of the saves triggered on every navigation left an
 /// empty file and reset theme, tabs, favourites and column widths.
-fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+///
+/// `keep_backup` also keeps the previous copy as `<name>.bak`, which only the
+/// config loader reads back.
+pub(in crate::core::config) fn write_atomic(
+    path: &Path,
+    contents: &str,
+    keep_backup: bool,
+) -> std::io::Result<()> {
     use std::io::Write;
 
     if let Some(parent) = path.parent()
@@ -203,7 +240,8 @@ fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
 
     // Keep the last published copy: `load()` falls back to it when the live
     // file turns out to be unreadable.
-    if path.exists()
+    if keep_backup
+        && path.exists()
         && let Err(error) = fs::copy(path, sibling_path(path, ".bak"))
     {
         tracing::debug!("Config: sauvegarde .bak impossible: {error}");
@@ -230,14 +268,13 @@ fn default_config_path() -> PathBuf {
     // vivraient ne doit pas faire exister le dossier ». `save` crée son parent
     // lui-même, donc personne n'a besoin de le devancer.
     let Ok(dir) = colony_ui::paths::locate::config_dir(COLONY_PROGRAM) else {
-        return PathBuf::from("config.toml");
+        return PathBuf::from(CONFIG_FILE);
     };
 
-    if let Some(legacy) = legacy_config_dir() {
-        migrate_legacy_config_dir(&legacy, &dir);
+    match legacy_config_dir() {
+        Some(legacy) => migrate_legacy_config_dir(&legacy, &dir).join(CONFIG_FILE),
+        None => dir.join(CONFIG_FILE),
     }
-
-    dir.join("config.toml")
 }
 
 /// Le nom du programme tel que l'écosystème l'écrit.
@@ -245,7 +282,7 @@ fn default_config_path() -> PathBuf {
 /// Capitalisé, pas un identifiant en minuscules : la convention est
 /// `<racine>/Colony/<Programme>/`, avec `<Programme>` orthographié comme le
 /// programme s'écrit — voir `design/filesystem.md` de Project-Colony-Resources.
-const COLONY_PROGRAM: &str = "Xion";
+pub(in crate::core::config) const COLONY_PROGRAM: &str = "Xion";
 
 /// Là où Xion écrivait avant d'adopter la disposition Colony.
 ///
@@ -256,70 +293,171 @@ fn legacy_config_dir() -> Option<PathBuf> {
     ProjectDirs::from("io", "xion", "Xion").map(|dirs| dirs.config_dir().to_path_buf())
 }
 
-/// Déplace une configuration antérieure vers son emplacement Colony.
-///
-/// Le dossier entier voyage, pas seulement `config.toml` : le `.bak` posé à côté
-/// est le chemin de secours quand le fichier principal est illisible, et le
-/// laisser derrière reviendrait à s'en priver sans le dire.
-///
-/// Ne fait rien si la destination existe déjà — une configuration récente ne
-/// doit jamais être écrasée par une ancienne — et rien non plus si l'ancienne
-/// est absente, ce qui est le cas de toute installation neuve.
-fn migrate_legacy_config_dir(legacy: &Path, target: &Path) -> bool {
-    if target.exists() || !legacy.is_dir() || legacy == target {
-        return false;
-    }
+/// Written into the legacy directory once its contents reached the Colony
+/// location, so later starts skip the migration and a later release knows the
+/// old directory is safe to remove.
+const MIGRATED_MARKER: &str = ".migrated";
 
-    if let Some(parent) = target.parent()
-        && fs::create_dir_all(parent).is_err()
+const CONFIG_FILE: &str = "config.toml";
+
+/// Copies a pre-Colony configuration to its Colony location and returns the
+/// directory to use for this run.
+///
+/// The whole directory travels, not only `config.toml`: the `.bak` next to it
+/// is the fallback when the main file is unreadable, and leaving it behind
+/// would silently lose it.
+///
+/// The legacy directory is never moved or deleted in this release (rule FS-7 of
+/// Project-Colony-Resources `design/filesystem.md`): if the migration turns out
+/// to be wrong, the user's files are still where they were. Files are copied
+/// into a temporary sibling of `target`, which only becomes `target` once every
+/// file made it, so a half-copied profile is never picked up.
+///
+/// Returns `target` when there is nothing to do: the marker is present, the
+/// target already holds a `config.toml` (a newer configuration never loses to
+/// an older one), or there is no legacy directory, which is the case of every
+/// fresh install. Returns `legacy` when the copy failed, so the user keeps their
+/// profile for this run instead of getting an empty one; the next start tries
+/// again.
+fn migrate_legacy_config_dir<'a>(legacy: &'a Path, target: &'a Path) -> &'a Path {
+    // `config.toml`, not the folder itself: on Windows and macOS the data
+    // directory is this same folder, so a run that fell back to `legacy` still
+    // creates it to save `session.toml`. Taking that folder for a migrated
+    // profile would skip the migration for good and start on defaults.
+    if legacy == target
+        || target.join(CONFIG_FILE).exists()
+        || !legacy.is_dir()
+        || legacy.join(MIGRATED_MARKER).exists()
     {
-        return false;
+        return target;
     }
 
-    // Un renommage suffit tant que les deux vivent sur le même système de
-    // fichiers, ce qui est le cas ordinaire — les deux sont sous `~/.config`.
-    if fs::rename(legacy, target).is_ok() {
-        return true;
+    let staging = sibling_path(target, ".migrating");
+    let claimed = target
+        .parent()
+        .map_or(Ok(()), fs::create_dir_all)
+        .and_then(|()| claim_staging(&staging));
+    if let Err(error) = claimed {
+        // The staging folder may belong to another start: leave it alone.
+        tracing::warn!(
+            "Config: cannot prepare {}, using the old location for now: {error}",
+            staging.display()
+        );
+        return legacy;
     }
 
-    // Sinon on copie. Séparé pour être testable : sur un même système de
-    // fichiers le renommage réussit toujours, donc ce repli n'est jamais
-    // atteint depuis ici et son défaut passait inaperçu.
-    copy_directory_across_devices(legacy, target)
+    let copied =
+        copy_flat_directory(legacy, &staging).and_then(|()| publish_staging(&staging, target));
+    if let Err(error) = copied {
+        tracing::warn!(
+            "Config: copy of {} to {} failed, using the old location for now: {error}",
+            legacy.display(),
+            target.display()
+        );
+        if staging.exists()
+            && let Err(error) = fs::remove_dir_all(&staging)
+        {
+            tracing::debug!("Config: cleanup of {} failed: {error}", staging.display());
+        }
+        return legacy;
+    }
+
+    // `target` now holds `config.toml`, which already stops the next start
+    // from migrating again: a missing marker costs nothing but the hint for a
+    // later release.
+    if let Err(error) = fs::write(
+        legacy.join(MIGRATED_MARKER),
+        format!("Copied to {}\n", target.display()),
+    ) {
+        tracing::warn!("Config: could not write the migration marker: {error}");
+    }
+    target
 }
 
-/// Copie un dossier plat, et ne supprime l'original que si tout est passé.
-///
-/// Sert quand `rename` échoue, c'est-à-dire quand les deux dossiers ne sont pas
-/// sur le même système de fichiers — un `~/.config` monté à part, par exemple.
-///
-/// Ne sait copier que des fichiers. Un sous-dossier compte donc comme un échec,
-/// et c'est le point : la version précédente le sautait en laissant le drapeau
-/// à vrai, si bien que `remove_dir_all` l'emportait juste après. Supprimé sans
-/// avoir été copié, alors que le code annonçait le contraire.
-fn copy_directory_across_devices(legacy: &Path, target: &Path) -> bool {
-    if fs::create_dir_all(target).is_err() {
-        return false;
-    }
-    let Ok(entries) = fs::read_dir(legacy) else {
-        return false;
-    };
+/// A staging folder older than this was left by a start that crashed, and is
+/// removed. A younger one may belong to another Xion starting at the same
+/// moment: removing it could publish that start's half-done copy.
+const STALE_STAGING: std::time::Duration = std::time::Duration::from_secs(60);
 
-    let mut copied_everything = true;
-    for entry in entries.flatten() {
-        if !entry.path().is_file() {
-            copied_everything = false;
-            continue;
+/// Creates the staging folder, replacing one a crashed start left behind.
+///
+/// The name is fixed, so a leftover is found again rather than piling up in the
+/// shared `Colony/` folder. `create_dir` fails when the folder exists, which is
+/// what keeps two starts from copying into the same one.
+fn claim_staging(staging: &Path) -> std::io::Result<()> {
+    match fs::create_dir(staging) {
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let stale = fs::metadata(staging)
+                .and_then(|metadata| metadata.modified())
+                .ok()
+                .and_then(|modified| modified.elapsed().ok())
+                .is_some_and(|age| age > STALE_STAGING);
+            if !stale {
+                return Err(error);
+            }
+            fs::remove_dir_all(staging)?;
+            fs::create_dir(staging)
         }
-        if fs::copy(entry.path(), target.join(entry.file_name())).is_err() {
-            copied_everything = false;
-        }
+        result => result,
     }
+}
 
-    if copied_everything {
-        let _ = fs::remove_dir_all(legacy);
+/// Puts the complete copy in `staging` at `target`.
+fn publish_staging(staging: &Path, target: &Path) -> std::io::Result<()> {
+    if !target.exists() {
+        return fs::rename(staging, target);
     }
-    copied_everything
+    // Another start may have published its own copy since the check in
+    // `migrate_legacy_config_dir`: its `config.toml` may already be in use, so
+    // it is left alone and this copy dropped.
+    if target.join(CONFIG_FILE).exists() {
+        // A leftover is replaced by a later start (`claim_staging`).
+        if let Err(error) = fs::remove_dir_all(staging) {
+            tracing::debug!("Config: cleanup of {} failed: {error}", staging.display());
+        }
+        return Ok(());
+    }
+    // `target` exists without a `config.toml` (see `migrate_legacy_config_dir`):
+    // its files stay, and the copies are moved in one by one. `config.toml`
+    // goes last, since it is what tells a later start the migration is done.
+    let mut names = fs::read_dir(staging)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    names.sort_by_key(|name| name.as_os_str() == CONFIG_FILE);
+    for name in &names {
+        fs::rename(staging.join(name), target.join(name))?;
+    }
+    fs::remove_dir(staging)
+}
+
+/// Copies every file of `source` into the empty directory `destination`.
+///
+/// Only knows files, so a sub-directory is an error rather than something to
+/// skip: skipping it while reporting success is how an earlier version deleted
+/// a folder it had never copied. Xion itself writes no sub-directory.
+///
+/// Each copy is synced before returning: the caller renames `destination` into
+/// place next, and a power cut must not leave a published profile of empty
+/// files.
+fn copy_flat_directory(source: &Path, destination: &Path) -> std::io::Result<()> {
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        // `metadata` follows symlinks: a config file linked in by a dotfile
+        // manager is copied as the file it points to.
+        if !fs::metadata(entry.path())?.is_file() {
+            return Err(std::io::Error::other(format!(
+                "{} is not a regular file",
+                entry.path().display()
+            )));
+        }
+        // Not `fs::copy`: it carries a read-only attribute over, and Windows
+        // refuses to flush a handle that cannot write. Writing through a
+        // handle of our own is what lets the copy be synced.
+        let mut copy = fs::File::create(destination.join(entry.file_name()))?;
+        std::io::copy(&mut fs::File::open(entry.path())?, &mut copy)?;
+        copy.sync_all()?;
+    }
+    Ok(())
 }
 
 fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
@@ -405,7 +543,7 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::config::types::{ListConfig, SortKeyConfig, TabPersistConfig, ThemeChoice};
+    use crate::core::config::types::{ListConfig, SortKeyConfig, ThemeChoice};
 
     /// Every test writes through `with_path`, never through `new()`: the
     /// default path is the developer's real `config.toml`.
@@ -413,96 +551,226 @@ mod tests {
         ConfigManager::with_path(dir.join("config.toml"))
     }
 
-    /// Le cas de tout utilisateur existant : la configuration vit encore dans
-    /// l'ancien dossier au premier lancement de la version alignée.
-    #[test]
-    fn a_pre_colony_configuration_moves_with_its_backup() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let legacy = root.path().join("xion");
-        let target = root.path().join("Colony").join("Xion");
-        std::fs::create_dir_all(&legacy).unwrap();
-        std::fs::write(legacy.join("config.toml"), "theme = \"Nord\"").unwrap();
-        std::fs::write(legacy.join("config.toml.bak"), "theme = \"Dark\"").unwrap();
+    /// A legacy directory and its Colony target, side by side in a tempdir.
+    fn legacy_and_target(root: &Path) -> (PathBuf, PathBuf) {
+        let legacy = root.join("xion");
+        let target = root.join("Colony").join("Xion");
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join("config.toml"), "theme = \"Nord\"").unwrap();
+        fs::write(legacy.join("config.toml.bak"), "theme = \"Dark\"").unwrap();
+        (legacy, target)
+    }
 
-        assert!(super::migrate_legacy_config_dir(&legacy, &target));
+    /// Every existing user's case: on the first start of the aligned version,
+    /// the configuration still lives in the old directory.
+    #[test]
+    fn a_pre_colony_configuration_is_copied_with_its_backup() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (legacy, target) = legacy_and_target(root.path());
+
+        assert_eq!(super::migrate_legacy_config_dir(&legacy, &target), target);
 
         assert_eq!(
-            std::fs::read_to_string(target.join("config.toml")).unwrap(),
+            fs::read_to_string(target.join("config.toml")).unwrap(),
             "theme = \"Nord\""
         );
         assert!(
             target.join("config.toml.bak").exists(),
-            "la sauvegarde est le recours quand le fichier principal est illisible"
+            "the backup is the fallback when the main file is unreadable"
         );
-        assert!(!legacy.exists(), "l'ancien dossier ne doit pas subsister");
+        assert!(
+            legacy.join("config.toml").exists(),
+            "the old directory stays until a later release"
+        );
+        assert!(legacy.join(MIGRATED_MARKER).exists());
+        assert!(
+            !target.join(MIGRATED_MARKER).exists(),
+            "the marker belongs to the old directory only"
+        );
     }
 
-    /// Une configuration déjà écrite à l'emplacement Colony ne doit jamais être
-    /// écrasée par une ancienne restée là.
+    /// The marker is what a second start checks: even with the Colony copy
+    /// gone, the old directory is not copied again.
+    #[test]
+    fn a_second_start_does_not_migrate_again() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (legacy, target) = legacy_and_target(root.path());
+        assert_eq!(super::migrate_legacy_config_dir(&legacy, &target), target);
+
+        fs::remove_dir_all(&target).unwrap();
+        assert_eq!(super::migrate_legacy_config_dir(&legacy, &target), target);
+        assert!(!target.exists());
+    }
+
+    /// A configuration already written at the Colony location must never be
+    /// overwritten by an older one left behind.
     #[test]
     fn an_existing_colony_configuration_wins() {
         let root = tempfile::tempdir().expect("tempdir");
-        let legacy = root.path().join("xion");
-        let target = root.path().join("Colony").join("Xion");
-        std::fs::create_dir_all(&legacy).unwrap();
-        std::fs::write(legacy.join("config.toml"), "theme = \"Ancien\"").unwrap();
-        std::fs::create_dir_all(&target).unwrap();
-        std::fs::write(target.join("config.toml"), "theme = \"Actuel\"").unwrap();
+        let (legacy, target) = legacy_and_target(root.path());
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("config.toml"), "theme = \"Actuel\"").unwrap();
 
-        assert!(!super::migrate_legacy_config_dir(&legacy, &target));
+        assert_eq!(super::migrate_legacy_config_dir(&legacy, &target), target);
         assert_eq!(
-            std::fs::read_to_string(target.join("config.toml")).unwrap(),
+            fs::read_to_string(target.join("config.toml")).unwrap(),
             "theme = \"Actuel\""
         );
     }
 
-    /// Le repli par copie ne doit jamais supprimer ce qu'il n'a pas emporté.
-    ///
-    /// Testé directement : depuis `migrate_legacy_config_dir`, le renommage
-    /// réussit sur un même système de fichiers et ce chemin n'est jamais pris,
-    /// ce qui est précisément pourquoi le défaut passait inaperçu.
-    #[test]
-    fn a_copy_that_could_not_take_everything_deletes_nothing() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let legacy = root.path().join("xion");
-        let target = root.path().join("Colony").join("Xion");
-        std::fs::create_dir_all(legacy.join("sous-dossier")).unwrap();
-        std::fs::write(legacy.join("config.toml"), "theme = \"Nord\"").unwrap();
-        std::fs::write(legacy.join("sous-dossier").join("precieux"), "à garder").unwrap();
-
-        assert!(
-            !super::copy_directory_across_devices(&legacy, &target),
-            "un déménagement incomplet doit se déclarer incomplet"
+    /// A copy that cannot take everything publishes nothing, deletes nothing,
+    /// and points this run at the old directory instead of an empty profile.
+    fn assert_failed_copy_falls_back(legacy: &Path, target: &Path) {
+        assert_eq!(
+            super::migrate_legacy_config_dir(legacy, target),
+            legacy,
+            "this run must keep using the old directory"
         );
-        assert!(
-            legacy.join("sous-dossier").join("precieux").exists(),
-            "rien ne doit être supprimé tant que tout n'est pas passé"
-        );
+        assert!(!target.exists(), "no half-copied profile is published");
+        assert!(legacy.join("config.toml").exists());
+        assert!(!legacy.join(MIGRATED_MARKER).exists());
+        let leftovers: Vec<_> = fs::read_dir(target.parent().unwrap())
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name())
+            .collect();
+        assert!(leftovers.is_empty(), "staging left behind: {leftovers:?}");
     }
 
-    /// Un dossier plat, lui, passe en entier et l'original s'efface.
     #[test]
-    fn a_copy_that_took_everything_removes_the_original() {
+    fn a_sub_directory_fails_the_copy_and_keeps_the_old_profile() {
         let root = tempfile::tempdir().expect("tempdir");
-        let legacy = root.path().join("xion");
-        let target = root.path().join("Colony").join("Xion");
-        std::fs::create_dir_all(&legacy).unwrap();
-        std::fs::write(legacy.join("config.toml"), "theme = \"Nord\"").unwrap();
-        std::fs::write(legacy.join("config.toml.bak"), "theme = \"Dark\"").unwrap();
+        let (legacy, target) = legacy_and_target(root.path());
+        fs::create_dir_all(legacy.join("sous-dossier")).unwrap();
+        fs::write(legacy.join("sous-dossier").join("precieux"), "à garder").unwrap();
 
-        assert!(super::copy_directory_across_devices(&legacy, &target));
-        assert!(target.join("config.toml").exists());
+        assert_failed_copy_falls_back(&legacy, &target);
+        assert!(legacy.join("sous-dossier").join("precieux").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_file_fails_the_copy_and_keeps_the_old_profile() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().expect("tempdir");
+        let (legacy, target) = legacy_and_target(root.path());
+        let locked = legacy.join("config.toml.bak");
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        if fs::read(&locked).is_ok() {
+            // Running as root: permissions do not stop the read, so there is
+            // no failure to observe.
+            return;
+        }
+
+        assert_failed_copy_falls_back(&legacy, &target);
+    }
+
+    /// On Windows and macOS the data directory is the Colony config folder
+    /// itself, so a run that fell back to the old location still creates that
+    /// folder to save `session.toml`. The folder alone must not pass for a
+    /// migrated profile, or every later start would open on defaults.
+    #[test]
+    fn a_folder_holding_only_the_session_is_not_a_migrated_profile() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (legacy, target) = legacy_and_target(root.path());
+        let blocker = legacy.join("sous-dossier");
+        fs::create_dir_all(&blocker).unwrap();
+        assert_failed_copy_falls_back(&legacy, &target);
+
+        // What that run saved, where the data directory is off Linux.
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("session.toml"), "active_tab_index = 0\n").unwrap();
+
+        assert_eq!(
+            super::migrate_legacy_config_dir(&legacy, &target),
+            legacy,
+            "the copy still fails, so the old profile is still the one used"
+        );
+        assert!(!target.join("config.toml").exists());
+
+        fs::remove_dir(&blocker).unwrap();
+        assert_eq!(super::migrate_legacy_config_dir(&legacy, &target), target);
+        assert_eq!(
+            fs::read_to_string(target.join("config.toml")).unwrap(),
+            "theme = \"Nord\""
+        );
         assert!(target.join("config.toml.bak").exists());
-        assert!(!legacy.exists());
+        assert!(
+            target.join("session.toml").exists(),
+            "the session saved meanwhile is kept"
+        );
+        assert!(legacy.join(MIGRATED_MARKER).exists());
+        assert!(!sibling_path(&target, ".migrating").exists());
     }
 
-    /// Une installation neuve n'a rien à migrer et ne doit rien créer.
+    /// A staging folder this recent may be another start copying right now:
+    /// it is left alone, and this run keeps the old profile.
+    #[test]
+    fn a_recent_staging_folder_is_left_to_its_owner() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (legacy, target) = legacy_and_target(root.path());
+        let staging = sibling_path(&target, ".migrating");
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(staging.join("config.toml"), "partial").unwrap();
+
+        assert_eq!(super::migrate_legacy_config_dir(&legacy, &target), legacy);
+        assert!(staging.join("config.toml").exists());
+        assert!(!target.exists());
+        assert!(!legacy.join(MIGRATED_MARKER).exists());
+    }
+
+    /// A staging folder left by a start that crashed is replaced, so it does
+    /// not stay in the shared `Colony/` folder forever.
+    #[cfg(unix)]
+    #[test]
+    fn a_staging_folder_left_by_a_crash_is_replaced() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (legacy, target) = legacy_and_target(root.path());
+        let staging = sibling_path(&target, ".migrating");
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(staging.join("config.toml"), "partial").unwrap();
+        let long_ago = std::time::SystemTime::now() - 2 * STALE_STAGING;
+        fs::File::open(&staging)
+            .and_then(|dir| dir.set_modified(long_ago))
+            .unwrap();
+
+        assert_eq!(super::migrate_legacy_config_dir(&legacy, &target), target);
+        assert_eq!(
+            fs::read_to_string(target.join("config.toml")).unwrap(),
+            "theme = \"Nord\""
+        );
+        assert!(!staging.exists());
+    }
+
+    /// Another start published its copy, and may already be using it, between
+    /// this start's check and its publish: that `config.toml` is not replaced.
+    #[test]
+    fn a_copy_published_meanwhile_by_another_start_wins() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let target = root.path().join("Xion");
+        let staging = sibling_path(&target, ".migrating");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("config.toml"), "theme = \"Actuel\"").unwrap();
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(staging.join("config.toml"), "theme = \"Nord\"").unwrap();
+
+        super::publish_staging(&staging, &target).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(target.join("config.toml")).unwrap(),
+            "theme = \"Actuel\""
+        );
+        assert!(!staging.exists());
+    }
+
+    /// A fresh install has nothing to migrate and must create nothing.
     #[test]
     fn a_fresh_installation_migrates_nothing() {
         let root = tempfile::tempdir().expect("tempdir");
         let legacy = root.path().join("absent");
         let target = root.path().join("Colony").join("Xion");
-        assert!(!super::migrate_legacy_config_dir(&legacy, &target));
+        assert_eq!(super::migrate_legacy_config_dir(&legacy, &target), target);
         assert!(!target.exists());
     }
 
@@ -511,11 +779,16 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let manager = manager_in(dir.path());
         assert_eq!(manager.path(), dir.path().join("config.toml"));
-        assert_ne!(manager.path(), ConfigManager::new().path());
+        // Not `ConfigManager::new()`: it runs the migration against the real
+        // home directory.
+        let user_config = colony_ui::paths::locate::config_dir(COLONY_PROGRAM)
+            .map(|dir| dir.join(CONFIG_FILE))
+            .ok();
+        assert_ne!(Some(manager.path().to_path_buf()), user_config);
     }
 
     #[test]
-    fn save_then_load_roundtrips_theme_and_tabs() {
+    fn save_then_load_roundtrips_theme_and_favorites() {
         let dir = tempfile::tempdir().expect("tempdir");
         let manager = manager_in(dir.path());
 
@@ -532,10 +805,6 @@ mod tests {
                 sort_key: SortKeyConfig::Size,
                 ..ListConfig::default()
             },
-            tabs: vec![TabPersistConfig {
-                path: dir.path().to_path_buf(),
-            }],
-            active_tab_index: 0,
             user_favorites: vec![dir.path().to_path_buf()],
             ..AppConfig::default()
         };
@@ -549,7 +818,6 @@ mod tests {
         );
         assert_eq!(loaded.config.theme.keys(), ("nord", "dark"));
         assert_eq!(loaded.config.list.sort_key, SortKeyConfig::Size);
-        assert_eq!(loaded.config.tabs.len(), 1);
         assert_eq!(loaded.config.user_favorites, vec![dir.path().to_path_buf()]);
     }
 

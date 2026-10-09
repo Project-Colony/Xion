@@ -226,7 +226,7 @@ impl XionApp {
             Self::readout(
                 ctx,
                 "Onglets restaurés au démarrage",
-                config.tabs.len().to_string(),
+                self.tab_manager.count().to_string(),
             ),
         ]
         .spacing(spacing.sm);

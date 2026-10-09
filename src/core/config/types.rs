@@ -233,6 +233,7 @@ impl Default for PagingConfig {
 
 // ── Persistence helpers ───────────────────────────────────────────────────────
 
+/// One restored tab, as stored in `session.toml` (see [`super::Session`]).
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct TabPersistConfig {
     pub path: PathBuf,
@@ -251,8 +252,6 @@ pub struct AppConfig {
     pub shortcuts: ShortcutBindings,
     pub dark_mode: bool,
     pub theme: ThemeChoice,
-    pub tabs: Vec<TabPersistConfig>,
-    pub active_tab_index: usize,
     pub terminal_shell: ShellConfig,
     pub respect_gitignore: bool,
     pub labels: std::collections::HashMap<PathBuf, crate::ui::FileLabel>,
@@ -284,8 +283,6 @@ impl Default for AppConfig {
             // interface sombre jusqu'au changement de thème suivant.
             dark_mode: crate::ui::theme::resolves_dark(&ThemeChoice::default()),
             theme: ThemeChoice::default(),
-            tabs: Vec::new(),
-            active_tab_index: 0,
             terminal_shell: ShellConfig::default(),
             respect_gitignore: false,
             labels: std::collections::HashMap::new(),

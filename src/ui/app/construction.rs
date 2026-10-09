@@ -3,7 +3,7 @@
 //! Moved verbatim out of the single 809-line `impl XionApp` block in `mod.rs`.
 
 use super::types::*;
-use crate::core::ConfigManager;
+use crate::core::{ConfigManager, SessionStore};
 use crate::filesystem::{NativeFileWatcher, NoopFileWatcher};
 use crate::services::{
     DirectoryLoader, HistoryService, NetworkDiscoveryService, PreviewImageService, ThumbnailService,
@@ -81,6 +81,8 @@ impl XionApp {
         let config_manager = ConfigManager::new();
         let config_load = config_manager.load();
         let config = config_load.config;
+        let session_store = SessionStore::new();
+        let session = session_store.load(&config_manager);
 
         // Override start_path if a CLI path was provided
         let cli_path = super::CLI_START_PATH
@@ -99,8 +101,8 @@ impl XionApp {
         history.record(state.route.key());
 
         let (tabs, active_tab_init) = initial_tabs(
-            &state.config.tabs,
-            state.config.active_tab_index,
+            &session.tabs,
+            session.active_tab_index,
             state.route.key(),
             cli_path.as_deref(),
         );
@@ -167,6 +169,7 @@ impl XionApp {
             address_input,
             search: SearchState::default(),
             config_manager,
+            session_store,
             favorites,
             tab_manager: TabManager::new(tabs, active_tab_init),
             clipboard: ClipboardState::default(),
@@ -274,6 +277,9 @@ impl XionApp {
         // instead; the process id keeps parallel test binaries apart.
         let config_path =
             std::env::temp_dir().join(format!("xion-test-{}-config.toml", std::process::id()));
+        // Same for the tabs, which every navigation saves.
+        let session_path =
+            std::env::temp_dir().join(format!("xion-test-{}-session.toml", std::process::id()));
         let state = AppState::new(config);
         let start_path = state.route.key();
         let mut history = HistoryService::default();
@@ -325,6 +331,7 @@ impl XionApp {
             address_input,
             search: SearchState::default(),
             config_manager: crate::core::ConfigManager::with_path(config_path),
+            session_store: SessionStore::with_path(session_path),
             favorites,
             tab_manager: TabManager::new(tabs, 0),
             clipboard: ClipboardState::default(),

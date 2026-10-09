@@ -475,7 +475,7 @@ remonte le tout en avertissements. Test :
       marked and kept: `migrate_legacy_config_dir`.
 - [x] Thème choisi dans le catalogue partagé `colony-ui` (famille, variante,
       contraste élevé, accent) — `ThemeChoice`, `src/core/config/types.rs`.
-- [x] Tests for the migration, validation, atomic write and recovery: 20 unit
+- [x] Tests for the migration, validation, atomic write and recovery: 21 unit
       tests in `manager/mod.rs` (count of 2026-10-09;
       `grep -c '#\[test\]' src/core/config/manager/mod.rs`).
 - [ ] Affichage du chemin de configuration résolu dans l'interface.

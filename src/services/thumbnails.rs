@@ -301,11 +301,12 @@ fn resolve_tool(cell: &'static OnceLock<Option<PathBuf>>, name: &str) -> Option<
 /// Resolving the name ourselves keeps the current directory out of the search:
 /// Windows' `CreateProcess` searches it first, so a `ffmpeg.exe` dropped into a
 /// browsed folder would otherwise be the one that runs.
-fn find_in_path(name: &str) -> Option<PathBuf> {
+pub(crate) fn find_in_path(name: &str) -> Option<PathBuf> {
     let path_var = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path_var) {
-        // An empty PATH entry means "current directory"; skip it deliberately.
-        if dir.as_os_str().is_empty() {
+        // An empty or relative PATH entry resolves against the current
+        // directory; skip it deliberately.
+        if !dir.is_absolute() {
             continue;
         }
         let direct = dir.join(name);

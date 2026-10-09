@@ -31,8 +31,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # rust-toolchain.toml pins the version, components and targets; rustup
-      # honours it from the checkout.
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch
+      # honours it from the checkout. The action installs that same toolchain
+      # up front, with the components the steps below need. Pinned to master
+      # rather than to the `stable` branch: that branch is rebased onto every
+      # master commit, so a SHA pinned on it stops being reachable.
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
+        with:
+          toolchain: 1.98.0
+          components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
@@ -75,6 +81,40 @@ jobs:
             fi
           done < <(find src tests -name '*.rs')
           exit $found
+
+  # Cargo.toml declares the oldest toolchain Xion builds on. This job holds
+  # that promise honest by building and testing on exactly that version, read
+  # from Cargo.toml so the two cannot drift apart.
+  msrv:
+    name: msrv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # RUSTUP_TOOLCHAIN takes precedence over rust-toolchain.toml, which would
+      # otherwise select the newer toolchain it pins for development.
+      - name: Read the declared minimum Rust version
+        id: msrv
+        run: |
+          version=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
+          if [ -z "$version" ]; then
+            echo "::error::could not read rust-version from Cargo.toml"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "RUSTUP_TOOLCHAIN=$version" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Check
+        run: cargo check --locked --all-targets --all-features
+
+      - name: Tests
+        run: cargo test --locked
 
   audit:
     name: advisories

@@ -123,7 +123,11 @@ fn system_shell() -> String {
 
 #[cfg(windows)]
 fn system_shell() -> String {
-    std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".to_string())
+    std::env::var("ComSpec").unwrap_or_else(|_| {
+        crate::platform::system_binary("cmd.exe")
+            .to_string_lossy()
+            .into_owned()
+    })
 }
 
 /// Le shell inscrit dans la base des comptes, quand `$SHELL` est muette.
@@ -354,9 +358,11 @@ mod tests {
         for choice in available_shells() {
             let resolved = resolve(&choice.config);
             let (program, _) = resolved.expect("un interpréteur proposé doit se résoudre");
+            // The path stays out of the message: it can come from the user's
+            // account entry, and CodeQL flags formatting it as cleartext logging.
             assert!(
                 std::path::Path::new(&program).is_file(),
-                "« {} » est proposé mais {program} n'existe pas",
+                "\"{}\" is offered but its program does not exist",
                 choice.label
             );
         }

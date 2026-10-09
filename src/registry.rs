@@ -5,10 +5,9 @@
 
 use std::io;
 use std::os::windows::process::CommandExt;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
-/// CREATE_NO_WINDOW: prevents cmd.exe flash for each reg.exe call.
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+use crate::platform::{CREATE_NO_WINDOW, system_binary};
 
 /// The registry paths we create for context menu integration.
 const DIR_SHELL_KEY: &str = r"HKEY_CURRENT_USER\Software\Classes\Directory\shell\Xion";
@@ -62,6 +61,20 @@ pub fn unregister() -> io::Result<()> {
     Ok(())
 }
 
+/// `reg.exe` by its absolute System32 path, silent and without a console window.
+///
+/// Never by bare name: `--register` usually runs from the folder the exe was
+/// downloaded to, and a bare name would run a `reg.exe` planted next to it
+/// (see [`system_binary`]).
+fn reg_command() -> Command {
+    let mut command = Command::new(system_binary("reg.exe"));
+    command
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
 fn reg_add(key: &str, value_name: &str, data: &str) -> io::Result<()> {
     let mut args = vec!["add", key];
 
@@ -72,12 +85,7 @@ fn reg_add(key: &str, value_name: &str, data: &str) -> io::Result<()> {
         args.extend(["/v", value_name, "/t", "REG_SZ", "/d", data, "/f"]);
     }
 
-    let status = Command::new("reg")
-        .args(&args)
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()?;
+    let status = reg_command().args(&args).status()?;
 
     if !status.success() {
         return Err(io::Error::other(format!("Échec de reg add pour {}", key)));
@@ -86,16 +94,27 @@ fn reg_add(key: &str, value_name: &str, data: &str) -> io::Result<()> {
 }
 
 fn reg_delete(key: &str) -> io::Result<()> {
-    let status = Command::new("reg")
-        .args(["delete", key, "/f"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()?;
+    let status = reg_command().args(["delete", key, "/f"]).status()?;
 
     if !status.success() {
         // Key might not exist — not an error
         tracing::warn!("Clé registre absente ou déjà supprimée : {}", key);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reg_runs_from_system32() {
+        let command = reg_command();
+        let program = std::path::Path::new(command.get_program());
+        assert!(
+            program.is_absolute(),
+            "reg.exe must not be resolved by bare name"
+        );
+        assert!(program.ends_with(r"System32\reg.exe"));
+    }
 }

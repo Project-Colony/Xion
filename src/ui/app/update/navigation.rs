@@ -182,10 +182,15 @@ impl XionApp {
                     "Tri : {:?} ({:?})",
                     self.state.config.list.sort_key, self.state.config.list.sort_order
                 ));
+                // Saved here: it used to reach disk only through the config
+                // save every navigation made, which now writes the session.
+                self.config_manager.save(&self.state.config);
                 tasks.push(self.refresh_entries());
             }
             UiMessage::ToggleViewMode => {
                 self.state.config.view.mode = self.state.config.view.mode.toggle();
+                // Same as `ChangeSort`: no navigation saves the config anymore.
+                self.config_manager.save(&self.state.config);
                 self.scroll.offset = 0.0;
                 self.clear_selection();
                 tasks.push(self.ensure_visible_pages());

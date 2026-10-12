@@ -19,9 +19,8 @@
 # .github/workflows/sign-and-publish.yml of Project-Colony-Resources, in this
 # same run. See design/releases.md there, section "Shared signing workflow".
 #
-# Action refs are pinned to commit SHAs on purpose: the called workflow handles
-# the organisation's release signing key, and whoever can move a floating tag
-# can read that secret.
+# Action refs are pinned to commit SHAs on purpose: this workflow can publish
+# releases, and whoever can move a floating tag can change what it runs.
 
 name: Release
 
@@ -54,6 +53,9 @@ env:
 jobs:
   # Assembles a release PR from the conventional commits since the last release.
   # Merging that PR is what creates the tag; everything below runs only then.
+  # Push only: on a recovery dispatch the tag already exists, and running
+  # release-please would open or update a release PR as a side effect of
+  # repairing an old release.
   release-please:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -122,16 +124,22 @@ jobs:
           ref: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
           persist-credentials: false
 
-      # rust-toolchain.toml pins the version and lists both targets, and
-      # rustup honours it from the checkout. No `targets:` input: it would
-      # install them for the action's own toolchain, not the pinned one.
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch
+      # rustup is on every GitHub-hosted runner image, so there is no
+      # third-party toolchain action to pin. With no toolchain named, rustup
+      # installs the one rust-toolchain.toml pins, with both its targets, so
+      # that file stays the only place the version is set.
+      - name: Install Rust
+        shell: bash
+        run: rustup toolchain install --profile minimal --no-self-update
 
       # No build cache here: SignPath forbids release builds that reuse
       # outputs of earlier, unverified builds.
 
       # Without this every panic! and #[track_caller] site embeds the runner's
-      # home directory (.cargo/config.toml explains why it cannot live there).
+      # home directory (.cargo/config.toml explains why it cannot live there):
+      # crates.io sources under registry/src, git dependencies such as
+      # iced_term under git/checkouts, and Xion's own checkout. On Windows the
+      # embedded paths use backslashes, hence the backslash prefixes there.
       # A prefix that does not match is simply not rewritten.
       - name: Anonymise build paths
         shell: bash
@@ -139,10 +147,12 @@ jobs:
           cargo_home="${CARGO_HOME:-$HOME/.cargo}"
           if [ "$RUNNER_OS" = "Windows" ]; then
             registry="${cargo_home}\\registry\\src\\"
+            checkouts="${cargo_home}\\git\\checkouts\\"
           else
             registry="${cargo_home}/registry/src/"
+            checkouts="${cargo_home}/git/checkouts/"
           fi
-          echo "CARGO_BUILD_RUSTFLAGS=--remap-path-prefix=${registry}=deps/ --remap-path-prefix=${GITHUB_WORKSPACE}=xion" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_RUSTFLAGS=--remap-path-prefix=${registry}=deps/ --remap-path-prefix=${checkouts}=deps/ --remap-path-prefix=${GITHUB_WORKSPACE}=xion" >> "$GITHUB_ENV"
 
       # `--locked`: the binary users download is built from the committed
       # Cargo.lock, and a lockfile that no longer matches Cargo.toml fails here
@@ -193,7 +203,10 @@ jobs:
           rm -rf "$d"
 
       # The signature proves provenance and says nothing about whether the
-      # binary RUNS. `--version` prints and exits before any window opens.
+      # binary RUNS. An artifact built for the wrong architecture, or one that
+      # aborts under the release profile's LTO, would otherwise be signed,
+      # published and installed with every check green. `--version` prints
+      # and exits before any window opens.
       - name: Smoke-test the artifact
         shell: bash
         run: |
@@ -218,9 +231,11 @@ jobs:
             exit 1
           }
 
-      # The file at the artifact root, under its release name. The name
-      # prefix is what `artifact-pattern` below matches.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # The file at the artifact root, under its release name, and never to
+      # the release from here: Authenticode rewrites the .exe, so nothing may
+      # reach the release before every byte is final. The name prefix is what
+      # `artifact-pattern` below matches.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: build-${{ matrix.asset }}
           path: ${{ matrix.asset }}
@@ -229,8 +244,11 @@ jobs:
 
   # Authenticode (once SignPath is on), .sig/.meta/.meta.sig over the final
   # bytes, upload to the draft, download again, verify, publish. Chained as
-  # `needs:` in this same run: SignPath accepts only an artifact uploaded by
-  # the run that requests the signature.
+  # `needs:` in this same run rather than `on: release`: a release created
+  # with the default GITHUB_TOKEN fires no release events, and SignPath
+  # accepts only an artifact uploaded by the run that requests the signature.
+  # Pinned to the organisation's commit of the shared workflow;
+  # design/releases.md says when that pin moves.
   sign-and-publish:
     needs: [release-please, build]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
@@ -238,7 +256,7 @@ jobs:
     permissions:
       actions: read
       contents: write
-    uses: Project-Colony/Project-Colony-Resources/.github/workflows/sign-and-publish.yml@619460ff4dc0049f129955f0988d368427b9eedb # main
+    uses: Project-Colony/Project-Colony-Resources/.github/workflows/sign-and-publish.yml@619460ff4dc0049f129955f0988d368427b9eedb # organisation pin
     with:
       tag: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
       assets: "xion-linux xion-windows.exe"
@@ -246,6 +264,8 @@ jobs:
       # Uncomment once SignPath has approved this project and its project
       # exists in the Project-Colony SignPath organisation:
       # signpath-project-slug: "xion"
+      # Leave the default `code-signing-policy: true` only while README.md has
+      # a "## Code signing policy" section: the release notes link to it.
     # Named, not `inherit`: the called workflow gets these two and nothing else.
     secrets:
       COLONY_SIGNING_KEY_PEM: ${{ secrets.COLONY_SIGNING_KEY_PEM }}

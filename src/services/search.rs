@@ -171,7 +171,7 @@ impl SearchService {
     ) -> AppResult<()> {
         if remaining_depth == 0 {
             tracing::warn!(
-                "Recherche: profondeur max atteinte à {:?}, résultats incomplets",
+                "Search: max depth reached at {:?}, results incomplete",
                 path
             );
             return Ok(());
@@ -215,7 +215,7 @@ impl SearchService {
                     remaining_depth - 1,
                 )
             {
-                tracing::debug!("Recherche: indexation {:?} échouée: {e}", dir_path);
+                tracing::debug!("Search: indexing {:?} failed: {e}", dir_path);
             }
         }
 
@@ -317,8 +317,8 @@ impl SearchService {
 /// One indexed entry.
 ///
 /// It used to carry `name_lower` and `extension_lower`: byte-for-byte lowercase
-/// copies of data already in `entry`, 64 extra bytes of heap per entry — 40 % of
-/// the index — to spare a case fold at match time. The comparison now folds on
+/// copies of data already in `entry`, 64 extra bytes of heap per entry, 40 % of
+/// the index, to spare a case fold at match time. The comparison now folds on
 /// the fly, which costs nothing to store.
 #[derive(Debug, Clone)]
 struct SearchEntry {
@@ -327,7 +327,7 @@ struct SearchEntry {
 
 /// Case-insensitive `contains` with no allocation.
 ///
-/// `needle` must already be lowercase. ASCII — nearly every file name — takes a
+/// `needle` must already be lowercase. ASCII, nearly every file name, takes a
 /// byte scan; anything else folds through `char::to_lowercase` so `ÉCLAIR` still
 /// matches `éclair`. Mirrors the comparator the list filter uses.
 fn contains_lowercased(haystack: &str, needle: &str) -> bool {

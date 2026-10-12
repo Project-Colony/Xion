@@ -125,15 +125,15 @@ impl XionApp {
                     // Borrowed: `text` takes a `Cow`, and now that this is a
                     // method with an explicit `'a` tied to `&self`, the
                     // borrow outlives the returned tree. Names under the
-                    // limit — nearly all of them — no longer allocate.
+                    // limit, nearly all of them, no longer allocate.
                     let display_name = truncate_name(&entry.name, 60);
-                    // Jamais de retour à la ligne.
+                    // Never wrap.
                     //
-                    // La troncature compte soixante *caractères* alors que la
-                    // contrainte est en *pixels* : sur une colonne étroite le
-                    // nom restait trop large, iced le repliait sur une seconde
-                    // ligne, et la ligne débordait de sa hauteur fixe pour
-                    // chevaucher ses voisines. Rien ne rognait derrière.
+                    // Truncation counts sixty *characters* while the constraint
+                    // is in *pixels*: on a narrow column the name stayed too
+                    // wide, iced wrapped it onto a second line, and the row
+                    // overflowed its fixed height to overlap its neighbours.
+                    // Nothing clipped behind it.
                     let name_text = body_text(typography, display_name)
                         .wrapping(iced::widget::text::Wrapping::None);
                     let name_text = if is_cut {
@@ -149,8 +149,8 @@ impl XionApp {
                     container(name_row)
                         .width(spec.width)
                         .align_x(spec.align)
-                        // Ce qui dépasse de la colonne est coupé net plutôt que
-                        // peint par-dessus la colonne voisine.
+                        // What overflows the column is cut cleanly rather than
+                        // painted over the neighbouring column.
                         .clip(true)
                         .into()
                 }
@@ -174,13 +174,12 @@ impl XionApp {
                                 formatted
                             }
                         } else {
-                            // Un seul changement à l'écran, pas deux. La taille
-                            // d'un dossier n'est pas lisible sur son inode : il
-                            // faut le parcourir. Afficher « — » puis « … » puis
-                            // le nombre montrait à l'utilisateur une étape qui
-                            // ne le renseignait pas — le tiret voulait dire
-                            // « pas encore demandé », ce qui n'est pas son
-                            // affaire.
+                            // One change on screen, not two. A folder's size
+                            // cannot be read from its inode: it has to be
+                            // walked. Showing "-" then "..." then the number
+                            // showed the user a step that told them nothing:
+                            // the dash meant "not requested yet", which is none
+                            // of their business.
                             "…".to_string()
                         }
                     } else {

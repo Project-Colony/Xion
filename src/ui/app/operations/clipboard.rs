@@ -105,7 +105,7 @@ impl XionApp {
                 })
                 .await
                 .unwrap_or_else(|error| {
-                    tracing::error!("Tâche de copie interrompue : {error}");
+                    tracing::error!("Copy task interrupted: {error}");
                     OperationReport::empty(report_kind)
                 })
             },

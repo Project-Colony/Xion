@@ -168,11 +168,11 @@ impl XionApp {
 
         let body = body.height(Length::Fill).spacing(spacing.xs);
 
-        // Les préférences remplacent la zone de contenu — pas une surcouche.
-        // C'est la différence entre cette page et la modale qu'elle remplace :
-        // l'en-tête et la barre d'état restent, le reste cède la place. La
-        // barre latérale des fichiers part avec le corps, sans quoi deux
-        // colonnes de gauche se disputeraient le même rôle.
+        // The preferences replace the content area, not an overlay. That is the
+        // difference between this page and the modal it replaces: the header
+        // and the status bar stay, the rest makes way. The file sidebar goes
+        // with the body, otherwise two left columns would compete for the same
+        // role.
         let body: Element<'_, UiMessage> = match self.render_preferences_page(ctx) {
             Some(page) => page,
             None => body.into(),

@@ -1,17 +1,17 @@
-//! La page de préférences.
+//! The preferences page.
 //!
-//! Elle **remplace la zone de contenu**. Ce n'est ni une modale, ni une
-//! fenêtre, ni une bulle — la convention Colony nomme les trois comme
-//! contre-exemples, et la première écriture de cet écran était précisément une
-//! modale. Le chrome du programme, lui, ne bouge pas : l'en-tête et la barre
-//! d'état restent en place, on ne remplace que ce qu'il y a entre les deux.
+//! It **replaces the content area**. It is not a modal, a window or a popover:
+//! the Colony convention names all three as counter-examples, and the first
+//! version of this screen was precisely a modal. The program's chrome stays
+//! put: the header and the status bar remain, only what sits between them is
+//! replaced.
 //!
-//! On y entre et on en sort par le bouton « Xion » de la bande d'onglets. Le
-//! bouton « Fermer » de la page envoie le même message que lui : deux sorties,
-//! un seul message, donc aucun moyen de les faire diverger.
+//! It is entered and left through the "Xion" button of the tab strip. The
+//! page's Close button sends the same message: two exits, one message, so no
+//! way for them to diverge.
 //!
-//! Il n'y a pas de bouton « Enregistrer », et il ne doit pas y en avoir : un
-//! changement s'applique au moment où il est fait.
+//! There is no Save button, and there must not be one: a change applies the
+//! moment it is made.
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{button, column, container, row, scrollable};
@@ -26,13 +26,12 @@ use super::widgets::body_text;
 use super::widgets::caption_text;
 use super::widgets::title_text;
 
-/// La colonne des catégories. Assez large pour « Accessibilité », qui est le
-/// plus long des cinq intitulés, sans que la colonne ne se redimensionne quand
-/// la catégorie change.
+/// The category column. Wide enough for "Accessibility", the longest of the
+/// five labels, so the column does not resize when the category changes.
 const CATEGORY_COLUMN_WIDTH: f32 = 190.0;
 
 impl PreferencesCategory {
-    /// L'intitulé affiché dans la colonne de gauche.
+    /// The label shown in the left column.
     fn label(self) -> &'static str {
         match self {
             Self::General => "Général",
@@ -43,13 +42,13 @@ impl PreferencesCategory {
         }
     }
 
-    /// La ligne sous le titre de la catégorie : ce qu'elle change, pas son nom
-    /// répété.
+    /// The line under the category title: what it changes, not its name
+    /// repeated.
     fn description(self) -> &'static str {
         match self {
-            // La convention impose cette phrase-ci, mot pour mot, parce qu'elle
-            // porte le contrat qui compte : il n'y a pas de bouton
-            // « Enregistrer », et son absence doit être expliquée quelque part.
+            // The convention requires this exact sentence, because it carries
+            // the contract that matters: there is no Save button, and its
+            // absence has to be explained somewhere.
             Self::General => "Les préférences sont enregistrées automatiquement.",
             Self::Appearance => "Le thème s'applique immédiatement, sans redémarrage.",
             Self::Accessibility => "Ces réglages se combinent avec le thème choisi.",
@@ -60,11 +59,11 @@ impl PreferencesCategory {
 }
 
 impl XionApp {
-    /// La page entière, ou `None` quand elle est fermée.
+    /// The whole page, or `None` when it is closed.
     ///
-    /// Rendue par `view()` à la place du corps — la barre latérale des fichiers
-    /// disparaît avec lui. Deux colonnes de gauche, l'une de dossiers et
-    /// l'autre de catégories, ne se distingueraient pas au premier regard.
+    /// Rendered by `view()` in place of the body, and the file sidebar goes
+    /// with it. Two left columns, one of folders and one of categories, would
+    /// not be told apart at first glance.
     pub(super) fn render_preferences_page(&self, ctx: ViewCtx) -> Option<Element<'_, UiMessage>> {
         if !self.menus.preferences.open {
             return None;
@@ -164,7 +163,7 @@ impl XionApp {
         )
     }
 
-    /// Le contenu d'une catégorie : une liste de sections repliées.
+    /// The content of a category: a list of collapsed sections.
     fn render_preferences_category(
         &self,
         ctx: ViewCtx,
@@ -179,7 +178,7 @@ impl XionApp {
         }
     }
 
-    /// Une section repliable, dont l'état d'ouverture vit dans `menus`.
+    /// A collapsible section, whose open state lives in `menus`.
     fn section<'a>(
         &self,
         ctx: ViewCtx,
@@ -196,7 +195,7 @@ impl XionApp {
         )
     }
 
-    /// Une ligne « intitulé : valeur » pour ce qui se lit sans se modifier.
+    /// A "label: value" line for what is read and not edited.
     fn readout<'a>(ctx: ViewCtx, label: &str, value: String) -> Element<'a, UiMessage> {
         let ViewCtx {
             colors,
@@ -231,9 +230,9 @@ impl XionApp {
         ]
         .spacing(spacing.sm);
 
-        // Le même intitulé que le sélecteur du panneau terminal, produit par la
-        // même fonction : deux noms pour le même interpréteur donneraient
-        // l'impression de deux réglages distincts.
+        // The same label as the terminal panel's picker, produced by the same
+        // function: two names for the same shell would look like two separate
+        // settings.
         let shell = crate::ui::app::shell::label_for(&config.terminal_shell);
 
         let terminal = column![
@@ -263,8 +262,8 @@ impl XionApp {
         let typo = typography.colony();
         let choice = &self.state.config.theme;
 
-        // Les deux sélecteurs se rendent seuls depuis le catalogue partagé :
-        // ajouter une famille de thèmes ne demande aucun changement ici.
+        // Both pickers render on their own from the shared catalogue: adding a
+        // theme family needs no change here.
         let theme = colony_ui::widgets::theme_picker(
             &typo,
             &choice.family,
@@ -403,11 +402,11 @@ impl XionApp {
 mod tests {
     use crate::ui::PreferencesCategory;
 
-    /// La position qu'occupe chaque catégorie, énoncée à part de `ALL`.
+    /// The position each category holds, stated apart from `ALL`.
     ///
-    /// Ce `match` est exhaustif, donc ajouter une variante sans lui donner de
-    /// rang ne compile pas. C'est là tout l'intérêt : `ALL` est un tableau
-    /// écrit à la main, et rien d'autre n'obligerait à l'y ajouter.
+    /// This `match` is exhaustive, so adding a variant without giving it a rank
+    /// does not compile. That is the whole point: `ALL` is a hand-written array,
+    /// and nothing else would force adding the variant to it.
     fn expected_rank(category: PreferencesCategory) -> usize {
         match category {
             PreferencesCategory::General => 0,
@@ -418,10 +417,10 @@ mod tests {
         }
     }
 
-    /// « Do not reorder the first three. They are what a user hunting for a
-    /// setting scans first » — la convention de l'écosystème est explicite, et
-    /// c'est le genre de contrainte qu'un remaniement casse sans s'en rendre
-    /// compte. Le test la rend visible.
+    /// "Do not reorder the first three. They are what a user hunting for a
+    /// setting scans first": the ecosystem convention is explicit, and it is
+    /// the kind of constraint a refactor breaks without noticing. The test
+    /// makes it visible.
     #[test]
     fn the_first_three_categories_are_the_imposed_ones_in_order() {
         assert_eq!(
@@ -434,7 +433,7 @@ mod tests {
         );
     }
 
-    /// « About last where it exists ».
+    /// "About last where it exists".
     #[test]
     fn about_comes_last() {
         assert_eq!(
@@ -446,19 +445,19 @@ mod tests {
     #[test]
     fn every_category_appears_once_and_at_its_rank() {
         for (rank, category) in PreferencesCategory::ALL.into_iter().enumerate() {
-            assert_eq!(rank, expected_rank(category), "{category:?} mal placée");
+            assert_eq!(rank, expected_rank(category), "{category:?} out of place");
         }
         assert_eq!(PreferencesCategory::ALL.len(), 5);
     }
 
-    /// La catégorie ouverte à l'arrivée est la première, pas une au hasard.
+    /// The category open on arrival is the first one, not a random one.
     #[test]
     fn the_default_category_is_the_first_one() {
         assert_eq!(PreferencesCategory::default(), PreferencesCategory::ALL[0]);
     }
 
-    /// Une description qui répète le titre n'apprend rien ; la convention
-    /// demande qu'elle dise la conséquence du réglage.
+    /// A description that repeats the title teaches nothing; the convention
+    /// asks for it to state the consequence of the setting.
     #[test]
     fn each_category_says_something_different() {
         let mut descriptions: Vec<&str> = PreferencesCategory::ALL
@@ -475,8 +474,8 @@ mod tests {
         }
     }
 
-    /// Le contrat que porte la page : pas de bouton « Enregistrer », donc la
-    /// phrase qui l'explique doit être là.
+    /// The contract the page carries: no Save button, so the sentence
+    /// explaining it must be there.
     #[test]
     fn general_carries_the_automatic_saving_contract() {
         assert!(

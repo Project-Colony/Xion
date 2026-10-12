@@ -289,16 +289,16 @@ impl XionApp {
     }
 }
 
-/// Le condensé en hexadécimal minuscule, octet par octet.
+/// The digest in lowercase hexadecimal, byte by byte.
 ///
-/// Écrit ici plutôt que par `format!("{:x}", digest)` : sha2 0.11 rend un
-/// `Array` là où 0.10 rendait un `GenericArray`, et ce type n'implémente plus
-/// `LowerHex`. La mise en forme relevait donc d'un détail d'implémentation de
-/// la caisse et non d'un contrat — l'écrire ici la met hors de portée de la
-/// prochaine version majeure.
+/// Written here rather than with `format!("{:x}", digest)`: sha2 0.11 returns
+/// an `Array` where 0.10 returned a `GenericArray`, and that type no longer
+/// implements `LowerHex`. The formatting was therefore an implementation
+/// detail of the crate and not a contract; writing it here puts it out of
+/// reach of the next major version.
 ///
-/// Le `02` n'est pas décoratif : sans lui, un octet inférieur à 16 s'écrirait
-/// sur un seul caractère et tout le condensé serait faux à partir de là.
+/// The `02` is not decorative: without it, a byte below 16 would be written as
+/// a single character and the whole digest would be wrong from there on.
 fn hex_digest(digest: &[u8]) -> String {
     use std::fmt::Write;
     let mut hex = String::with_capacity(digest.len() * 2);
@@ -312,8 +312,8 @@ fn hex_digest(digest: &[u8]) -> String {
 mod hash_tests {
     use super::hex_digest;
 
-    /// Le piège de cette mise en forme : un octet sous 16 tient sur un seul
-    /// caractère si on oublie le remplissage, et décale tout ce qui suit.
+    /// The trap of this formatting: a byte below 16 fits in one character if
+    /// the padding is forgotten, and shifts everything after it.
     #[test]
     fn small_bytes_keep_their_leading_zero() {
         assert_eq!(hex_digest(&[0x00, 0x0f, 0xff]), "000fff");
@@ -325,10 +325,9 @@ mod hash_tests {
         assert_eq!(hex_digest(&[]), "");
     }
 
-    /// Le condensé complet d'une entrée connue, comparé à ce que `sha256sum`
-    /// produit pour la même. C'est ce test qui dirait qu'un changement de
-    /// version majeure de sha2 a modifié le résultat, et pas seulement son
-    /// type.
+    /// The full digest of a known input, compared with what `sha256sum`
+    /// produces for it. This test would tell that a sha2 major version changed
+    /// the result, and not only its type.
     #[test]
     fn the_digest_matches_what_sha256sum_produces() {
         use sha2::{Digest, Sha256};

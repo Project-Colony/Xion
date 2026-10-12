@@ -255,8 +255,8 @@ impl FileSystem for LocalFileSystem {
 
         if needs_full_metadata {
             // Borrowed paths, not copies: sorting a 100 000-entry directory by
-            // size used to clone every `PathBuf` in it — one heap allocation
-            // apiece — purely to hand the batch something it only reads.
+            // size used to clone every `PathBuf` in it, one heap allocation
+            // apiece, purely to hand the batch something it only reads.
             let metadata = {
                 let paths: Vec<&Path> = entries.iter().map(|entry| entry.path.as_path()).collect();
                 self.metadata_batch(&paths)?
@@ -413,10 +413,9 @@ fn build_gitignore_chain(directory: &Path) -> Vec<ignore::gitignore::Gitignore> 
             // An empty matcher costs a lookup per entry and can never match.
             Ok(matcher) if !matcher.is_empty() => chain.push(matcher),
             Ok(_) => {}
-            Err(error) => tracing::warn!(
-                "Gitignore: erreur de parsing dans {}: {error}",
-                ancestor.display()
-            ),
+            Err(error) => {
+                tracing::warn!("Gitignore: parse error in {}: {error}", ancestor.display())
+            }
         }
 
         if repository_root {
@@ -426,8 +425,8 @@ fn build_gitignore_chain(directory: &Path) -> Vec<ignore::gitignore::Gitignore> 
     chain
 }
 
-/// Applies the chain closest first, as git does: a nested `.gitignore` — and
-/// its negated (`!`) patterns — overrides what its ancestors decided.
+/// Applies the chain closest first, as git does: a nested `.gitignore`, and
+/// its negated (`!`) patterns, overrides what its ancestors decided.
 fn is_gitignored(chain: &[ignore::gitignore::Gitignore], path: &Path, is_dir: bool) -> bool {
     for matcher in chain {
         let matched = matcher.matched_path_or_any_parents(path, is_dir);
@@ -446,7 +445,7 @@ fn is_gitignored(chain: &[ignore::gitignore::Gitignore], path: &Path, is_dir: bo
 /// `MAX_PATH` counts UTF-16 units, but the threshold used to be applied to the
 /// UTF-8 length of the path: an accented path was converted hundreds of bytes
 /// too early while a plain ASCII one could still overflow. The margin below 260
-/// also covers the child names appended to a directory path while listing it —
+/// also covers the child names appended to a directory path while listing it,
 /// the old check looked only at the directory, so a 230-character folder never
 /// got the prefix even though every file inside it was over the limit.
 #[cfg(windows)]
@@ -467,10 +466,7 @@ fn ensure_long_path(path: &Path) -> std::borrow::Cow<'_, Path> {
     let absolute = match std::path::absolute(path) {
         Ok(absolute) => absolute,
         Err(error) => {
-            tracing::warn!(
-                "Chemin long: normalisation de {} impossible: {error}",
-                path.display()
-            );
+            tracing::warn!("Long path: cannot normalise {}: {error}", path.display());
             return std::borrow::Cow::Borrowed(path);
         }
     };
@@ -507,7 +503,7 @@ fn ensure_long_path(path: &Path) -> std::borrow::Cow<'_, Path> {
 
 /// An entry as `read_dir` gives it, before any `stat`.
 ///
-/// `metadata` is `None` until the listing decides it needs it — which it only
+/// `metadata` is `None` until the listing decides it needs it, which it only
 /// does for the page it is about to return, or for everything when the sort key
 /// requires it.
 #[derive(Debug)]
@@ -755,7 +751,7 @@ mod tests {
 
         assert_eq!(metadata.len(), paths.len());
         for (index, entry) in metadata.iter().enumerate() {
-            assert_eq!(entry.size, index as u64, "décalage à l'index {index}");
+            assert_eq!(entry.size, index as u64, "offset at index {index}");
         }
     }
 
@@ -772,10 +768,7 @@ mod tests {
             .expect("metadata batch");
 
         assert_eq!(metadata.len(), 2);
-        assert_eq!(
-            metadata[0].size, 0,
-            "chemin absent -> métadonnées par défaut"
-        );
+        assert_eq!(metadata[0].size, 0, "missing path -> default metadata");
         assert_eq!(metadata[1].size, 3);
     }
 

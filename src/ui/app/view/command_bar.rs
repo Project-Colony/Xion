@@ -1,7 +1,7 @@
 //! The search field and the loading badge.
 //!
-//! The command bar that used to live here — seven buttons on a permanent third
-//! row — is gone: its contents moved into the `⋯` menu, in
+//! The command bar that used to live here, seven buttons on a permanent third
+//! row, is gone: its contents moved into the `⋯` menu, in
 //! `render_overflow_menu`. Only what belongs on the bar itself remains.
 
 use iced::widget::{container, progress_bar, row, text_input};
@@ -18,7 +18,7 @@ use super::widgets::surface_style;
 use super::widgets::{RADIUS, RADIUS_PILL};
 
 impl XionApp {
-    /// The search field and the loading badge, in that order — the caller lays
+    /// The search field and the loading badge, in that order, the caller lays
     /// them out.
     pub(super) fn render_command_bar(
         &self,

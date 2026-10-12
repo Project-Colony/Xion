@@ -22,19 +22,19 @@ use super::widgets::glyph_text;
 use super::widgets::surface_style;
 use super::widgets::toggle_button_style;
 
-/// Côté des bascules de la barre d'état.
+/// Side of the status bar toggles.
 ///
-/// Carrées à dessein : trois icônes côte à côte de largeurs différentes se
-/// lisent comme trois objets sans rapport. La taille laisse de la marge autour
-/// du glyphe le plus large sans que le bouton ne domine la barre.
+/// Square on purpose: three icons side by side with different widths read as
+/// three unrelated objects. The size leaves room around the widest glyph
+/// without the button dominating the bar.
 const TOGGLE_SIZE: f32 = 26.0;
 
-/// De combien l'icône est ramenée vers la gauche dans sa bascule.
+/// How far the icon is pulled left inside its toggle.
 ///
-/// Compense le dessin de la police, pas un défaut de mise en page : les glyphes
-/// de la fonte d'icônes sont posés à droite de leur chasse, donc une boîte
-/// parfaitement centrée montre quand même une icône décalée. Si Xion change de
-/// fonte, ce nombre n'a plus de raison d'être — et se verra.
+/// Compensates for the font's drawing, not a layout flaw: the icon font's
+/// glyphs sit on the right of their advance, so a perfectly centred box still
+/// shows an off-centre icon. If Xion changes fonts, this number has no reason
+/// to exist any more, and it will show.
 const ICON_LEFT_SHIFT: f32 = 2.0;
 
 impl XionApp {
@@ -56,14 +56,14 @@ impl XionApp {
         let selection = &self.state.navigation.selection;
 
         // Folder/file counts and the size of the selection, in a single pass.
-        // These used to be two independent walks of every loaded entry — plus a
+        // These used to be two independent walks of every loaded entry, plus a
         // boxed trait-object iterator whose per-item dynamic dispatch defeated
-        // any chance of the counting loop being vectorised — repeated on every
+        // any chance of the counting loop being vectorised, repeated on every
         // rebuild of the widget tree.
         let want_selection_size = !selection.selected.is_empty();
         // The counts describe the filtered view, but the selection may hold
         // entries a filter is currently hiding and its reported size has to
-        // keep covering all of them — so the two only share a pass when no
+        // keep covering all of them, so the two only share a pass when no
         // filter is active, which is the usual case.
         let fuse_selection = want_selection_size && filtered_indices.is_none();
         let (dir_count, file_count, mut selected_size) = {
@@ -188,31 +188,30 @@ impl XionApp {
         let is_list = matches!(view_mode, ViewMode::List);
         let is_grid = matches!(view_mode, ViewMode::Grid);
 
-        // Un carré, et le glyphe centré dedans.
+        // A square, with the glyph centred inside.
         //
-        // Le bouton se dimensionnait sur la boîte du glyphe, et les glyphes Nerd
-        // Font ont une chasse large dont l'encre n'occupe pas le centre : les
-        // boîtes sortaient rectangulaires et les icônes décalées, chacune
-        // différemment selon le dessin de son glyphe.
+        // The button used to size itself on the glyph's box, and Nerd Font
+        // glyphs have a wide advance whose ink does not fill the centre: the
+        // boxes came out rectangular and the icons off-centre, each differently
+        // depending on how its glyph is drawn.
         let toggle_face = |icon: String| {
             let glyph = glyph_text(typography, icon)
-                // La hauteur de ligne vaut celle de la boîte : c'est là que se
-                // joue le centrage vertical.
+                // The line height equals the box's: that is where vertical
+                // centring happens.
                 //
-                // Par défaut elle vaut 1,3 fois la taille du texte, donc la
-                // boîte réserve une ascendante et une descendante que l'icône
-                // n'occupe pas — centrer cette boîte pousse le glyphe vers le
-                // bas. Sans interligne à répartir, il ne reste que le glyphe.
+                // By default it is 1.3 times the text size, so the box reserves
+                // an ascender and a descender the icon does not use, and
+                // centring that box pushes the glyph down. With no leading to
+                // share out, only the glyph remains.
                 .line_height(iced::widget::text::LineHeight::Absolute(TOGGLE_SIZE.into()))
                 .center();
 
-            // Et une compensation horizontale, parce que centrer ne suffit pas.
+            // And a horizontal compensation, because centring is not enough.
             //
-            // Ces glyphes sont dessinés à droite de leur chasse : la boîte est
-            // bien centrée, l'encre ne l'est pas. Le rembourrage à droite
-            // rétrécit l'aire dans laquelle le glyphe se centre, ce qui le
-            // ramène vers la gauche de la moitié de sa valeur — sans changer la
-            // taille du bouton, qui reste carré.
+            // These glyphs are drawn on the right of their advance: the box is
+            // centred, the ink is not. The right padding shrinks the area the
+            // glyph centres in, which pulls it left by half its value without
+            // changing the button size, which stays square.
             container(glyph)
                 .width(Length::Fixed(TOGGLE_SIZE))
                 .height(Length::Fixed(TOGGLE_SIZE))

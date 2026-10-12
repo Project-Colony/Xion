@@ -13,17 +13,17 @@ pub const FONT_NAME: &str = "JetBrainsMono Nerd Font";
 ///
 /// Only the three variants `UiTypography` actually selects are shipped. The
 /// other thirteen Nerd Font weights used to be embedded and registered too:
-/// 13 x 2.36 Mo of binary that iced parsed into its font database at startup
+/// 13 x 2.36 MB of binary that iced parsed into its font database at startup
 /// and no widget ever asked for. Adding a weight here means adding it to
 /// `UiTypography` as well, or it is dead again.
 pub mod fonts {
-    /// `UiTypography::body_font` — Weight::Normal.
+    /// `UiTypography::body_font`: Weight::Normal.
     pub const REGULAR: &[u8] =
         include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Regular.ttf");
-    /// `UiTypography::title_font` — Weight::Semibold.
+    /// `UiTypography::title_font`: Weight::Semibold.
     pub const SEMI_BOLD: &[u8] =
         include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-SemiBold.ttf");
-    /// `UiTypography::caption_font` — Weight::Light + Style::Italic.
+    /// `UiTypography::caption_font`: Weight::Light + Style::Italic.
     pub const LIGHT_ITALIC: &[u8] =
         include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-LightItalic.ttf");
 }
@@ -76,11 +76,11 @@ pub mod icons {
     pub const FILE_TEXT: &str = "\u{f0219}"; // 󰈙 nf-md-file_document
     pub const FILE_TABLE: &str = "\u{f021b}"; // 󰈛 nf-md-file_excel
     pub const FILE_CONFIG: &str = "\u{f0493}"; // 󰒓 nf-md-settings
-    /// La roue dentée du bouton d'identité, qui ouvre les préférences.
+    /// The gear of the identity button, which opens the preferences.
     ///
-    /// Même glyphe que `FILE_CONFIG`, deux usages sans rapport : l'un décore un
-    /// fichier de configuration dans la liste, l'autre est un bouton de chrome.
-    /// Les nommer séparément fait que changer l'un ne touche pas l'autre.
+    /// Same glyph as `FILE_CONFIG`, two unrelated uses: one decorates a
+    /// configuration file in the list, the other is a chrome button. Naming them
+    /// separately means changing one does not touch the other.
     pub const SETTINGS: &str = "\u{f0493}"; // 󰒓 nf-md-settings
     pub const FILE_GIT: &str = "\u{f02a2}"; // 󰊢 nf-md-git
     pub const FILE_LOCK: &str = "\u{f033e}"; // 󰌾 nf-md-lock
@@ -210,21 +210,20 @@ pub struct UiColors {
 }
 
 impl UiTypography {
-    /// Ce que les widgets partagés de Colony attendent.
+    /// What Colony's shared widgets expect.
     ///
-    /// Les deux structures ne décrivent pas la même chose. Xion nomme trois
-    /// rôles avec leur taille — titre, corps, légende. Colony nomme trois
-    /// graisses et une échelle, et ses widgets appellent `sz(base)` avec des
-    /// tailles de base allant de 8 à 15 : c'est l'échelle qui fait varier le
-    /// tout, pas des tailles nommées.
+    /// The two structures do not describe the same thing. Xion names three roles
+    /// with their size: title, body, caption. Colony names three weights and a
+    /// scale, and its widgets call `sz(base)` with base sizes from 8 to 15: the
+    /// scale makes everything vary, not named sizes.
     ///
-    /// Le pont pose l'échelle sur le corps de texte, qui est la taille dont
-    /// dépend la lisibilité générale, et rapporte les graisses aux polices que
-    /// Xion embarque. Xion n'a pas de gras : la plus lourde qu'il porte est la
-    /// demi-grasse des titres, qui sert donc pour les deux.
+    /// The bridge sets the scale from the body text, the size general
+    /// readability depends on, and maps the weights to the fonts Xion embeds.
+    /// Xion has no bold: the heaviest it carries is the titles' semibold, which
+    /// therefore serves for both.
     pub fn colony(&self) -> colony_ui::Typography {
-        /// La taille de corps sur laquelle les tailles de base de Colony sont
-        /// calibrées. `sz(13)` doit rendre à peu près un corps de texte.
+        /// The body size Colony's base sizes are calibrated on. `sz(13)` should
+        /// render roughly as body text.
         const COLONY_BODY_BASE: f32 = 13.0;
 
         colony_ui::Typography {
@@ -236,21 +235,20 @@ impl UiTypography {
     }
 }
 
-/// Pose l'état global que les widgets partagés de `colony-ui` consultent.
+/// Set the global state the shared `colony-ui` widgets read.
 ///
-/// Xion calcule ses propres couleurs en pur — `UiColors::from_colony` reçoit sa
-/// palette en argument, et rien dans la vue ne lit d'état global. Mais les
-/// widgets de la caisse, eux, n'acceptent aucune palette : `theme_picker` et
-/// `accent_picker` s'habillent par `Palette::BG_CARD()` et consorts, qui
-/// délèguent tous à `active_palette()`, un `RwLock` statique.
+/// Xion computes its own colours purely: `UiColors::from_colony` receives its
+/// palette as an argument, and nothing in the view reads global state. But the
+/// crate's widgets accept no palette: `theme_picker` and `accent_picker` dress
+/// themselves through `Palette::BG_CARD()` and friends, which all delegate to
+/// `active_palette()`, a static `RwLock`.
 ///
-/// Sans cet appel, ils se rendaient en gruvbox sombre **quel que soit le thème
-/// choisi** — le sélecteur de thème affichait donc ses vignettes dans un thème
-/// que l'utilisateur venait justement de quitter.
+/// Without this call they rendered in dark gruvbox **whatever the chosen
+/// theme**, so the theme picker showed its cards in a theme the user had just
+/// left.
 ///
-/// À n'appeler que depuis `update` ou au démarrage. Depuis `view`, ce serait une
-/// écriture de verrou à chaque reconstruction de l'arbre de widgets, et la vue
-/// muterait un état global.
+/// Only call it from `update` or at startup. From `view` it would be a lock
+/// write on every widget tree rebuild, and the view would mutate global state.
 pub fn sync_colony_globals(theme: &crate::core::ThemeChoice) {
     let (family, variant) = theme.keys();
     colony_ui::set_active_theme(family, variant);
@@ -263,12 +261,12 @@ pub fn sync_colony_globals(theme: &crate::core::ThemeChoice) {
     );
 }
 
-/// Aligne la langue des widgets partagés sur celle de la session.
+/// Align the shared widgets' language with the session's.
 ///
-/// `colony_ui::i18n` démarre en anglais et ne détecte rien tout seul : sa
-/// documentation laisse ce choix à l'hôte. Sans cet appel, les cartes du
-/// sélecteur affichaient « Dark mode » et « Light mode » au milieu d'une
-/// interface française.
+/// `colony_ui::i18n` starts in English and detects nothing on its own: its
+/// documentation leaves that choice to the host. Without this call, the picker
+/// cards showed "Dark mode" and "Light mode" in the middle of a French
+/// interface.
 pub fn sync_colony_locale() {
     let tag = std::env::var("LC_ALL")
         .or_else(|_| std::env::var("LC_MESSAGES"))
@@ -298,7 +296,7 @@ fn luminance(color: Color) -> f32 {
 /// Colony's palettes separate their surfaces by fill, the way a card-based
 /// layout does. Xion separates them by line. Measured across the fifty-seven
 /// variants of the catalogue, `border_subtle` equals `bg_card` in twenty-nine
-/// of them, and `divider` in twenty-nine as well — so taking either as given
+/// of them, and `divider` in twenty-nine as well, so taking either as given
 /// would draw an invisible border in more than half the themes.
 ///
 /// The nudge goes towards `towards`, which the caller picks as the most
@@ -341,9 +339,9 @@ impl UiColors {
             accent,
             text_primary: palette.text_primary,
             text_muted: palette.text_muted,
-            // `bg_selected` égale `bg_card` dans douze variantes sur
-            // cinquante-sept : la ligne sélectionnée y disparaîtrait dans le
-            // fond de la liste.
+            // `bg_selected` equals `bg_card` in twelve variants out of
+            // fifty-seven: the selected row would vanish into the list
+            // background there.
             selection: separated_from(palette.bg_selected, palette.bg_card, accent),
             selection_border: accent,
             hover: palette.bg_card_hover,
@@ -398,8 +396,8 @@ mod icon_tests {
 
     #[test]
     fn the_longest_entry_in_the_table_still_fits_the_buffer() {
-        // Si quelqu'un ajoute une extension plus longue que le tampon, elle
-        // tomberait silencieusement sur l'icône générique. Ce test le dit.
+        // If someone adds an extension longer than the buffer, it would
+        // silently fall back to the generic icon. This test says so.
         assert_ne!(icon_for_extension("gitattributes"), FILE);
     }
 
@@ -556,27 +554,26 @@ pub mod layout {
     pub const TERMINAL_DEFAULT_HEIGHT: f32 = 240.0;
     /// Minimum height for terminal panel.
     pub const TERMINAL_MIN_HEIGHT: f32 = 120.0;
-    /// Hauteur maximale du panneau terminal.
+    /// Maximum height of the terminal panel.
     ///
-    /// Généreuse à dessein : un programme plein écran — `claude`, `htop`,
-    /// `lazygit` — a besoin de lignes, et la valeur par défaut de 240 pixels
-    /// n'en offrait que onze une fois la barre d'onglets déduite. La borne
-    /// existe pour qu'il reste toujours de quoi voir les fichiers derrière.
+    /// Generous on purpose: a full-screen program (`claude`, `htop`, `lazygit`)
+    /// needs lines, and the default of 240 pixels only offered eleven once the
+    /// tab strip was taken off. The bound exists so there is always room left
+    /// to see the files behind it.
     pub const TERMINAL_MAX_HEIGHT: f32 = 900.0;
-    /// Hauteur de la bande qui porte les onglets, en haut de fenêtre comme dans
-    /// le panneau terminal.
+    /// Height of the strip carrying the tabs, at the top of the window as in
+    /// the terminal panel.
     ///
-    /// Partagée à dessein : l'onglet actif doit toucher le bas de sa bande sans
-    /// laisser d'espace — c'est ce contact qui fait qu'une rangée de boutons se
-    /// lit comme des onglets. Deux nombres pour la même chose divergent dès que
-    /// la chose change.
+    /// Shared on purpose: the active tab must touch the bottom of its strip with
+    /// no gap, and that contact is what makes a row of buttons read as tabs. Two
+    /// numbers for the same thing drift apart as soon as the thing changes.
     pub const TAB_STRIP_HEIGHT: f32 = 30.0;
-    /// Épaisseur de la poignée de redimensionnement du panneau terminal.
+    /// Thickness of the terminal panel's resize handle.
     ///
-    /// Plus fine que celle du volet d'aperçu, qui fait six pixels : celle-ci est
-    /// horizontale et s'ajoute à la hauteur du chrome, déjà occupée par la bande
-    /// d'onglets. Quatre pixels restent saisissables et rendent deux pixels à la
-    /// grille.
+    /// Thinner than the preview pane's, which is six pixels: this one is
+    /// horizontal and adds to the chrome height, already taken by the tab
+    /// strip. Four pixels stay easy to grab and give two pixels back to the
+    /// grid.
     pub const TERMINAL_RESIZE_BAR_HEIGHT: f32 = 4.0;
 }
 
@@ -584,11 +581,11 @@ pub mod layout {
 mod colony_palette_tests {
     use super::{UiColors, luminance};
 
-    /// Ce que Xion exige de toute palette, vérifié sur le catalogue entier.
+    /// What Xion requires of every palette, checked across the whole catalogue.
     ///
-    /// Colony offre vingt-cinq familles et cinquante-sept variantes. Aucune
-    /// n'est relue à la main ; ce test l'est à leur place, et il échouera le
-    /// jour où le socle en ajoutera une qui ne sépare pas ce que Xion sépare.
+    /// Colony offers twenty-five families and fifty-seven variants. None is
+    /// reviewed by hand; this test does it instead, and it will fail the day the
+    /// foundation adds one that does not separate what Xion separates.
     #[test]
     fn every_colony_variant_stays_legible() {
         const MIN: f32 = 0.03;
@@ -605,19 +602,19 @@ mod colony_palette_tests {
 
                 assert!(
                     apart(colors.border, colors.panel_background) >= MIN,
-                    "{at} : la bordure est invisible sur la liste"
+                    "{at}: the border is invisible on the list"
                 );
                 assert!(
                     apart(colors.selection, colors.panel_background) >= MIN,
-                    "{at} : la ligne sélectionnée se confond avec le fond"
+                    "{at}: the selected row blends into the background"
                 );
                 assert!(
                     apart(colors.text_primary, colors.panel_background) >= 0.2,
-                    "{at} : le texte est illisible sur la liste"
+                    "{at}: the text is unreadable on the list"
                 );
                 assert!(
                     apart(colors.text_muted, colors.panel_background) >= 0.08,
-                    "{at} : le texte atténué est illisible sur la liste"
+                    "{at}: the muted text is unreadable on the list"
                 );
             }
         }
@@ -625,10 +622,9 @@ mod colony_palette_tests {
         assert!(checked >= 50, "catalogue trop court : {checked} variantes");
     }
 
-    /// Le contraste élevé est un modificateur, pas un thème : il s'applique à
-    /// n'importe quelle palette. C'est ce qui règle le défaut de l'ancienne
-    /// palette maison, où l'en-tête et la liste étaient tous deux noirs et où
-    /// seule une bordure les distinguait.
+    /// High contrast is a modifier, not a theme: it applies to any palette. That
+    /// is what fixes the flaw of the old home-made palette, where the header and
+    /// the list were both black and only a border told them apart.
     #[test]
     fn high_contrast_applies_to_any_family() {
         let palette = colony_ui::resolve("gruvbox", "dark");
@@ -640,19 +636,19 @@ mod colony_palette_tests {
             |c: &UiColors| (luminance(c.text_primary) - luminance(c.panel_background)).abs();
         assert!(
             contrast(&boosted) >= contrast(&plain),
-            "le contraste élevé doit augmenter le contraste, pas le réduire"
+            "high contrast must raise the contrast, not lower it"
         );
     }
 
-    /// Une famille inconnue — une configuration ancienne, une famille retirée
-    /// du socle — doit dégrader vers le repli, pas empêcher le démarrage.
+    /// An unknown family (an old configuration, a family removed from the
+    /// foundation) must degrade to the fallback, not prevent startup.
     #[test]
     fn an_unknown_family_falls_back_instead_of_failing() {
-        let palette = colony_ui::resolve("famille-qui-nexiste-pas", "variante-inventee");
+        let palette = colony_ui::resolve("no-such-family", "made-up-variant");
         let colors = UiColors::from_colony(palette, palette.accent_blue);
         assert!(
             (luminance(colors.text_primary) - luminance(colors.panel_background)).abs() >= 0.2,
-            "le repli doit rester lisible"
+            "the fallback must stay readable"
         );
     }
 }
@@ -661,10 +657,9 @@ mod colony_palette_tests {
 mod colony_globals_tests {
     use crate::core::ThemeChoice;
 
-    /// Les widgets partagés n'acceptent aucune palette : ils lisent
-    /// `active_palette()`. Sans synchronisation, le sélecteur de thème
-    /// s'affichait dans la palette de repli — donc dans un thème que
-    /// l'utilisateur venait justement de quitter.
+    /// The shared widgets accept no palette: they read `active_palette()`.
+    /// Without synchronisation the theme picker showed in the fallback palette,
+    /// so in a theme the user had just left.
     #[test]
     fn syncing_makes_the_shared_widgets_follow_the_choice() {
         let choice = ThemeChoice {
@@ -677,12 +672,12 @@ mod colony_globals_tests {
         assert_eq!(
             colony_ui::active_palette().bg_card,
             colony_ui::resolve("solarized", "light").bg_card,
-            "la palette globale doit suivre le choix"
+            "the global palette must follow the choice"
         );
     }
 
-    /// Le rehaussement de contraste doit atteindre les widgets partagés aussi,
-    /// pas seulement les couleurs que Xion calcule pour lui-même.
+    /// The contrast boost must reach the shared widgets too, not only the
+    /// colours Xion computes for itself.
     #[test]
     fn high_contrast_reaches_the_shared_widgets() {
         let mut choice = ThemeChoice {
@@ -702,7 +697,7 @@ mod colony_globals_tests {
         super::sync_colony_globals(&ThemeChoice::default());
     }
 
-    /// Un accent choisi remplace celui du thème ; `None` le rend au thème.
+    /// A chosen accent replaces the theme's; `None` gives it back to the theme.
     #[test]
     fn the_chosen_accent_overrides_the_theme_one() {
         let mut choice = ThemeChoice::default();

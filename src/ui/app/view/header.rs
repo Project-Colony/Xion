@@ -1,6 +1,6 @@
 //! The window header: one bar, and a tab strip when there is more than one tab.
 //!
-//! It used to be three stacked bands — tabs, then navigation with the address
+//! It used to be three stacked bands, tabs, then navigation with the address
 //! and the search, then a command bar of seven buttons. On a 720-pixel window
 //! that was 92 pixels of chrome before the first file, and the command bar gave
 //! the same visual weight to six different kinds of thing: verbs acting on the
@@ -97,11 +97,10 @@ impl XionApp {
 
         let mut header_column = column![bar].spacing(spacing.xs);
 
-        // Toujours visible. Je l'avais masquée tant qu'il n'y avait qu'un onglet,
-        // pour gagner trente pixels — mais elle porte le seul « + » de
-        // l'interface, donc masquer la barre supprimait le seul moyen visible
-        // d'ouvrir un second onglet. Un raccourci clavier existe ; il ne se
-        // découvre pas.
+        // Always visible. It used to be hidden while there was only one tab, to
+        // save thirty pixels, but it carries the only "+" of the interface, so
+        // hiding the bar removed the only visible way to open a second tab. A
+        // keyboard shortcut exists; it is not discoverable.
         header_column = header_column.push(self.render_tab_strip(ctx));
 
         let header = container(header_column)
@@ -116,20 +115,19 @@ impl XionApp {
         (header.into(), history_menu)
     }
 
-    /// Le bouton « Xion », qui ouvre et ferme les préférences.
+    /// The "Xion" button, which opens and closes the preferences.
     ///
-    /// La convention Colony veut que l'identité du programme soit le chemin
-    /// vers ses réglages — « not a gear floating in a toolbar, not an entry
-    /// buried in a list of sections ». Xion a la forme de chrome de Digger, une
-    /// barre horizontale, et suit donc sa mise en œuvre : un bouton texte, pas
-    /// un fond de carte.
+    /// The Colony convention wants the program's identity to be the path to its
+    /// settings: "not a gear floating in a toolbar, not an entry buried in a
+    /// list of sections". Xion has Digger's chrome shape, a horizontal bar, and
+    /// so follows its implementation: a text button, not a card background.
     ///
-    /// Il vit dans la bande d'onglets, et tout l'enjeu est qu'il ne se lise pas
-    /// comme un onglet de plus. Ce qui fait qu'un bouton *devient* un onglet,
-    /// c'est le contact avec le bas de la bande — c'est écrit à
-    /// [`TAB_STRIP_HEIGHT`]. Celui-ci est donc centré verticalement, sans
-    /// jamais toucher ce bas, et garde un arrondi complet là où les onglets
-    /// sont carrés en bas. Les deux différences se voient d'un coup d'œil.
+    /// It lives in the tab strip, and the whole point is that it must not read
+    /// as one more tab. What makes a button *become* a tab is touching the
+    /// bottom of the strip, as written at [`TAB_STRIP_HEIGHT`]. This one is
+    /// therefore centred vertically, never touching that bottom, and keeps full
+    /// rounding where tabs are square at the bottom. Both differences show at a
+    /// glance.
     fn render_identity_button(&self, ctx: ViewCtx) -> Element<'_, UiMessage> {
         let ViewCtx {
             colors,
@@ -149,8 +147,8 @@ impl XionApp {
         let identity = button(label)
             .padding([spacing.xs, spacing.sm])
             .style(move |_theme: &Theme, status: ButtonStatus| {
-                // Ouvert : l'accent et un fond. Fermé : discret, parce que le
-                // nom du programme n'a pas à concurrencer les onglets.
+                // Open: the accent and a background. Closed: discreet, because
+                // the program name should not compete with the tabs.
                 let background = if open {
                     Some(Background::Color(colors.selection))
                 } else if matches!(status, ButtonStatus::Hovered) {
@@ -193,8 +191,8 @@ impl XionApp {
 
     /// The tab strip.
     ///
-    /// The close cross used to be built with the very same widget as the tab —
-    /// same padding, same shape, same size — so a tab and its cross read as two
+    /// The close cross used to be built with the very same widget as the tab,
+    /// same padding, same shape, same size, so a tab and its cross read as two
     /// tabs, and so did the `+`. Here the cross lives inside the tab, the `+` is
     /// a lighter glyph, and the active tab reaches the bottom of the strip so
     /// that it joins the list underneath.
@@ -231,8 +229,8 @@ impl XionApp {
                 inner = inner.push(
                     button(glyph_text(typography, icons::CLOSE).color(colors.text_muted))
                         .padding(2.0)
-                        // Les jetons du thème, pas du blanc en dur : la croix
-                        // aurait disparu sur fond clair.
+                        // Theme tokens, not hard-coded white: the cross would
+                        // have vanished on a light background.
                         .style(move |_theme: &Theme, status: ButtonStatus| {
                             iced::widget::button::Style {
                                 background: None,

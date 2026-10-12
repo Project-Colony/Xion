@@ -46,7 +46,7 @@ use types::*;
 
 use crate::ui::theme::{FONT_NAME, fonts};
 
-/// Widget ID for the main list scrollable — used to trigger initial scroll_to
+/// Widget ID for the main list scrollable: used to trigger initial scroll_to
 /// so that `on_scroll` fires and captures viewport bounds.
 const LIST_SCROLLABLE_ID: &str = "main_list_scrollable";
 
@@ -59,7 +59,7 @@ pub struct XionApp {
     media: MediaState,
     /// Shared so that pinning the list for the duration of a mouse gesture is a
     /// refcount bump. `begin_user_selection` used to deep-copy every loaded
-    /// entry — up to 20 000 `FsEntry`, each with two heap allocations — on the
+    /// entry, up to 20 000 `FsEntry`, each with two heap allocations, on the
     /// UI thread, at mouse-press.
     ///
     /// Writes go through `Arc::make_mut`, so the copy only ever happens if a
@@ -114,8 +114,8 @@ pub struct XionApp {
     preview_anim_progress: f32,
     preview_anim_target: f32,
     terminal: TerminalState,
-    /// Voir [`RetiredTerminals`] : lâcher un terminal trop tôt fait paniquer la
-    /// souscription qui l'écoute encore.
+    /// See [`RetiredTerminals`]: dropping a terminal too early makes the
+    /// subscription still listening to it panic.
     retired_terminals: RetiredTerminals,
     terminal_anim_progress: f32,
     terminal_anim_target: f32,
@@ -254,16 +254,15 @@ fn map_event_to_message(
     status: iced::event::Status,
     _window: iced::window::Id,
 ) -> Option<UiMessage> {
-    // Une touche déjà consommée par un widget ne doit pas être rejouée comme
-    // raccourci global.
+    // A key already consumed by a widget must not be replayed as a global
+    // shortcut.
     //
-    // Ce statut était ignoré, et c'était sans conséquence tant que rien ne
-    // consommait les touches. Le terminal intégré, lui, les prend toutes quand
-    // il a le focus : taper « claude » y déclenchait aussi la navigation par
-    // première lettre, le filtre rapide et le renommage de Xion, et chaque
-    // changement d'état reconstruisait l'interface — ce qui redimensionnait le
-    // pseudo-terminal et faisait redessiner sa ligne au shell. D'où les lettres
-    // qui semblaient se dédoubler.
+    // This status used to be ignored, harmlessly while nothing consumed keys.
+    // The integrated terminal takes them all when it has focus: typing
+    // "claude" there also triggered Xion's first-letter navigation, quick
+    // filter and rename, and every state change rebuilt the interface, which
+    // resized the pseudo-terminal and made the shell redraw its line. Hence
+    // the letters that seemed to double.
     let captured = matches!(status, iced::event::Status::Captured);
     match event {
         iced::Event::Window(iced::window::Event::CloseRequested) => Some(UiMessage::ExitRequested),
@@ -277,9 +276,8 @@ fn map_event_to_message(
                 alt: modifiers.alt(),
             }))
         }
-        // Les modificateurs restent suivis même consommés : c'est un état, pas
-        // une action, et Xion s'en sert pour le glisser-copier comme pour les
-        // infobulles.
+        // Modifiers stay tracked even when consumed: they are state, not an
+        // action, and Xion uses them for drag-to-copy as well as for tooltips.
         iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) if !captured => {
             Some(UiMessage::RawKeyPressed { key, modifiers })
         }
@@ -318,7 +316,7 @@ pub fn run(
 
     let result = iced::application(XionApp::new, XionApp::update, XionApp::view)
         .title(|state: &XionApp| format!("Xion — {}", state.state.route.display_label()))
-        // A plain, resizable, centred window — the shape every desktop file
+        // A plain, resizable, centred window: the shape every desktop file
         // manager uses. Not maximised: the user's window manager decides that,
         // and a file manager that seizes the whole screen on launch is a
         // nuisance.
@@ -361,7 +359,7 @@ pub fn run(
 
     // Force a clean exit: background threads (the notify watcher, the tokio
     // workers, the pty readers) can keep the process alive after the event loop
-    // ends. The exit code carries the outcome — the result used to be dropped
+    // ends. The exit code carries the outcome, the result used to be dropped
     // with `let _ =`, so a failed start still reported success to whatever
     // launched Xion.
     if let Err(error) = &result {
@@ -387,11 +385,11 @@ mod event_routing_tests {
         })
     }
 
-    /// Une touche consommée par un widget ne redevient pas un raccourci.
+    /// A key consumed by a widget does not become a shortcut again.
     ///
-    /// Le terminal intégré prend toutes les frappes quand il a le focus. Sans
-    /// cette règle, taper « claude » y déclenchait aussi la navigation par
-    /// première lettre et le filtre rapide de Xion.
+    /// The integrated terminal takes every keystroke when it has focus. Without
+    /// this rule, typing "claude" there also triggered Xion's first-letter
+    /// navigation and quick filter.
     #[test]
     fn a_captured_key_is_not_replayed_as_a_shortcut() {
         let routed = map_event_to_message(
@@ -399,10 +397,10 @@ mod event_routing_tests {
             iced::event::Status::Captured,
             iced::window::Id::unique(),
         );
-        assert!(routed.is_none(), "une touche consommée a été rejouée");
+        assert!(routed.is_none(), "a consumed key was replayed");
     }
 
-    /// Et sans widget pour la prendre, elle doit bien arriver.
+    /// And with no widget to take it, it must arrive.
     #[test]
     fn an_ignored_key_still_reaches_the_shortcuts() {
         let routed = map_event_to_message(
@@ -412,12 +410,12 @@ mod event_routing_tests {
         );
         assert!(
             matches!(routed, Some(UiMessage::RawKeyPressed { .. })),
-            "une touche libre n'est pas parvenue aux raccourcis"
+            "a free key did not reach the shortcuts"
         );
     }
 
-    /// Fermer la fenêtre n'est pas une frappe : aucun widget ne la consomme, et
-    /// la règle ci-dessus ne doit pas l'emporter au passage.
+    /// Closing the window is not a keystroke: no widget consumes it, and the
+    /// rule above must not swallow it on the way.
     #[test]
     fn window_events_are_routed_whatever_the_status() {
         let routed = map_event_to_message(

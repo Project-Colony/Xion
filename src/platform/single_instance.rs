@@ -3,14 +3,14 @@
 //! Opening a folder from a desktop, a terminal or `xdg-open` starts the binary
 //! again. Without this, that means a second process: a second window, a second
 //! ~38 MiB, a second copy of every cache, and no way to end up with the folder
-//! next to what you already had open. Nautilus does not behave that way — a
+//! next to what you already had open. Nautilus does not behave that way, a
 //! second `nautilus` call reaches the running one over D-Bus, which is the whole
 //! reason its second window appears in 139 ms where its first took 700.
 //!
 //! So this does the same thing: the first process claims a well-known name, and
 //! every later one hands it the path and exits.
 //!
-//! The transport differs by platform — D-Bus on Linux, a named pipe on Windows —
+//! The transport differs by platform, D-Bus on Linux, a named pipe on Windows,
 //! but the decision is the same, so both backends answer the one question in
 //! [`claim`] and the rest of the crate never learns which is in use.
 

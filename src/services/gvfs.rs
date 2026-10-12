@@ -2,7 +2,7 @@
 //!
 //! gvfs is the GNOME virtual filesystem layer: it is what gives a desktop SMB
 //! shares, SFTP, MTP phones, cameras, WebDAV and Google Drive. Talking to it
-//! properly would mean binding GIO — glib, gobject, a large C dependency chain,
+//! properly would mean binding GIO, glib, gobject, a large C dependency chain,
 //! Linux-only, and the opposite direction from the C dependency this crate just
 //! removed to cross-compile for Windows.
 //!
@@ -72,7 +72,7 @@ pub fn is_gvfs_path(path: &Path) -> bool {
 /// Every currently mounted gvfs location.
 ///
 /// Returns an empty vector when gvfs is not running, which is the normal state
-/// on a machine without a GNOME session — this is an addition, not a
+/// on a machine without a GNOME session, this is an addition, not a
 /// requirement.
 pub fn mounts() -> Vec<GvfsMount> {
     let Some(root) = mount_root() else {
@@ -107,7 +107,7 @@ pub fn mounts() -> Vec<GvfsMount> {
 /// A gvfs mount directory name, taken apart.
 ///
 /// The convention is `<scheme>:<key>=<value>[,<key>=<value>]…`, with the values
-/// percent-encoded. `archive:host=file%253A%252F%252F%252Ftmp%252Fessai.zip` is
+/// percent-encoded. `archive:host=file%253A%252F%252F%252Ftmp%252Ftest.zip` is
 /// a real one: the value is encoded twice because it is itself a URI.
 #[derive(Debug, PartialEq, Eq)]
 struct MountSpec {
@@ -208,9 +208,7 @@ mod tests {
     use super::*;
 
     fn label_of(name: &str) -> String {
-        MountSpec::parse(name)
-            .expect("nom de montage valide")
-            .label()
+        MountSpec::parse(name).expect("valid mount name").label()
     }
 
     #[test]
@@ -223,20 +221,23 @@ mod tests {
 
     #[test]
     fn an_sftp_mount_names_its_user_and_host() {
-        assert_eq!(label_of("sftp:host=exemple.fr,user=bob"), "bob@exemple.fr");
+        assert_eq!(
+            label_of("sftp:host=example.org,user=bob"),
+            "bob@example.org"
+        );
     }
 
     #[test]
     fn an_sftp_mount_without_a_user_still_has_a_name() {
-        assert_eq!(label_of("sftp:host=exemple.fr"), "exemple.fr");
+        assert_eq!(label_of("sftp:host=example.org"), "example.org");
     }
 
-    /// Le nom relevé sur un vrai montage : la valeur y est encodée deux fois,
-    /// parce qu'elle est elle-même une URI.
+    /// The name read from a real mount: the value is encoded twice there,
+    /// because it is itself a URI.
     #[test]
     fn an_archive_mount_shows_the_file_name() {
-        let name = "archive:host=file%253A%252F%252F%252Ftmp%252Fdossier%252Fessai.zip";
-        assert_eq!(label_of(name), "essai.zip");
+        let name = "archive:host=file%253A%252F%252F%252Ftmp%252Ffolder%252Ftest.zip";
+        assert_eq!(label_of(name), "test.zip");
     }
 
     #[test]
@@ -255,7 +256,7 @@ mod tests {
         );
     }
 
-    /// Un schéma inconnu ne doit pas afficher une ligne de pourcents.
+    /// An unknown scheme must not display a line of percent signs.
     #[test]
     fn an_unknown_scheme_falls_back_to_its_host() {
         assert_eq!(
@@ -271,13 +272,13 @@ mod tests {
 
     #[test]
     fn a_name_that_is_not_a_mount_spec_is_refused() {
-        assert!(MountSpec::parse("pas-un-montage").is_none());
-        assert!(MountSpec::parse(":sans-schema").is_none());
+        assert!(MountSpec::parse("not-a-mount").is_none());
+        assert!(MountSpec::parse(":no-scheme").is_none());
     }
 
     #[test]
     fn enumerating_mounts_never_panics_without_gvfs() {
-        // Sur une machine sans gvfs la liste est vide, ce n'est pas une erreur.
+        // On a machine without gvfs the list is empty, which is not an error.
         let _ = mounts();
     }
 }

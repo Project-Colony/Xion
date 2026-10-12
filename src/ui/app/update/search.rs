@@ -259,9 +259,9 @@ impl XionApp {
                 } else {
                     ".gitignore désactivé".to_string()
                 });
-                // La page de préférences affiche « enregistrées
-                // automatiquement » ; sans ceci le réglage revenait au
-                // démarrage suivant et la promesse était fausse.
+                // The preferences page says "saved automatically"; without this
+                // the setting came back at the next start and the promise was
+                // false.
                 self.config_manager.save(&self.state.config);
                 tasks.push(self.refresh_entries());
             }

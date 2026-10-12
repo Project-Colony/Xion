@@ -46,18 +46,17 @@ pub(super) struct ViewCtx {
     pub(super) typography: UiTypography,
 }
 
-/// Où pendent les menus déroulants issus de la barre d'en-tête.
+/// Where the drop-down menus coming from the header bar hang.
 ///
-/// Mesuré depuis le haut de la fenêtre : le rembourrage extérieur du contenu,
-/// puis le rembourrage haut de l'en-tête, puis la hauteur d'un bouton de barre
-/// d'outils. C'est une estimation, pas une valeur dérivée de la mise en page —
-/// iced ne rend pas la position calculée disponible ici.
+/// Measured from the top of the window: the content's outer padding, then the
+/// header's top padding, then the height of a toolbar button. It is an
+/// estimate, not a value derived from the layout: iced does not expose the
+/// computed position here.
 ///
-/// Elle est unique et partagée pour une raison précise : le menu du fil
-/// d'Ariane utilisait 90, calibré sur l'ancien en-tête à trois bandes. Celui-ci
-/// n'en a plus qu'une, et le menu flottait cinquante pixels sous le bouton
-/// auquel il appartient. Deux nombres pour la même chose divergent dès que la
-/// chose change.
+/// It is single and shared for a precise reason: the breadcrumb menu used 90,
+/// calibrated on the old three-strip header. This one has only one strip
+/// left, and the menu floated fifty pixels below the button it belongs to. Two
+/// numbers for the same thing drift apart as soon as the thing changes.
 pub(super) const HEADER_DROPDOWN_TOP: f32 = 54.0;
 
 /// A solid fill with the standard one-pixel outline and a rounded corner.
@@ -77,29 +76,29 @@ pub(super) fn filled_style(
     }
 }
 
-/// La bande qui porte des onglets : remplie, arrondie en haut seulement, et
-/// sans contour.
+/// The strip that carries tabs: filled, rounded at the top only, and with no
+/// border.
 ///
 /// Two reasons it has no border. The tab strip sits flush against the bottom of
-/// this container, and the active tab is painted in the list's own background —
+/// this container, and the active tab is painted in the list's own background,
 /// so a line drawn under the tabs would cut the join that makes a row of
 /// buttons read as tabs at all. And the window already had a border around the
 /// header, one around the sidebar, one around the list and one around the
 /// status bar, which is what made the screen read as a stack of panels rather
 /// than an application.
 ///
-/// Partagée entre l'en-tête de fenêtre et le panneau terminal : la bande du
-/// terminal utilisait `filled_style`, qui trace justement cette ligne, et ses
-/// onglets ne se rattachaient donc à rien.
+/// Shared between the window header and the terminal panel: the terminal strip
+/// used `filled_style`, which draws exactly that line, so its tabs were joined
+/// to nothing.
 pub(super) fn tab_strip_style(
     colors: UiColors,
     radius: f32,
 ) -> impl Fn(&Theme) -> container::Style + Copy {
-    // Sauf quand l'aplat ne sépare rien. Le thème « contraste élevé » peint
-    // `chrome_background` et `panel_background` tous deux en noir : il ne
-    // distingue les zones que par ses bordures blanches. Retirer celle-ci y
-    // rendait l'en-tête purement invisible — précisément dans le thème destiné
-    // aux personnes qui ont besoin de séparations franches.
+    // Except when the fill separates nothing. The high contrast theme paints
+    // `chrome_background` and `panel_background` both black: it only tells the
+    // areas apart by its white borders. Removing this one made the header
+    // simply invisible there, precisely in the theme meant for people who need
+    // clear separations.
     let fills_separate = colors.chrome_background != colors.panel_background;
     move |_: &Theme| container::Style {
         background: Some(Background::Color(colors.chrome_background)),
@@ -114,7 +113,7 @@ pub(super) fn tab_strip_style(
     }
 }
 
-/// La bande de l'en-tête de fenêtre.
+/// The window header strip.
 pub(super) fn header_style(colors: UiColors) -> impl Fn(&Theme) -> container::Style + Copy {
     tab_strip_style(colors, RADIUS.xl)
 }
@@ -283,9 +282,9 @@ pub(super) fn toggle_button_style(
             ..Default::default()
         };
 
-        // `md` plutôt que `sm` : sur un carré de vingt-six pixels, un rayon de
-        // quatre laisse des coins presque droits, et le bouton se lit comme une
-        // case à cocher plutôt que comme une bascule.
+        // `md` rather than `sm`: on a twenty-six pixel square, a radius of four
+        // leaves almost square corners, and the button reads as a checkbox
+        // rather than a toggle.
         if active {
             style.background = Some(Background::Color(colors.selection));
             style.border = border::rounded(RADIUS.md)
@@ -317,9 +316,9 @@ pub(super) fn toolbar_button<'a>(ctx: ViewCtx, label: String) -> Button<'a, UiMe
 /// Which tooltip look a call site wants.
 ///
 /// There were two, because the navigation arrows and the command bar had each
-/// grown their own tooltip code. The command bar is gone — its contents moved
+/// grown their own tooltip code. The command bar is gone, its contents moved
 /// into the `⋯` menu, where entries carry their shortcut inline and need no
-/// tooltip — so only one look is left.
+/// tooltip, so only one look is left.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum TipVariant {
     /// Navigation arrows: chrome surface, default text, 4px inner padding.

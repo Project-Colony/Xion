@@ -47,7 +47,7 @@ where
         if expired {
             // `remove` also purges `order`. Dropping the entry alone left a
             // ghost key in the queue, which `evict_if_needed` then popped
-            // instead of a live one — the LRU order drifted with every
+            // instead of a live one, the LRU order drifted with every
             // expiry, and a re-inserted key was queued twice.
             self.remove(key);
             return None;
@@ -65,7 +65,7 @@ where
             },
         );
         if existing.is_some() {
-            // O(n) scan — acceptable for small max_entries; IndexMap would be O(1)
+            // O(n) scan: acceptable for small max_entries; IndexMap would be O(1)
             // but adds a dependency for negligible gain at typical cache sizes (<200).
             self.order.retain(|existing| existing != &key);
         }
@@ -221,8 +221,8 @@ impl DirectoryCache {
     /// Recompute the byte total from the listings that are actually still in
     /// the cache.
     ///
-    /// Entries can leave `inner` in three ways — explicit removal, TTL expiry
-    /// inside `get`, and `max_entries` eviction inside `insert` — and only the
+    /// Entries can leave `inner` in three ways, explicit removal, TTL expiry
+    /// inside `get`, and `max_entries` eviction inside `insert`, and only the
     /// first one used to be accounted for, so the counter ratcheted upwards
     /// until the cache stopped accepting anything. With at most a few hundred
     /// keys this is cheaper than threading eviction callbacks through.
@@ -295,7 +295,7 @@ mod directory_cache_tests {
         std::thread::sleep(Duration::from_millis(20));
 
         assert!(cache.get("alpha").is_none());
-        assert!(cache.order.is_empty(), "clé fantôme restée dans la file");
+        assert!(cache.order.is_empty(), "ghost key left in the queue");
     }
 
     #[test]
@@ -322,9 +322,12 @@ mod directory_cache_tests {
 
         assert!(
             cache.estimated_bytes() < with_two + 10_000,
-            "le compteur d'octets ne doit pas s'emballer"
+            "the byte counter must not run away"
         );
-        assert!(cache.get(&key("/a")).is_none(), "/a devait être évincé");
+        assert!(
+            cache.get(&key("/a")).is_none(),
+            "/a should have been evicted"
+        );
         assert!(cache.get(&key("/c")).is_some());
     }
 

@@ -58,10 +58,10 @@ fn initial_tabs(
 
     match cli_path {
         Some(path) => {
-            // Déjà ouvert : on y va. `open_in_new_tab` fait la même chose pour
-            // l'instance déjà lancée ; ce chemin-ci, celui du démarrage à froid,
-            // avait été oublié. Sans ça, `xion ~/Images` alors qu'un onglet
-            // Images est enregistré en ouvrait un second, identique.
+            // Already open: go to it. `open_in_new_tab` does the same for the
+            // instance already running; this path, the cold start one, had
+            // been forgotten. Without it, `xion ~/Pictures` while a Pictures
+            // tab is saved opened a second, identical one.
             if let Some(index) = tabs.iter().position(|tab| tab.path == path) {
                 return (tabs, index);
             }
@@ -90,7 +90,7 @@ impl XionApp {
             .ok()
             .and_then(|mut guard| guard.take());
         // `config.start_path` is deliberately left alone. Overwriting it here
-        // looked harmless — `AppState::new` reads it to pick the route — but the
+        // looked harmless, `AppState::new` reads it to pick the route, but the
         // same object is what gets written back to disk, so a single
         // `xion /un/dossier` permanently replaced the user's configured start
         // directory. A one-off argument must not rewrite a preference. The route
@@ -229,7 +229,7 @@ impl XionApp {
             tab_drag_source: None,
             single_instance: super::PRIMARY_CLAIM.lock().ok().and_then(|mut c| c.take()),
         };
-        // The route follows whichever tab `initial_tabs` made active — the one
+        // The route follows whichever tab `initial_tabs` made active, the one
         // the argument asked for, or the one the saved session had.
         if let Some(path) = app
             .tab_manager
@@ -254,8 +254,8 @@ impl XionApp {
         if let Some(error) = watcher_error {
             app.last_action = Some(format!("Observateur FS indisponible: {error}"));
         }
-        // Les widgets partagés lisent un état global ; sans ça ils se rendent
-        // dans la palette de repli et en anglais.
+        // The shared widgets read global state; without this they render in
+        // the fallback palette and in English.
         crate::ui::theme::sync_colony_locale();
         crate::ui::theme::sync_colony_globals(&app.state.config.theme);
         app.sync_watcher();
@@ -416,7 +416,7 @@ mod initial_tabs_tests {
         let (tabs, active) = initial_tabs(
             &persisted(&["/a", "/b", "/c"]),
             1,
-            PathBuf::from("/repli"),
+            PathBuf::from("/fallback"),
             None,
         );
         assert_eq!(tabs.len(), 3);
@@ -424,44 +424,44 @@ mod initial_tabs_tests {
         assert_eq!(tabs[1].path, Path::new("/b"));
     }
 
-    /// La régression : `xion /un/dossier` ouvrait l'onglet actif de la session
-    /// précédente et jetait l'argument.
+    /// The regression: `xion /some/folder` opened the previous session's active
+    /// tab and threw the argument away.
     #[test]
     fn an_argument_opens_that_directory() {
         let (tabs, active) = initial_tabs(
             &persisted(&["/images"]),
             0,
-            PathBuf::from("/repli"),
-            Some(Path::new("/tmp/demande")),
+            PathBuf::from("/fallback"),
+            Some(Path::new("/tmp/requested")),
         );
-        assert_eq!(tabs[active].path, Path::new("/tmp/demande"));
+        assert_eq!(tabs[active].path, Path::new("/tmp/requested"));
     }
 
     #[test]
     fn an_argument_does_not_cost_the_saved_session() {
         let (tabs, _) = initial_tabs(
-            &persisted(&["/images", "/musique"]),
+            &persisted(&["/images", "/music"]),
             0,
-            PathBuf::from("/repli"),
-            Some(Path::new("/tmp/demande")),
+            PathBuf::from("/fallback"),
+            Some(Path::new("/tmp/requested")),
         );
-        assert_eq!(tabs.len(), 3, "les onglets enregistrés restent");
+        assert_eq!(tabs.len(), 3, "the saved tabs stay");
         assert_eq!(tabs[0].path, Path::new("/images"));
-        assert_eq!(tabs[1].path, Path::new("/musique"));
+        assert_eq!(tabs[1].path, Path::new("/music"));
     }
 
-    /// Le même bug que `open_in_new_tab` avait, corrigé là et oublié ici : deux
-    /// chemins vers la même action, un seul réparé.
+    /// The same bug `open_in_new_tab` had, fixed there and forgotten here: two
+    /// paths to the same action, only one repaired.
     #[test]
     fn an_argument_for_an_already_open_folder_does_not_duplicate_it() {
         let (tabs, active) = initial_tabs(
-            &persisted(&["/images", "/musique"]),
+            &persisted(&["/images", "/music"]),
             0,
-            PathBuf::from("/repli"),
+            PathBuf::from("/fallback"),
             Some(Path::new("/images")),
         );
-        assert_eq!(tabs.len(), 2, "aucun onglet ajouté");
-        assert_eq!(tabs[active].path, Path::new("/images"), "on y est allé");
+        assert_eq!(tabs.len(), 2, "no tab added");
+        assert_eq!(tabs[active].path, Path::new("/images"), "went to it");
     }
 
     #[test]
@@ -469,16 +469,17 @@ mod initial_tabs_tests {
         let (tabs, active) = initial_tabs(
             &[],
             0,
-            PathBuf::from("/repli"),
-            Some(Path::new("/tmp/demande")),
+            PathBuf::from("/fallback"),
+            Some(Path::new("/tmp/requested")),
         );
-        assert_eq!(tabs[active].path, Path::new("/tmp/demande"));
+        assert_eq!(tabs[active].path, Path::new("/tmp/requested"));
     }
 
-    /// `active_tab_index` vient d'un fichier que l'utilisateur peut éditer.
+    /// `active_tab_index` comes from a file the user can edit.
     #[test]
     fn an_out_of_range_active_index_does_not_panic() {
-        let (tabs, active) = initial_tabs(&persisted(&["/a"]), 99, PathBuf::from("/repli"), None);
+        let (tabs, active) =
+            initial_tabs(&persisted(&["/a"]), 99, PathBuf::from("/fallback"), None);
         assert!(active < tabs.len());
     }
 }

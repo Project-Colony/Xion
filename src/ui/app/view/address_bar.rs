@@ -51,7 +51,7 @@ impl XionApp {
                 .style(surface_style(colors, RADIUS.md))
                 .into()
         } else {
-            // Breadcrumb mode — clickable path segments
+            // Breadcrumb mode: clickable path segments
             let current_path = self.state.route.address_label();
             let mut breadcrumb_row = row![].spacing(0).align_y(Alignment::Center);
 

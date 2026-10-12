@@ -22,7 +22,7 @@ impl XionApp {
     /// A truly exhaustive match is impossible here: the compiler cannot know
     /// that the seven handlers before this one already consumed their
     /// variants, so it would demand an arm for all 156. The catch-all is
-    /// therefore loud rather than silent — an unrouted message fails the test
+    /// therefore loud rather than silent, an unrouted message fails the test
     /// suite in debug and is logged in release, instead of quietly doing
     /// nothing forever.
     pub(super) fn update_tools(
@@ -47,7 +47,7 @@ impl XionApp {
             }
             UiMessage::TogglePreferences => {
                 self.menus.preferences.open = !self.menus.preferences.open;
-                // Le menu `⋯` couvrirait la page qui vient de s'ouvrir.
+                // The `⋯` menu would cover the page that just opened.
                 self.menus.overflow_open = false;
             }
             UiMessage::SelectPreferencesCategory(category) => {
@@ -61,8 +61,8 @@ impl XionApp {
             UiMessage::ToggleShowHidden => {
                 self.state.config.list.show_hidden = !self.state.config.list.show_hidden;
                 self.config_manager.save(&self.state.config);
-                // Le filtrage se fait au chargement, pas au rendu : sans
-                // relecture, la liste garde l'ancien contenu.
+                // Filtering happens at load, not at render: without a reload,
+                // the list keeps the old content.
                 tasks.push(self.refresh_entries());
             }
             UiMessage::ToggleDirectoriesFirst => {
@@ -77,14 +77,14 @@ impl XionApp {
                 self.state.config.dark_mode =
                     crate::ui::theme::resolves_dark(&self.state.config.theme);
                 crate::ui::theme::sync_colony_globals(&self.state.config.theme);
-                // Le surligneur garde des couleurs calculées pour l'ancien
-                // thème tant qu'on ne le vide pas.
+                // The highlighter keeps colours computed for the old theme
+                // until it is cleared.
                 self.cached_highlighted_preview = None;
                 self.config_manager.save(&self.state.config);
             }
             UiMessage::SetAccent(key) => {
-                // Rechoisir le même accent revient à « celui du thème » : sans
-                // ça, le sélecteur n'aurait aucun moyen de revenir en arrière.
+                // Picking the same accent again goes back to "the theme's":
+                // without this, the picker would have no way back.
                 let current = self.state.config.theme.accent.as_deref();
                 self.state.config.theme.accent = if current == Some(key) {
                     None
@@ -528,15 +528,15 @@ impl XionApp {
             }
             // ── #18: Tab drag reorder ────────────────────────────────────────
             UiMessage::ToggleDarkMode => {
-                // Bascule clair/sombre dans la famille courante, au lieu de
-                // faire tourner cinq thèmes en dur. Le catalogue en compte
-                // cinquante-sept ; les parcourir un par un n'aurait plus de
-                // sens, et le choix précis appartient au sélecteur.
+                // Toggle light/dark within the current family, instead of
+                // cycling five hard-coded themes. The catalogue has fifty-seven;
+                // walking them one by one would make no sense any more, and the
+                // precise choice belongs to the picker.
                 //
-                // Une famille dont la variante ne s'appelle ni `dark` ni
-                // `light` — `catppuccin` et ses quatre saveurs — n'a pas de
-                // contraire évident : `resolve` retombe alors sur le repli, ce
-                // qui serait un saut brutal. On reste sur place dans ce cas.
+                // A family whose variant is called neither `dark` nor `light`
+                // (`catppuccin` and its four flavours) has no obvious opposite:
+                // `resolve` would fall back to the fallback, which would be an
+                // abrupt jump. Stay in place in that case.
                 let choice = &self.state.config.theme;
                 let opposite = match choice.variant.as_str() {
                     "dark" => Some("light"),
@@ -569,8 +569,8 @@ impl XionApp {
             }
             // ── Feature O: Grep ───────────────────────────────────────────────
             other => {
-                debug_assert!(false, "UiMessage non routé vers un domaine : {other:?}");
-                tracing::error!("UiMessage non routé, ignoré : {other:?}");
+                debug_assert!(false, "UiMessage not routed to a domain: {other:?}");
+                tracing::error!("UiMessage not routed, ignored: {other:?}");
             }
         }
 

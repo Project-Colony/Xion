@@ -59,13 +59,13 @@ pub fn path_from_argument(argument: &str) -> PathBuf {
 
     let decoded = percent_decode(path);
 
-    // RFC 8089 : `file:///C:/…` désigne un chemin à lettre de lecteur, et la
-    // barre oblique qui précède fait partie de la syntaxe de l'URI, pas du
-    // chemin. Laissée en place, elle produisait `/C:/Users/alice`, que Windows
-    // ne sait pas ouvrir — et le projet vise Windows autant que Linux.
+    // RFC 8089: `file:///C:/...` names a drive-letter path, and the leading
+    // slash is part of the URI syntax, not of the path. Left in place, it
+    // produced `/C:/Users/alice`, which Windows cannot open, and the project
+    // targets Windows as much as Linux.
     //
-    // La règle ne s'applique qu'à une lettre unique suivie de deux-points, donc
-    // un dossier POSIX nommé `ab:` garde bien sa barre.
+    // The rule only applies to a single letter followed by a colon, so a POSIX
+    // folder named `ab:` keeps its slash.
     if is_drive_rooted(&decoded) {
         return PathBuf::from(&decoded[1..]);
     }
@@ -73,7 +73,7 @@ pub fn path_from_argument(argument: &str) -> PathBuf {
     PathBuf::from(decoded)
 }
 
-/// `/C:/…` ou `/C:` — la forme que RFC 8089 réserve aux lettres de lecteur.
+/// `/C:/...` or `/C:`: the form RFC 8089 reserves for drive letters.
 fn is_drive_rooted(path: &str) -> bool {
     let bytes = path.as_bytes();
     bytes.len() >= 3
@@ -94,7 +94,7 @@ mod tests {
         assert_eq!(path_from_argument("documents"), Path::new("documents"));
     }
 
-    /// Le cas qui motivait tout : ce que `%U` transmet réellement.
+    /// The case that motivated it all: what `%U` really passes.
     #[test]
     fn a_file_uri_becomes_a_path() {
         assert_eq!(
@@ -115,9 +115,9 @@ mod tests {
         );
     }
 
-    /// RFC 8089 : `file:///C:/…` désigne un chemin à lettre de lecteur. Rendu
-    /// tel quel, il produisait `/C:/Users/alice`, que Windows ne sait pas
-    /// ouvrir — et le projet vise Windows.
+    /// RFC 8089: `file:///C:/...` names a drive-letter path. Returned as is, it
+    /// produced `/C:/Users/alice`, which Windows cannot open, and the project
+    /// targets Windows.
     #[test]
     fn a_windows_drive_uri_loses_its_leading_slash() {
         assert_eq!(
@@ -127,7 +127,7 @@ mod tests {
         assert_eq!(path_from_argument("file:///D:/"), Path::new("D:/"));
     }
 
-    /// Un chemin POSIX ordinaire ne doit pas être amputé par cette règle.
+    /// An ordinary POSIX path must not be cut short by this rule.
     #[test]
     fn a_posix_path_keeps_its_leading_slash() {
         assert_eq!(path_from_argument("file:///home/a"), Path::new("/home/a"));
@@ -142,8 +142,8 @@ mod tests {
         );
     }
 
-    /// Un chemin qui contient littéralement « file:// » ne doit pas être
-    /// charcuté, et une URI vide ne doit pas produire un chemin vide.
+    /// A path that literally contains "file://" must not be mangled, and an
+    /// empty URI must not produce an empty path.
     #[test]
     fn degenerate_inputs_are_left_alone() {
         assert_eq!(path_from_argument("file://"), Path::new("file://"));

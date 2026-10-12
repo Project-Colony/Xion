@@ -48,8 +48,8 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
     // The old merge propagated dark_mode -> theme but never theme -> dark_mode,
     // so `theme = "Nord"` with `dark_mode = false` survived the load and drove a
     // light syntax highlighter on a dark UI until the next theme change.
-    // Le nouveau format d'abord ; l'ancien nom de thème ne sert plus qu'à
-    // migrer un fichier écrit avant l'adoption du catalogue Colony.
+    // The new format first; the old theme name only serves to migrate a file
+    // written before the Colony catalogue was adopted.
     match (file.theme_family, file.theme_variant) {
         (Some(family), Some(variant)) => {
             config.theme.family = family;
@@ -58,14 +58,14 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
         _ => {
             let legacy = file.theme.as_deref();
             let (family, variant, high_contrast) = match legacy {
-                // `Light` et `Dark` étaient des noms génériques sans famille
-                // derrière eux : ils prennent celle du repli du catalogue.
+                // `Light` and `Dark` were generic names with no family behind
+                // them: they take the catalogue's fallback family.
                 Some("Light") => ("gruvbox", "light", false),
                 Some("Dark") | None => ("gruvbox", "dark", false),
                 Some("Nord") => ("nord", "dark", false),
                 Some("Solarized") => ("solarized", "dark", false),
-                // Le contraste élevé n'était pas une palette mais un
-                // rehaussement ; Colony en fait un modificateur.
+                // High contrast was not a palette but a boost; Colony makes it
+                // a modifier.
                 Some("HighContrast") => ("gruvbox", "dark", true),
                 Some(other) => {
                     warnings.push(ConfigWarning {
@@ -76,7 +76,7 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
                     ("gruvbox", "dark", false)
                 }
             };
-            // Un fichier antérieur au champ `theme` n'avait que le booléen.
+            // A file older than the `theme` field only had the boolean.
             let variant = if legacy.is_none() && file.dark_mode == Some(false) {
                 "light"
             } else {
@@ -240,10 +240,10 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
     }
     if let Some(shell_str) = file.terminal_shell {
         config.terminal_shell = match shell_str.as_str() {
-            // « Cmd » et « GitBash » sont les noms d'avant. Ils restent lus pour
-            // toujours : une configuration écrite par une version précédente ne
-            // doit pas se transformer en `Custom("Cmd")`, ce qui donnerait un
-            // chemin absolu invalide et un terminal qui refuse de s'ouvrir.
+            // "Cmd" and "GitBash" are the old names. They stay readable forever:
+            // a configuration written by an earlier version must not turn into
+            // `Custom("Cmd")`, which would give an invalid absolute path and a
+            // terminal that refuses to open.
             "System" | "Cmd" => ShellConfig::System,
             "PowerShell" => ShellConfig::PowerShell,
             "Bash" | "GitBash" => ShellConfig::Bash,
@@ -290,7 +290,7 @@ pub(super) fn config_to_file(config: &AppConfig) -> AppConfigFileV1 {
     AppConfigFileV1 {
         version: Some(CURRENT_CONFIG_VERSION),
         dark_mode: Some(config.dark_mode),
-        // Plus jamais écrit : le champ ne survit qu'en lecture, pour migrer.
+        // Never written again: the field only survives on read, to migrate.
         theme: None,
         theme_family: Some(config.theme.family.clone()),
         theme_variant: Some(config.theme.variant.clone()),

@@ -233,7 +233,7 @@ fn ensure_destination_absent(destination: &Path) -> Result<(), XionError> {
 /// Copying `/projects` into `/projects/build` used to work like this:
 /// `create_dir_all` made `/projects/build/projects` *before* `read_dir` listed
 /// `/projects`, so the listing returned the directory that had just been
-/// created and the recursion never terminated — it filled the disk at write
+/// created and the recursion never terminated, it filled the disk at write
 /// speed. Both paths are canonicalised first so symlinks, `..` segments and
 /// `\\?\` prefixes cannot be used to disguise the nesting.
 ///
@@ -465,7 +465,7 @@ mod tests {
         );
         assert!(
             !nested.join("projects").exists(),
-            "rien ne doit avoir été écrit dans la destination"
+            "nothing must have been written to the destination"
         );
     }
 
@@ -532,7 +532,7 @@ mod tests {
         assert!(report.failed.is_empty(), "{:?}", report.failed);
         let copied_link = dest_dir.join("tree").join("link.txt");
         let meta = fs::symlink_metadata(&copied_link).unwrap();
-        assert!(meta.file_type().is_symlink(), "le lien doit rester un lien");
+        assert!(meta.file_type().is_symlink(), "the link must stay a link");
         assert_eq!(fs::read_link(&copied_link).unwrap(), Path::new("real.txt"));
     }
 

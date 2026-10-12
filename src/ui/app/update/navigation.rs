@@ -52,16 +52,16 @@ impl XionApp {
                     .and_then(|primary| primary.try_recv())
                 {
                     // An empty path means "you are already running, come to the
-                    // front" — a launch with no argument at all.
+                    // front", a launch with no argument at all.
                     if path.as_os_str().is_empty() {
                         continue;
                     }
                     requested = Some(path);
                 }
                 if let Some(path) = requested {
-                    // Sans ça la fenêtre ouvre bien l'onglet mais reste
-                    // derrière celle où l'utilisateur vient de taper la
-                    // commande, et le dossier demandé n'apparaît jamais.
+                    // Without this the window does open the tab but stays
+                    // behind the one where the user just typed the command, and
+                    // the requested folder never shows up.
                     tasks.push(iced::window::latest().and_then(iced::window::gain_focus));
                     tasks.push(self.open_in_new_tab(path));
                 }
@@ -273,7 +273,7 @@ impl XionApp {
                             .map(|e| e.path())
                             .collect(),
                         Err(e) => {
-                            tracing::warn!("Breadcrumb dropdown: lecture {:?} échouée: {e}", path);
+                            tracing::warn!("Breadcrumb dropdown: reading {:?} failed: {e}", path);
                             Vec::new()
                         }
                     };
@@ -318,7 +318,7 @@ impl XionApp {
                 let count = items.len();
                 self.last_action = Some(format!("{count} élément(s) dans la corbeille"));
                 // Store trash items for display in sidebar
-                // We'll use the recents service pattern — display as a notification for now
+                // We'll use the recents service pattern: display as a notification for now
             }
             // ── #23: Full-text content search ────────────────────────────────
             UiMessage::TabDragStart(index) => {

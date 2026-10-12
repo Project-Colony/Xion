@@ -97,8 +97,8 @@ fn reg_delete(key: &str) -> io::Result<()> {
     let status = reg_command().args(["delete", key, "/f"]).status()?;
 
     if !status.success() {
-        // Key might not exist — not an error
-        tracing::warn!("Clé registre absente ou déjà supprimée : {}", key);
+        // Key might not exist: not an error
+        tracing::warn!("Registry key missing or already removed: {}", key);
     }
     Ok(())
 }

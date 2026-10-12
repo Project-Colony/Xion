@@ -119,7 +119,7 @@ impl XionApp {
             typography,
         } = ctx;
 
-        // Clickable accordion header — shows ▸/▾ chevron and toggles the section.
+        // Clickable accordion header: shows ▸/▾ chevron and toggles the section.
 
         let sec_tree = self.sidebar_collapsed.contains("Arborescence");
 
@@ -224,7 +224,7 @@ impl XionApp {
         } = ctx;
         let home_dir = self.cached_home_dir.clone();
 
-        // Clickable accordion header — shows ▸/▾ chevron and toggles the section.
+        // Clickable accordion header: shows ▸/▾ chevron and toggles the section.
 
         let sec_access = self.sidebar_collapsed.contains("Accès rapide");
         let sec_favorites = self.sidebar_collapsed.contains("Favoris");
@@ -321,7 +321,7 @@ impl XionApp {
             typography,
         } = ctx;
 
-        // Clickable accordion header — shows ▸/▾ chevron and toggles the section.
+        // Clickable accordion header: shows ▸/▾ chevron and toggles the section.
 
         let sec_drives = self.sidebar_collapsed.contains("Lecteurs");
 

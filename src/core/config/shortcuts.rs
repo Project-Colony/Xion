@@ -94,7 +94,7 @@ impl KeyChord {
 
     /// Returns `true` if this chord matches the given key input.
     ///
-    /// `allow_shift_override` — when `true`, a chord without `shift` will match
+    /// `allow_shift_override`: when `true`, a chord without `shift` will match
     /// even if the input has shift held (useful for uppercase letter shortcuts).
     pub fn matches(&self, input: &KeyInput, allow_shift_override: bool) -> bool {
         let shift_matches = if allow_shift_override && !self.shift {

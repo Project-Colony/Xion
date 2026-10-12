@@ -92,7 +92,7 @@ impl XionApp {
             offset += self.state.config.view.row_height + tokens.spacing.xl;
         }
         if list_header_visible {
-            // Header has same structure as a data row — use row_height as height
+            // Header has same structure as a data row: use row_height as height
             offset += self.state.config.view.row_height;
             offset += tokens.spacing.xl; // column spacing
         }

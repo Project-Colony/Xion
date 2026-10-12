@@ -1,10 +1,10 @@
-//! Application configuration — types, loading, validation, and keyboard shortcuts.
+//! Application configuration: types, loading, validation, and keyboard shortcuts.
 //!
 //! Organised into four sub-modules:
 //!
-//! - [`shortcuts`] — [`KeyChord`], [`KeyInput`], [`ShortcutBindings`] and related key types
-//! - [`types`]     — all public config data structs and enums
-//! - [`manager`]   — [`ConfigManager`], file-format structs, loading, and validation
+//! - [`shortcuts`]: [`KeyChord`], [`KeyInput`], [`ShortcutBindings`] and related key types
+//! - [`types`]: all public config data structs and enums
+//! - [`manager`]: [`ConfigManager`], file-format structs, loading, and validation
 //! - [`session`]   - [`SessionStore`], the restored tabs kept in `session.toml`
 
 pub mod manager;

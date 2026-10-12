@@ -144,13 +144,13 @@ use super::single_instance::{Claim, Primary};
 ///
 /// Windows has no session bus. The equivalent is a named pipe: `CreateNamedPipeW`
 /// under a per-session name, a thread accepting connections, `ReadFile` for the
-/// path. That is roughly a hundred and fifty lines of `unsafe` Win32 — and this
+/// path. That is roughly a hundred and fifty lines of `unsafe` Win32, and this
 /// crate is developed on Linux, where it can be neither run nor even compiled,
 /// because cross-compiling to `x86_64-pc-windows-msvc` still stops on the C
 /// dependency `libz-sys` pulls in through `git2`.
 ///
 /// Untested `unsafe` in a file manager is a worse trade than the thing it buys,
-/// which is only a faster second launch — never correctness. So Windows keeps
+/// which is only a faster second launch, never correctness. So Windows keeps
 /// the behaviour it has always had, one process per launch, and says so here
 /// rather than in a commit message nobody will find.
 ///

@@ -1,5 +1,5 @@
-//! The two context menus themselves — the one for a selected entry, the one for
-//! empty space — and the submenu panels they open.
+//! The two context menus themselves, the one for a selected entry, the one for
+//! empty space, and the submenu panels they open.
 //!
 //! Moved out of `render_context_menu`, which now only decides which one to show
 //! and where to place it.
@@ -36,7 +36,7 @@ impl XionApp {
             .and_then(|path| ArchiveType::detect(path))
             .is_some();
         // `Path::is_file()`/`is_dir()` are syscalls, and these ran on every
-        // rebuild of the widget tree — several times a second, and blocking for
+        // rebuild of the widget tree, several times a second, and blocking for
         // seconds at a time on a dead network share. The entry type is already
         // loaded in memory.
         let focused_entry_type = self
@@ -239,7 +239,7 @@ impl XionApp {
             typography: _,
         } = ctx;
         // `Path::is_file()`/`is_dir()` are syscalls, and these ran on every
-        // rebuild of the widget tree — several times a second, and blocking for
+        // rebuild of the widget tree, several times a second, and blocking for
         // seconds at a time on a dead network share. The entry type is already
         // loaded in memory.
         let has_clipboard = self.clipboard.kind.is_some() && !self.clipboard.items.is_empty();
@@ -306,7 +306,7 @@ impl XionApp {
             typography: _,
         } = ctx;
         // `Path::is_file()`/`is_dir()` are syscalls, and these ran on every
-        // rebuild of the widget tree — several times a second, and blocking for
+        // rebuild of the widget tree, several times a second, and blocking for
         // seconds at a time on a dead network share. The entry type is already
         // loaded in memory.
 

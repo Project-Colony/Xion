@@ -91,15 +91,12 @@ impl ConfigManager {
         let contents = match toml::to_string_pretty(&file) {
             Ok(contents) => contents,
             Err(error) => {
-                tracing::warn!("Config: erreur sérialisation TOML: {error}");
+                tracing::warn!("Config: TOML serialisation error: {error}");
                 return;
             }
         };
         if let Err(error) = write_atomic(&self.path, &contents, true) {
-            tracing::warn!(
-                "Config: impossible d'écrire {}: {error}",
-                self.path.display()
-            );
+            tracing::warn!("Config: cannot write {}: {error}", self.path.display());
         }
     }
 
@@ -196,10 +193,7 @@ fn unix_timestamp() -> u64 {
 
 fn remove_stale_temp(path: &Path) {
     if let Err(error) = fs::remove_file(path) {
-        tracing::debug!(
-            "Config: nettoyage de {} impossible: {error}",
-            path.display()
-        );
+        tracing::debug!("Config: cannot clean up {}: {error}", path.display());
     }
 }
 
@@ -244,7 +238,7 @@ pub(in crate::core::config) fn write_atomic(
         && path.exists()
         && let Err(error) = fs::copy(path, sibling_path(path, ".bak"))
     {
-        tracing::debug!("Config: sauvegarde .bak impossible: {error}");
+        tracing::debug!("Config: cannot write the .bak backup: {error}");
     }
 
     if let Err(error) = fs::rename(&temp_path, path) {
@@ -258,15 +252,15 @@ pub(in crate::core::config) fn write_atomic(
 // ── Loading logic ─────────────────────────────────────────────────────────────
 
 fn default_config_path() -> PathBuf {
-    // `locate::` et non `paths::config_dir` : ce dernier **crée** le dossier,
-    // c'est la raison de son `io::Result`. Créé avant la migration, il faisait
-    // croire à une configuration déjà en place, la migration était sautée, et
-    // Xion écrivait des valeurs par défaut à côté d'une configuration
-    // existante — constaté : deux onglets et un dossier de démarrage perdus.
+    // `locate::` and not `paths::config_dir`: the latter **creates** the
+    // directory, which is why it returns an `io::Result`. Created before the
+    // migration, it made a configuration look already in place, the migration
+    // was skipped, and Xion wrote defaults next to an existing configuration
+    // (observed: two tabs and a start folder lost).
     //
-    // La documentation de `colony-ui` le dit : « afficher où les préférences
-    // vivraient ne doit pas faire exister le dossier ». `save` crée son parent
-    // lui-même, donc personne n'a besoin de le devancer.
+    // The `colony-ui` documentation says so: "showing where the preferences
+    // would live must not make the directory exist". `save` creates its parent
+    // itself, so nobody needs to get there first.
     let Ok(dir) = colony_ui::paths::locate::config_dir(COLONY_PROGRAM) else {
         return PathBuf::from(CONFIG_FILE);
     };
@@ -277,18 +271,18 @@ fn default_config_path() -> PathBuf {
     }
 }
 
-/// Le nom du programme tel que l'écosystème l'écrit.
+/// The program name as the ecosystem writes it.
 ///
-/// Capitalisé, pas un identifiant en minuscules : la convention est
-/// `<racine>/Colony/<Programme>/`, avec `<Programme>` orthographié comme le
-/// programme s'écrit — voir `design/filesystem.md` de Project-Colony-Resources.
+/// Capitalised, not a lowercase identifier: the convention is
+/// `<root>/Colony/<Program>/`, with `<Program>` spelt the way the program is
+/// written; see `design/filesystem.md` in Project-Colony-Resources.
 pub(in crate::core::config) const COLONY_PROGRAM: &str = "Xion";
 
-/// Là où Xion écrivait avant d'adopter la disposition Colony.
+/// Where Xion wrote before adopting the Colony layout.
 ///
-/// `ProjectDirs::from("io", "xion", "Xion")` produisait `~/.config/xion/` sous
-/// Linux. Les programmes Colony se rangent désormais côte à côte sous un même
-/// dossier, pour qu'une sauvegarde de celui-ci les emporte tous.
+/// `ProjectDirs::from("io", "xion", "Xion")` produced `~/.config/xion/` on
+/// Linux. Colony programs now sit side by side under one directory, so that
+/// backing it up takes all of them.
 fn legacy_config_dir() -> Option<PathBuf> {
     ProjectDirs::from("io", "xion", "Xion").map(|dirs| dirs.config_dir().to_path_buf())
 }
@@ -641,11 +635,11 @@ mod tests {
     fn a_sub_directory_fails_the_copy_and_keeps_the_old_profile() {
         let root = tempfile::tempdir().expect("tempdir");
         let (legacy, target) = legacy_and_target(root.path());
-        fs::create_dir_all(legacy.join("sous-dossier")).unwrap();
-        fs::write(legacy.join("sous-dossier").join("precieux"), "à garder").unwrap();
+        fs::create_dir_all(legacy.join("subfolder")).unwrap();
+        fs::write(legacy.join("subfolder").join("precious"), "keep me").unwrap();
 
         assert_failed_copy_falls_back(&legacy, &target);
-        assert!(legacy.join("sous-dossier").join("precieux").exists());
+        assert!(legacy.join("subfolder").join("precious").exists());
     }
 
     #[cfg(unix)]
@@ -674,7 +668,7 @@ mod tests {
     fn a_folder_holding_only_the_session_is_not_a_migrated_profile() {
         let root = tempfile::tempdir().expect("tempdir");
         let (legacy, target) = legacy_and_target(root.path());
-        let blocker = legacy.join("sous-dossier");
+        let blocker = legacy.join("subfolder");
         fs::create_dir_all(&blocker).unwrap();
         assert_failed_copy_falls_back(&legacy, &target);
 
@@ -835,7 +829,7 @@ mod tests {
             .collect();
         assert!(
             leftovers.is_empty(),
-            "fichiers temporaires restants: {leftovers:?}"
+            "temporary files left behind: {leftovers:?}"
         );
         assert!(manager.path().exists());
     }
@@ -872,7 +866,7 @@ mod tests {
         let backup = fs::read_to_string(manager.backup_path()).expect("read backup");
         assert!(
             backup.contains("nord"),
-            "le .bak doit contenir la version précédente"
+            "the .bak must hold the previous version"
         );
         assert_eq!(manager.load().config.theme.keys(), ("gruvbox", "light"));
     }
@@ -901,16 +895,13 @@ mod tests {
         assert_eq!(loaded.config.theme.keys(), ("solarized", "dark"));
         assert!(
             !manager.path().exists(),
-            "le fichier fautif doit être déplacé"
+            "the faulty file must be moved away"
         );
         let quarantined = fs::read_dir(dir.path())
             .expect("read_dir")
             .filter_map(|entry| entry.ok())
             .any(|entry| entry.file_name().to_string_lossy().contains(".corrupt-"));
-        assert!(
-            quarantined,
-            "le fichier fautif doit être conservé sous .corrupt-*"
-        );
+        assert!(quarantined, "the faulty file must be kept as .corrupt-*");
     }
 
     #[test]
@@ -922,10 +913,7 @@ mod tests {
         let loaded = manager.load();
         assert!(matches!(loaded.source, ConfigSource::Default));
         assert_eq!(loaded.warnings.len(), 1);
-        assert!(
-            manager.path().exists(),
-            "un fichier vide n'est pas corrompu"
-        );
+        assert!(manager.path().exists(), "an empty file is not corrupt");
     }
 
     #[test]
@@ -1004,7 +992,7 @@ mod tests {
 
         let loaded = manager.load();
         assert_eq!(loaded.config.theme.keys(), ("nord", "dark"));
-        assert!(loaded.config.dark_mode, "dark_mode doit suivre le thème");
+        assert!(loaded.config.dark_mode, "dark_mode must follow the theme");
         assert!(
             loaded
                 .warnings

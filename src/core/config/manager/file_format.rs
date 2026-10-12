@@ -44,17 +44,17 @@ pub(super) struct LegacySessionFile {
 pub(super) struct AppConfigFileV1 {
     pub(super) version: Option<u32>,
     pub(super) dark_mode: Option<bool>,
-    /// Ancien nom de thème : `Light`, `Nord`, `HighContrast`… Toujours lu, pour
-    /// migrer les fichiers écrits avant l'adoption du catalogue Colony. Plus
-    /// jamais écrit.
+    /// Old theme name: `Light`, `Nord`, `HighContrast`... Still read, to
+    /// migrate files written before the Colony catalogue was adopted. Never
+    /// written again.
     pub(super) theme: Option<String>,
-    /// Clé de famille du catalogue Colony.
+    /// Family key in the Colony catalogue.
     pub(super) theme_family: Option<String>,
-    /// Clé de variante dans cette famille.
+    /// Variant key within that family.
     pub(super) theme_variant: Option<String>,
-    /// Rehaussement du contraste, applicable à n'importe quelle palette.
+    /// Contrast boost, applicable to any palette.
     pub(super) high_contrast: Option<bool>,
-    /// Accent choisi ; absent signifie « celui du thème ».
+    /// Chosen accent; absent means "the theme's".
     pub(super) accent: Option<String>,
     pub(super) start_path: Option<PathBuf>,
     pub(super) list: Option<ListConfigFile>,

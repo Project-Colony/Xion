@@ -297,7 +297,7 @@ fn collect_tree_nodes(
         return;
     }
 
-    // Read directory entries directly — we only need names and types,
+    // Read directory entries directly: we only need names and types,
     // not metadata, so we skip the full list_dir + metadata_batch pipeline.
     let read_dir = match std::fs::read_dir(path) {
         Ok(rd) => rd,
@@ -825,7 +825,7 @@ mod animated_preview_tests {
             Some("image/gif".to_string()),
         );
         let animated = build_animated_preview(std::path::PathBuf::from("/tmp/a.gif"), &preview)
-            .expect("l'animation doit être construite");
+            .expect("the animation must be built");
 
         assert_eq!(animated.frames.len(), MAX_ANIMATED_FRAMES);
     }
@@ -834,7 +834,7 @@ mod animated_preview_tests {
     fn a_short_animation_keeps_all_its_frames() {
         let preview = Thumbnail::new(gif(5, 8), Some("image/gif".to_string()));
         let animated = build_animated_preview(std::path::PathBuf::from("/tmp/a.gif"), &preview)
-            .expect("l'animation doit être construite");
+            .expect("the animation must be built");
 
         assert_eq!(animated.frames.len(), 5);
     }
@@ -845,14 +845,14 @@ mod animated_preview_tests {
         let big = MAX_ANIMATED_EDGE * 2;
         let preview = Thumbnail::new(gif(2, big), Some("image/gif".to_string()));
         let animated = build_animated_preview(std::path::PathBuf::from("/tmp/a.gif"), &preview)
-            .expect("l'animation doit être construite");
+            .expect("the animation must be built");
 
         // The handle carries its dimensions; a scaled frame is at most the cap.
         for frame in &animated.frames {
             if let iced::widget::image::Handle::Rgba { width, height, .. } = &frame.handle {
                 assert!(
                     *width <= MAX_ANIMATED_EDGE && *height <= MAX_ANIMATED_EDGE,
-                    "trame non redimensionnée : {width}x{height}"
+                    "frame not resized: {width}x{height}"
                 );
             }
         }

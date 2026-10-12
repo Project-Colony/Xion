@@ -1,14 +1,14 @@
 //! The `⋯` menu at the end of the header bar.
 //!
 //! It holds what the command bar used to show as a permanent third row. That
-//! row gave the same visual weight to six different kinds of thing — verbs
+//! row gave the same visual weight to six different kinds of thing, verbs
 //! acting on the selection, view toggles, a theme switch, a panel opener and a
-//! menu — so nothing in it was findable except by reading all of it.
+//! menu, so nothing in it was findable except by reading all of it.
 //!
 //! Here they are grouped and separated: what acts on the selection, what
-//! changes what you see, what opens something else. Les préférences n'y
-//! figurent pas : la convention Colony veut qu'on y entre par le nom du
-//! programme, « not an entry buried in a list of sections ». A disabled entry stays
+//! changes what you see, what opens something else. Preferences are not in
+//! it: the Colony convention wants them entered through the program's name,
+//! "not an entry buried in a list of sections". A disabled entry stays
 //! visible rather than disappearing, so its shortcut is still discoverable when
 //! nothing is selected.
 

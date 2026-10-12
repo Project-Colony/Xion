@@ -104,7 +104,7 @@ pub(super) fn create_tar_gz(
 /// Create a `.zip` archive from the given list of files/directories.
 ///
 /// This algorithm used to live inline inside `update()`, declared at the eighth
-/// level of nesting, and read each file fully into memory before writing it —
+/// level of nesting, and read each file fully into memory before writing it,
 /// an 8 GB file meant an 8 GB allocation. `io::copy` streams instead.
 pub(super) fn create_zip(
     sources: &[std::path::PathBuf],
@@ -313,8 +313,8 @@ pub(super) fn safe_join(dest_dir: &Path, raw_name: &str) -> Result<std::path::Pa
 /// Confirm that `out_path` really resolves inside `dest_dir`.
 ///
 /// `safe_join` handles the name; this handles the filesystem. A symlink already
-/// sitting inside the destination — possibly written by an earlier entry of the
-/// same archive — could otherwise redirect the write outside it. The parent is
+/// sitting inside the destination, possibly written by an earlier entry of the
+/// same archive, could otherwise redirect the write outside it. The parent is
 /// created first so it can be canonicalised.
 pub(super) fn create_parent_within(dest_dir: &Path, out_path: &Path) -> Result<(), String> {
     let parent = out_path
@@ -551,7 +551,7 @@ mod tests {
             listed
                 .iter()
                 .any(|entry| entry.inner_path == "tree/sub/deep.txt"),
-            "entrées : {:?}",
+            "entries: {:?}",
             listed.iter().map(|e| &e.inner_path).collect::<Vec<_>>()
         );
     }
@@ -560,10 +560,10 @@ mod tests {
     fn extraction_refuses_to_overwrite_an_existing_file() {
         let root = tempfile::tempdir().unwrap();
         let occupied = root.path().join("keep.txt");
-        std::fs::write(&occupied, "précieux").unwrap();
+        std::fs::write(&occupied, "precious").unwrap();
 
         assert!(ensure_absent(&occupied).is_err());
-        assert_eq!(std::fs::read_to_string(&occupied).unwrap(), "précieux");
+        assert_eq!(std::fs::read_to_string(&occupied).unwrap(), "precious");
     }
 
     /// The bzip2 backend is pure Rust rather than the bundled C library, so
@@ -575,8 +575,8 @@ mod tests {
         use std::io::Write;
 
         let root = tempfile::tempdir().unwrap();
-        let archive_path = root.path().join("compressé.zip");
-        let contenu = "vérification du backend bzip2 en Rust pur\n".repeat(64);
+        let archive_path = root.path().join("compressed.zip");
+        let content = "checking the pure Rust bzip2 backend\n".repeat(64);
 
         let file = std::fs::File::create(&archive_path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
@@ -587,14 +587,14 @@ mod tests {
                     .compression_method(zip::CompressionMethod::Bzip2),
             )
             .unwrap();
-        writer.write_all(contenu.as_bytes()).unwrap();
+        writer.write_all(content.as_bytes()).unwrap();
         writer.finish().unwrap();
 
         let dest = root.path().join("sortie");
         std::fs::create_dir_all(&dest).unwrap();
         let extracted = extract_zip_entry(&archive_path, "note.txt", &dest).unwrap();
 
-        assert_eq!(std::fs::read_to_string(&extracted).unwrap(), contenu);
+        assert_eq!(std::fs::read_to_string(&extracted).unwrap(), content);
     }
 
     /// A symlink planted inside the destination must not become a way out.

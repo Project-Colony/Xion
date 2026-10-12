@@ -26,7 +26,7 @@ const MAX_CONCURRENT_EXTERNAL_TOOLS: usize = 3;
 pub struct Thumbnail {
     /// Shared, not owned outright: iced's `image::Handle` keeps the encoded
     /// bytes alive for as long as it draws them. Handing it a `Vec` meant a
-    /// second full copy of every thumbnail — and of every preview, which this
+    /// second full copy of every thumbnail, and of every preview, which this
     /// crate caps at 64 Mio apiece.
     pub bytes: Bytes,
     pub mime: Option<String>,
@@ -213,7 +213,7 @@ pub fn generate_pdf_thumbnail(path: &Path, max_size: u32) -> Option<Thumbnail> {
         return None;
     }
 
-    // Try mutool (MuPDF) first — outputs PNG to stdout.
+    // Try mutool (MuPDF) first: outputs PNG to stdout.
     // No `--` terminator here: MuPDF's option parser is not documented to accept
     // one, and the absolute-path check above already rules out a leading '-'.
     if let Some(mutool) = resolve_tool(&MUTOOL, "mutool") {
@@ -237,7 +237,7 @@ pub fn generate_pdf_thumbnail(path: &Path, max_size: u32) -> Option<Thumbnail> {
         }
     }
 
-    // Fallback: pdftoppm (Poppler) — writes to a file, so it needs a workspace.
+    // Fallback: pdftoppm (Poppler): writes to a file, so it needs a workspace.
     let pdftoppm = resolve_tool(&PDFTOPPM, "pdftoppm")?;
     let workspace = TempWorkspace::create()?;
     let prefix = workspace.path().join("page");
@@ -283,11 +283,11 @@ fn resolve_tool(cell: &'static OnceLock<Option<PathBuf>>, name: &str) -> Option<
         let found = find_in_path(name);
         match &found {
             Some(path) => {
-                tracing::debug!("Vignettes: {name} trouvé ({})", path.display());
+                tracing::debug!("Thumbnails: {name} found ({})", path.display());
             }
             None => {
                 tracing::info!(
-                    "Vignettes: {name} introuvable dans le PATH — les aperçus qui en dépendent sont désactivés"
+                    "Thumbnails: {name} not found in PATH, the previews that need it are disabled"
                 );
             }
         }
@@ -404,11 +404,11 @@ fn process_slots() -> &'static ProcessSlots {
 
 /// Runs `program`, returns its stdout, and kills it once `timeout` elapses.
 ///
-/// Returns `None` for every kind of failure — spawn error, timeout, non-zero
-/// exit — so callers keep the previous "no thumbnail" behaviour.
+/// Returns `None` for every kind of failure, spawn error, timeout, non-zero
+/// exit, so callers keep the previous "no thumbnail" behaviour.
 fn run_capturing_stdout(program: &Path, args: &[OsString], timeout: Duration) -> Option<Vec<u8>> {
     // RAII: the slot is held for the whole child process lifetime. Bounding this
-    // is the point — without it, opening a folder of videos launched one ffmpeg
+    // is the point, without it, opening a folder of videos launched one ffmpeg
     // per file at once.
     let _slot = process_slots().acquire();
 
@@ -421,10 +421,7 @@ fn run_capturing_stdout(program: &Path, args: &[OsString], timeout: Duration) ->
     {
         Ok(child) => child,
         Err(error) => {
-            tracing::debug!(
-                "Vignettes: lancement de {} échoué: {error}",
-                program.display()
-            );
+            tracing::debug!("Thumbnails: starting {} failed: {error}", program.display());
             return None;
         }
     };
@@ -456,7 +453,7 @@ fn run_capturing_stdout(program: &Path, args: &[OsString], timeout: Duration) ->
             Ok(None) => {}
             Err(error) => {
                 tracing::debug!(
-                    "Vignettes: attente de {} échouée: {error}",
+                    "Thumbnails: waiting for {} failed: {error}",
                     program.display()
                 );
                 kill_and_reap(&mut child, program);
@@ -465,7 +462,7 @@ fn run_capturing_stdout(program: &Path, args: &[OsString], timeout: Duration) ->
         }
         if Instant::now() >= deadline {
             tracing::warn!(
-                "Vignettes: {} dépasse {}s, processus tué",
+                "Thumbnails: {} exceeded {}s, process killed",
                 program.display(),
                 timeout.as_secs()
             );
@@ -483,15 +480,12 @@ fn run_capturing_stdout(program: &Path, args: &[OsString], timeout: Duration) ->
 
 fn kill_and_reap(child: &mut std::process::Child, program: &Path) {
     if let Err(error) = child.kill() {
-        tracing::debug!(
-            "Vignettes: impossible de tuer {}: {error}",
-            program.display()
-        );
+        tracing::debug!("Thumbnails: cannot kill {}: {error}", program.display());
     }
     // Reap the child so it does not linger as a zombie.
     if let Err(error) = child.wait() {
         tracing::debug!(
-            "Vignettes: attente après kill de {} échouée: {error}",
+            "Thumbnails: waiting after killing {} failed: {error}",
             program.display()
         );
     }
@@ -523,11 +517,11 @@ impl TempWorkspace {
             let dir = base.join(name);
             match create_private_dir(&dir) {
                 Ok(()) => return Some(Self { dir }),
-                // Creation is atomic and fails on an existing name — including a
-                // symlink planted by someone else — so retrying is the safe move.
+                // Creation is atomic and fails on an existing name, including a
+                // symlink planted by someone else, so retrying is the safe move.
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(error) => {
-                    tracing::debug!("Vignettes: création de {} échouée: {error}", dir.display());
+                    tracing::debug!("Thumbnails: creating {} failed: {error}", dir.display());
                     return None;
                 }
             }
@@ -545,7 +539,7 @@ impl Drop for TempWorkspace {
         // Cleanup has to happen on every path, not only after a successful read.
         if let Err(error) = std::fs::remove_dir_all(&self.dir) {
             tracing::debug!(
-                "Vignettes: nettoyage de {} échoué: {error}",
+                "Thumbnails: cleaning up {} failed: {error}",
                 self.dir.display()
             );
         }
@@ -673,7 +667,7 @@ mod tests {
 
     #[test]
     fn find_in_path_reports_missing_tool() {
-        assert!(find_in_path("xion-binaire-qui-nexiste-pas").is_none());
+        assert!(find_in_path("xion-no-such-binary").is_none());
     }
 
     #[cfg(unix)]
@@ -755,7 +749,7 @@ trailer<</Size 5/Root 1 0 R>>\n\
             return; // this ffmpeg build lacks lavfi; the real path is untestable here
         }
 
-        let thumbnail = generate_video_thumbnail(&video, 64).expect("vignette vidéo");
+        let thumbnail = generate_video_thumbnail(&video, 64).expect("video thumbnail");
         assert_eq!(thumbnail.mime.as_deref(), Some("image/png"));
         assert!(thumbnail.bytes.starts_with(b"\x89PNG"));
     }

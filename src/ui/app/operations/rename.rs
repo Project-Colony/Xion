@@ -82,7 +82,7 @@ impl XionApp {
                 })
                 .await
                 .unwrap_or_else(|error| {
-                    tracing::error!("Tâche de renommage interrompue : {error}");
+                    tracing::error!("Rename task interrupted: {error}");
                     OperationReport::empty(FileOperationKind::Rename)
                 })
             },

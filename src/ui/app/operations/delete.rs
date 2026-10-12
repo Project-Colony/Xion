@@ -70,7 +70,7 @@ impl XionApp {
                 tokio::task::spawn_blocking(move || LocalFileOperations::new().delete_items(&items))
                     .await
                     .unwrap_or_else(|error| {
-                        tracing::error!("Tâche de suppression interrompue : {error}");
+                        tracing::error!("Delete task interrupted: {error}");
                         OperationReport::empty(FileOperationKind::Delete)
                     })
             },

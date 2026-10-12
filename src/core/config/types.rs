@@ -72,34 +72,34 @@ impl ViewMode {
 
 // ── Theme / shell enums ───────────────────────────────────────────────────────
 
-/// Ce que l'utilisateur a choisi dans l'apparence.
+/// What the user chose in the appearance.
 ///
-/// Xion portait cinq palettes écrites à la main derrière un `enum`. Elles sont
-/// devenues une sélection dans le catalogue partagé de `colony-ui` — vingt-cinq
-/// familles, cinquante-sept variantes, huit accents — donc le choix ne peut
-/// plus être un ensemble fermé de cinq noms.
+/// Xion used to carry five hand-written palettes behind an `enum`. They became
+/// a selection in `colony-ui`'s shared catalogue (twenty-five families,
+/// fifty-seven variants, eight accents), so the choice can no longer be a
+/// closed set of five names.
 ///
-/// Les clés sont des chaînes et non un type fermé, à dessein : le socle ajoute
-/// des familles sans que Xion soit recompilé, et `colony_ui::resolve` retombe
-/// sur sa palette de repli pour tout couple inconnu — une famille retirée en
-/// amont dégrade au lieu d'empêcher le démarrage.
+/// The keys are strings and not a closed type, on purpose: the foundation adds
+/// families without Xion being recompiled, and `colony_ui::resolve` falls back
+/// to its fallback palette for any unknown pair, so a family removed upstream
+/// degrades instead of preventing startup.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ThemeChoice {
-    /// Clé de famille du catalogue Colony : `gruvbox`, `nord`, `catppuccin`…
+    /// Family key in the Colony catalogue: `gruvbox`, `nord`, `catppuccin`...
     pub family: String,
-    /// Clé de variante dans cette famille : `dark`, `light`, `mocha`…
+    /// Variant key within that family: `dark`, `light`, `mocha`...
     pub variant: String,
-    /// Rehausse le contraste. Colony en fait un modificateur applicable à
-    /// n'importe quelle palette, pas un thème à part.
+    /// Raise the contrast. Colony makes it a modifier for any palette, not a
+    /// separate theme.
     pub high_contrast: bool,
-    /// Accent choisi par l'utilisateur ; `None` signifie « celui du thème ».
+    /// Accent chosen by the user; `None` means "the theme's".
     pub accent: Option<String>,
 }
 
 impl Default for ThemeChoice {
     fn default() -> Self {
-        // La famille de repli du catalogue, pour que Xion démarre sur ce que
-        // l'écosystème considère comme son défaut plutôt que sur un goût local.
+        // The catalogue's fallback family, so Xion starts on what the ecosystem
+        // considers its default rather than on a local taste.
         Self {
             family: "gruvbox".to_string(),
             variant: "dark".to_string(),
@@ -110,7 +110,7 @@ impl Default for ThemeChoice {
 }
 
 impl ThemeChoice {
-    /// Le couple que `colony_ui::resolve` attend.
+    /// The pair `colony_ui::resolve` expects.
     pub fn keys(&self) -> (&str, &str) {
         (&self.family, &self.variant)
     }
@@ -118,18 +118,18 @@ impl ThemeChoice {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub enum ShellConfig {
-    /// Le shell de connexion de l'utilisateur.
+    /// The user's login shell.
     ///
-    /// Une intention, pas un binaire : `$SHELL` sous Unix, `cmd` sous Windows.
-    /// C'est ce qui permet au même fichier de configuration de rester valide en
-    /// passant d'une machine à l'autre — la variante s'appelait `Cmd`, ce qui
-    /// désignait un exécutable Windows tout en lançant zsh sous Linux.
+    /// An intent, not a binary: `$SHELL` on Unix, `cmd` on Windows. That is
+    /// what lets the same configuration file stay valid from one machine to
+    /// another; the variant used to be called `Cmd`, which named a Windows
+    /// executable while starting zsh on Linux.
     #[default]
     System,
     PowerShell,
-    /// Bash : Git Bash sous Windows, le bash du système ailleurs.
+    /// Bash: Git Bash on Windows, the system bash elsewhere.
     Bash,
-    /// Un exécutable désigné par son chemin absolu.
+    /// An executable named by its absolute path.
     Custom(String),
 }
 
@@ -278,9 +278,9 @@ impl Default for AppConfig {
             view: ViewConfig::default(),
             paging: PagingConfig::default(),
             shortcuts: ShortcutBindings::default(),
-            // Dérivé du thème, jamais saisi à part : les deux ont divergé par
-            // le passé, et un surligneur de syntaxe clair a tourné sur une
-            // interface sombre jusqu'au changement de thème suivant.
+            // Derived from the theme, never entered separately: the two drifted
+            // apart in the past, and a light syntax highlighter ran on a dark
+            // interface until the next theme change.
             dark_mode: crate::ui::theme::resolves_dark(&ThemeChoice::default()),
             theme: ThemeChoice::default(),
             terminal_shell: ShellConfig::default(),
@@ -324,18 +324,18 @@ pub struct AppConfigLoad {
 mod tests {
     use super::{AppConfig, ThemeChoice};
 
-    /// Le défaut suit le repli du catalogue Colony plutôt qu'un goût local.
+    /// The default follows the Colony catalogue's fallback rather than a local taste.
     #[test]
     fn the_default_choice_is_the_ecosystem_fallback() {
         let choice = ThemeChoice::default();
         assert_eq!(choice.keys(), ("gruvbox", "dark"));
         assert!(!choice.high_contrast);
-        assert_eq!(choice.accent, None, "« auto » veut dire l'accent du thème");
+        assert_eq!(choice.accent, None, "\"auto\" means the theme's accent");
     }
 
-    /// `dark_mode` est dérivé de la palette résolue, pas saisi à part : les
-    /// deux ont divergé par le passé, et un surligneur de syntaxe clair sur une
-    /// interface sombre a survécu jusqu'au changement de thème suivant.
+    /// `dark_mode` is derived from the resolved palette, not entered
+    /// separately: the two drifted apart in the past, and a light syntax
+    /// highlighter on a dark interface survived until the next theme change.
     #[test]
     fn default_config_keeps_dark_mode_and_theme_in_sync() {
         let config = AppConfig::default();

@@ -110,7 +110,7 @@ impl OpenService {
     ///
     /// Returns nothing and never fails: a caller that is about to exit has no
     /// use for an error, and the running instance decides what a bad path
-    /// means — the same decision it makes for a path typed in the address bar.
+    /// means, the same decision it makes for a path typed in the address bar.
     fn open(&self, path: String) {
         let _ = self.sender.send(PathBuf::from(path));
     }
@@ -132,7 +132,7 @@ pub fn claim(open: Option<&Path>) -> Claim {
         None => match forward(open) {
             // Somebody answered: this process has done its job.
             true => Claim::Secondary,
-            // The name is taken but nothing answered — a stale owner, or a
+            // The name is taken but nothing answered: a stale owner, or a
             // peer that is not us. Running a second window is a far better
             // outcome than exiting and opening nothing at all.
             false => Claim::Primary(Primary {
@@ -157,7 +157,7 @@ fn try_serve(sender: std::sync::mpsc::Sender<PathBuf>) -> Option<zbus::blocking:
     // `DoNotQueue`, and the reply checked, both matter. The builder's `.name()`
     // shortcut asks without it: a second launch was then *queued* behind the
     // running instance, the request reported success, and the process went on
-    // to open its own window — the exact duplicate this module exists to
+    // to open its own window, the exact duplicate this module exists to
     // prevent. Measured: two windows, two processes.
     let reply = connection
         .request_name_with_flags(SERVICE_NAME, zbus::fdo::RequestNameFlags::DoNotQueue.into())
@@ -165,7 +165,7 @@ fn try_serve(sender: std::sync::mpsc::Sender<PathBuf>) -> Option<zbus::blocking:
 
     match reply {
         zbus::fdo::RequestNameReply::PrimaryOwner => Some(connection),
-        // AlreadyOwner cannot happen — this connection was just created — and
+        // AlreadyOwner cannot happen, this connection was just created, and
         // InQueue is impossible with DoNotQueue. Both mean "not ours".
         _ => None,
     }

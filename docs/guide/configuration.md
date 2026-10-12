@@ -1,8 +1,10 @@
 # Configuration
 
 Everything Xion remembers about your choices is in one TOML file,
-`config.toml`. You never have to open it: every setting has a control in the
-interface, and each change is saved the moment you make it. This page is for
+`config.toml`. You never have to open it: almost every setting has a control in
+the interface, and each change is saved the moment you make it. Most of them
+are under Preferences, which the **Xion** button in the top-left corner of the
+window opens and closes. This page is for
 when you want to read it, edit it by hand, or understand what happened to it.
 
 ## Where the files are
@@ -53,20 +55,33 @@ Two things to know:
 
 The block below is everything Xion reads and writes, with its default value.
 Ranges are inclusive; a value outside its range is replaced by the default, and
-Xion says so in the status bar.
+Xion says so in the status bar. An invalid appearance or accessibility value
+(`font_size = "huge"`, say) quietly falls back to its default and leaves the
+other keys alone.
 
 ```toml
 # Top-level keys. In TOML they all come before the first [section].
 
 version = 1
 
-# Appearance. The theme is picked from the Colony catalogue that Xion shares
-# with the other Project Colony programs: a family, then a variant in it.
-theme_family = "gruvbox"     # gruvbox, nord, catppuccin, solarized...
-theme_variant = "dark"       # dark, light, mocha...: the names depend on the family
-high_contrast = false        # strengthens whichever palette is active
-# accent = "blue"            # red | orange | yellow | green | blue | indigo |
+# Appearance and accessibility, set from Preferences > Appearance and
+# Preferences > Accessibility. These keys have the same names and values in
+# every Project Colony program. The theme is picked from the Colony catalogue:
+# a family, then a variant in it.
+selected_theme = "gruvbox"   # gruvbox, nord, catppuccin, solarized...
+selected_variant = "dark"    # dark, light, mocha...: the names depend on the family
+# selected_accent = "blue"   # red | orange | yellow | green | blue | indigo |
                              # violet | amber. Absent: the theme's own accent.
+auto_accent = false          # true: use the theme's own accent, and keep
+                             # selected_accent for later without applying it
+font_size = "default"        # small | default | large
+text_size_a11y = "default"   # small | default | large | xlarge; multiplies
+                             # with font_size
+animations = true            # panel slides and animated GIF previews
+high_contrast = false        # strengthens whichever palette is active
+dyslexia_font = false        # OpenDyslexic replaces the interface font
+reduce_motion = false        # turns every animation off, whatever `animations`
+                             # says: panels jump, GIFs show their first frame
 
 # Interface language: auto | en | fr. `auto` follows the session: LC_ALL,
 # LC_MESSAGES, then LANG on Linux (empty values are skipped), the display
@@ -164,9 +179,14 @@ it from starting.
 - **A `version` above 1** was written by a newer Xion. This one refuses it,
   says so, and handles it like an unreadable file (see below): it is moved
   aside, not overwritten.
+- **`theme_family`, `theme_variant` and `accent`** are the names the
+  appearance keys had before Xion shared them with the other Colony programs.
+  When `theme_family` and `theme_variant` are both present they become
+  `selected_theme` and `selected_variant`, and `accent` becomes
+  `selected_accent`.
 - **A `theme` key** (`Light`, `Dark`, `Nord`, `Solarized` or `HighContrast`)
-  comes from before the Colony catalogue. It is still read, only when
-  `theme_family` or `theme_variant` is missing, and never written again:
+  comes from before the Colony catalogue. It is read only when
+  `theme_family` or `theme_variant` is missing:
 
   | old `theme` | becomes |
   |---|---|
@@ -176,9 +196,13 @@ it from starting.
   | `Solarized` | `solarized` / `dark` |
   | `HighContrast` | `gruvbox` / `dark` with `high_contrast = true` |
   | anything else | `gruvbox` / `dark`, with a warning |
+  | absent, with `dark_mode = false` | `gruvbox` / `light` |
 
 - **`dark_mode`** is no longer a setting. Xion works it out from the theme, and
   a written value that disagrees with the theme is ignored with a warning.
+
+  None of these older keys is written again, so they leave the file at its
+  next save.
 - **`[[tabs]]` and `active_tab_index`** moved to `session.toml` (below). They
   are read from `config.toml` once, when `session.toml` does not exist yet,
   and dropped from `config.toml` at its next save.

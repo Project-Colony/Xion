@@ -157,20 +157,38 @@ Xion takes its look and its plumbing from
 [colony-ui](https://crates.io/crates/colony-ui) 0.1.6, the crate every Project
 Colony program shares:
 
+- **Settings.** The Appearance and Accessibility settings are colony-ui's
+  `StandardPreferences`, held in `AppConfig::standard` and flattened into
+  `config.toml` under the key names every Colony program writes.
+  `StandardPreferences::apply` puts them into effect at startup
+  (`src/ui/app/construction.rs`), and every `UiMessage::Preference` goes
+  through `XionApp::apply_preference` (`src/ui/app/update/tools.rs`), which
+  records the change, applies it and saves the file.
 - **Palette.** Colours come from the shared theme catalogue: a family, a
-  variant, a high-contrast switch and an accent. `UiTokens::for_theme` resolves
-  them and `UiColors::from_colony` derives the surfaces Xion names. Xion
-  writes no colour of its own, and a family added to the catalogue appears
-  without rebuilding Xion.
-- **Typography.** The fonts are the kit's: JetBrains Mono Nerd Font in Regular,
-  Medium and Bold, OpenDyslexic, and Font Awesome, registered at startup. Text
-  sizes go through `sz(base)`, which multiplies by the user's text size
-  settings, and the dyslexia switch swaps the whole interface at once.
-- **Motion.** Every animation (the preview and terminal panels sliding, animated
-  image previews) is gated on `colony_ui::effects_enabled()`, which is false
-  under reduced motion.
-- **Preferences.** The Preferences page is the kit's layout and building blocks,
-  with Xion's own categories after the standard ones.
+  variant, a high-contrast switch and an accent. `UiTokens::for_preferences`
+  (`src/ui/theme.rs`) resolves them and `UiColors::from_colony` derives the
+  surfaces Xion names. Xion writes no colour of its own, and a family added to
+  the catalogue appears without rebuilding Xion. The resolution is pure, with
+  the preferences as an argument, because it runs on every rebuild of the
+  widget tree.
+- **Typography.** The fonts are the kit's, `colony_ui::fonts::BYTES`,
+  registered in `ui::app::run`: JetBrains Mono Nerd Font in Regular, Medium and
+  Bold, OpenDyslexic, and Font Awesome. Xion ships no font file. Text goes
+  through `UiTypography` (`src/ui/theme.rs`), three roles built with `sz`: title
+  `sz(16)` in Bold, body `sz(14)` and caption `sz(12)` in Regular. `sz`
+  multiplies by both text size settings, and the dyslexia font replaces the
+  interface font everywhere at once. Nerd Font glyphs and the terminal use
+  `glyph_font`, which stays JetBrains Mono because OpenDyslexic has no glyphs.
+- **Motion.** `colony_ui::effects_enabled()` is false when Appearance > Effects
+  is off or reduced motion is on. Then `XionApp::update` settles both panel
+  slides at once, and `subscription` (`src/ui/app/windowing.rs`) starts neither
+  the slide ticks nor the animated GIF tick, so a GIF shows its first frame.
+- **Preferences.** The page (`src/ui/app/view/preferences.rs`) replaces the
+  content area; it is not a window or a modal. The **Xion** button at the
+  top-left of the header opens and closes it. Its frame, category list and the
+  whole of Appearance and Accessibility come from colony-ui's preferences kit;
+  Xion adds its own sections to General and Appearance, and its own Files and
+  About categories. There is no Save button: a change applies when it is made.
 - **Paths.** `colony_ui::paths` gives `Colony/Xion/` under the platform's
   configuration and data folders.
 
@@ -198,7 +216,7 @@ What the user sees of it is in
 |---|---|
 | `mod.rs` | `ConfigManager`: the path, loading, the atomic write, the migration from the old folder, and their tests |
 | `file_format.rs` | the on-disk shapes, `AppConfigFileV0` and `AppConfigFileV1`, kept apart from `AppConfig` so the runtime type can change without breaking old files |
-| `migrate.rs` | `merge_from_v0`, `merge_from_v1` (file to `AppConfig`) and `config_to_file` (the reverse) |
+| `migrate.rs` | `merge_from_v0`, `merge_from_v1` (file to `AppConfig`, with `migrated_standard` carrying the theme keys of earlier versions over) and `config_to_file` (the reverse) |
 | `validate.rs` | the `validated_*` functions, which clamp a value or fall back with a `ConfigWarning` |
 | `limits.rs` | `CURRENT_CONFIG_VERSION` and the `MIN_*` / `MAX_*` bounds |
 | `shortcuts_io.rs` | parsing and writing the `[shortcuts]` table |

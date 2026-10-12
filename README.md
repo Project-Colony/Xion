@@ -68,8 +68,10 @@ shares.
 - An English and a French interface. Preferences > General > Language picks
   one, or follows the session's language by default.
 - Appearance and accessibility preferences shared with the Colony ecosystem:
-  theme and accent from the Colony catalogue, high contrast, text size, the
-  OpenDyslexic font, and reduced motion, which turns every animation off.
+  every theme and accent of the Colony catalogue, high contrast, two text
+  sizes that multiply, the OpenDyslexic font, and reduced motion, which turns
+  every animation off. The **Xion** button in the top-left corner opens
+  Preferences.
 - Settings in one versioned TOML file under `Colony/Xion/`, saved as you change
   them and reloaded with Ctrl+R.
 
@@ -177,6 +179,7 @@ share or a gvfs location is ordinary file access through the system.
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE). The fonts Xion embeds through
-colony-ui (JetBrains Mono Nerd Font, OpenDyslexic, Font Awesome Free) are under
-the SIL Open Font License 1.1.
+GPL-3.0-or-later. See [LICENSE](LICENSE). Xion's fonts (JetBrains Mono Nerd
+Font, OpenDyslexic and Font Awesome 6 Free) come embedded in
+[colony-ui](https://crates.io/crates/colony-ui), which ships them with their
+licence texts.

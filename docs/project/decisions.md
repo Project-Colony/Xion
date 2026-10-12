@@ -12,7 +12,7 @@ instead of inventing its own.
 
 - **Light and responsive.** Folders load lazily, a page at a time; lists and
   the tree render only the visible rows; metadata is read in batches; every
-  cache (metadata, thumbnails, folders, search index) is bounded in size and
+  cache (thumbnails, folders, search index) is bounded in size and
   in age; blocking work never runs on the render loop.
 - **Split by responsibility.** The file system layer knows nothing of the
   interface, which is what makes virtualisation and most tests possible

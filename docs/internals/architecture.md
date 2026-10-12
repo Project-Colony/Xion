@@ -63,8 +63,8 @@ literal key used in `src/` exists in neither file.
   `ListOptions`, `EntryFilter`, `SortKey` and `SortOrder` describe a listing.
 - `Page` and `PageRequest` (`paging.rs`): a large folder is loaded a page at a
   time.
-- `DirectoryCache`, `MetadataCache` and `TimedCache` (`cache.rs`): every cache
-  is bounded in size and in age.
+- `DirectoryCache`, built on `TimedCache` (`cache.rs`): bounded in size and in
+  age, like every cache in Xion.
 - `LocalFileOperations` (`operations.rs`): copy, move, rename, delete. A copy
   refuses an occupied destination and a destination inside its own source.
 - `FileWatcher` (`watcher.rs`), implemented by `NativeFileWatcher` on top of

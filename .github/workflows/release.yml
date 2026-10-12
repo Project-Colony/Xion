@@ -124,15 +124,13 @@ jobs:
           ref: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
           persist-credentials: false
 
-      # rust-toolchain.toml pins the version and lists both targets, and
-      # rustup honours it from the checkout. No `targets:` input: it would
-      # install them for the action's own toolchain, not the pinned one.
-      # Pinned to master with `toolchain: stable` rather than to the `stable`
-      # branch: that branch is rebased onto every master commit, so a SHA
-      # pinned on it stops being reachable from any branch.
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
-        with:
-          toolchain: stable
+      # rustup is on every GitHub-hosted runner image, so there is no
+      # third-party toolchain action to pin. With no toolchain named, rustup
+      # installs the one rust-toolchain.toml pins, with both its targets, so
+      # that file stays the only place the version is set.
+      - name: Install Rust
+        shell: bash
+        run: rustup toolchain install --profile minimal --no-self-update
 
       # No build cache here: SignPath forbids release builds that reuse
       # outputs of earlier, unverified builds.

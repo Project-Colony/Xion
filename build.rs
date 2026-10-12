@@ -1,12 +1,13 @@
 //! Build script: embeds the Windows resources into the executable.
 //!
-//! Two resources: the application manifest (`xion.manifest`), and a version
-//! resource. SignPath signs only an .exe whose ProductName is the project name
-//! and whose ProductVersion is set, and Windows shows FileDescription as the
-//! program's name in Task Manager and file dialogs.
+//! Two resources: the application manifest
+//! (`packaging/windows/xion.manifest`), and a version resource. SignPath signs
+//! only an .exe whose ProductName is the project name and whose ProductVersion
+//! is set, and Windows shows FileDescription as the program's name in Task
+//! Manager and file dialogs.
 
 fn main() {
-    println!("cargo:rerun-if-changed=xion.manifest");
+    println!("cargo:rerun-if-changed=packaging/windows/xion.manifest");
 
     // `#[cfg(target_os = "windows")]` in a build script describes the HOST, not
     // the target, so it silently skips the resource when cross-compiling to
@@ -19,7 +20,7 @@ fn main() {
     // always the one release-please wrote to Cargo.toml. Forward slashes: the
     // resource compiler accepts them, and they need no escaping.
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
-    let manifest = format!("{manifest_dir}/xion.manifest").replace('\\', "/");
+    let manifest = format!("{manifest_dir}/packaging/windows/xion.manifest").replace('\\', "/");
     let env = |name: &str| std::env::var(name).expect(name);
     let (major, minor, patch) = (
         env("CARGO_PKG_VERSION_MAJOR"),

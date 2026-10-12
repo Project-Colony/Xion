@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use iced::Task;
 
+use crate::i18n::t;
 use crate::ui::UiMessage;
 
 use super::XionApp;
@@ -28,6 +29,14 @@ impl XionApp {
     }
 
     pub(crate) fn update(&mut self, message: UiMessage) -> Task<UiMessage> {
+        let task = self.route(message);
+        // Under reduced motion, or with animations off, a panel asked to slide
+        // is already where it was going: no frame of the slide is ever drawn.
+        self.settle_slides(colony_ui::effects_enabled());
+        task
+    }
+
+    fn route(&mut self, message: UiMessage) -> Task<UiMessage> {
         let mut tasks = Vec::new();
 
         let message = if self.is_user_selecting {
@@ -190,7 +199,7 @@ impl XionApp {
             .cloned()
             .collect();
         if selected.is_empty() {
-            self.last_action = Some("Aucune sélection à compresser".to_string());
+            self.last_action = Some(t("notice_nothing_to_compress").to_string());
             return Task::none();
         }
         // Hash-set order is not stable across runs; sorting makes both the name
@@ -212,15 +221,14 @@ impl XionApp {
 
         let Some(out_path) = Self::available_archive_path(&output_dir, &stem, format.extension())
         else {
-            self.last_action =
-                Some("Impossible de trouver un nom d'archive disponible".to_string());
+            self.last_action = Some(t("error_no_free_archive_name").to_string());
             return Task::none();
         };
 
         // Never feed the archive to itself.
         selected.retain(|source| source != &out_path);
 
-        self.last_action = Some("Compression en cours...".to_string());
+        self.last_action = Some(t("archive_compressing").to_string());
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || match format {

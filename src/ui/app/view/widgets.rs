@@ -46,19 +46,24 @@ pub(super) struct ViewCtx {
     pub(super) typography: UiTypography,
 }
 
-/// Où pendent les menus déroulants issus de la barre d'en-tête.
+/// Where the drop-down menus coming from the header bar hang.
 ///
-/// Mesuré depuis le haut de la fenêtre : le rembourrage extérieur du contenu,
-/// puis le rembourrage haut de l'en-tête, puis la hauteur d'un bouton de barre
-/// d'outils. C'est une estimation, pas une valeur dérivée de la mise en page —
-/// iced ne rend pas la position calculée disponible ici.
+/// Measured from the top of the window: the content's outer padding, then the
+/// header's top padding, then the height of a toolbar button. It is an
+/// estimate, not a value derived from the layout: iced does not expose the
+/// computed position here.
 ///
-/// Elle est unique et partagée pour une raison précise : le menu du fil
-/// d'Ariane utilisait 90, calibré sur l'ancien en-tête à trois bandes. Celui-ci
-/// n'en a plus qu'une, et le menu flottait cinquante pixels sous le bouton
-/// auquel il appartient. Deux nombres pour la même chose divergent dès que la
-/// chose change.
-pub(super) const HEADER_DROPDOWN_TOP: f32 = 54.0;
+/// It is single and shared for a precise reason: the breadcrumb menu used 90,
+/// calibrated on the old three-strip header. This one has only one strip
+/// left, and the menu floated fifty pixels below the button it belongs to. Two
+/// numbers for the same thing drift apart as soon as the thing changes.
+///
+/// The paddings are fixed; the button grows with the text it holds.
+pub(super) fn header_dropdown_top() -> f32 {
+    const PADDINGS: f32 = 24.0;
+    const TOOLBAR_BUTTON: f32 = 30.0;
+    PADDINGS + crate::ui::theme::layout::scaled(TOOLBAR_BUTTON)
+}
 
 /// A solid fill with the standard one-pixel outline and a rounded corner.
 ///
@@ -77,29 +82,29 @@ pub(super) fn filled_style(
     }
 }
 
-/// La bande qui porte des onglets : remplie, arrondie en haut seulement, et
-/// sans contour.
+/// The strip that carries tabs: filled, rounded at the top only, and with no
+/// border.
 ///
 /// Two reasons it has no border. The tab strip sits flush against the bottom of
-/// this container, and the active tab is painted in the list's own background —
+/// this container, and the active tab is painted in the list's own background,
 /// so a line drawn under the tabs would cut the join that makes a row of
 /// buttons read as tabs at all. And the window already had a border around the
 /// header, one around the sidebar, one around the list and one around the
 /// status bar, which is what made the screen read as a stack of panels rather
 /// than an application.
 ///
-/// Partagée entre l'en-tête de fenêtre et le panneau terminal : la bande du
-/// terminal utilisait `filled_style`, qui trace justement cette ligne, et ses
-/// onglets ne se rattachaient donc à rien.
+/// Shared between the window header and the terminal panel: the terminal strip
+/// used `filled_style`, which draws exactly that line, so its tabs were joined
+/// to nothing.
 pub(super) fn tab_strip_style(
     colors: UiColors,
     radius: f32,
 ) -> impl Fn(&Theme) -> container::Style + Copy {
-    // Sauf quand l'aplat ne sépare rien. Le thème « contraste élevé » peint
-    // `chrome_background` et `panel_background` tous deux en noir : il ne
-    // distingue les zones que par ses bordures blanches. Retirer celle-ci y
-    // rendait l'en-tête purement invisible — précisément dans le thème destiné
-    // aux personnes qui ont besoin de séparations franches.
+    // Except when the fill separates nothing. The high contrast theme paints
+    // `chrome_background` and `panel_background` both black: it only tells the
+    // areas apart by its white borders. Removing this one made the header
+    // simply invisible there, precisely in the theme meant for people who need
+    // clear separations.
     let fills_separate = colors.chrome_background != colors.panel_background;
     move |_: &Theme| container::Style {
         background: Some(Background::Color(colors.chrome_background)),
@@ -114,7 +119,7 @@ pub(super) fn tab_strip_style(
     }
 }
 
-/// La bande de l'en-tête de fenêtre.
+/// The window header strip.
 pub(super) fn header_style(colors: UiColors) -> impl Fn(&Theme) -> container::Style + Copy {
     tab_strip_style(colors, RADIUS.xl)
 }
@@ -175,8 +180,9 @@ pub(super) fn raised_button_style(
 /// and its font separately, which meant the pairing was a convention rather
 /// than a rule, and reading a call site told you two numbers instead of a role.
 ///
-/// `glyph_text` is not a mistake: the ✕, +, ⛔ and Nerd Font marks are drawn at
-/// caption size in the body font, deliberately.
+/// `glyph_text` draws the ✕, +, ⛔ and Nerd Font marks at caption size in the
+/// Nerd Font itself, which keeps them when the dyslexia font replaces the body
+/// font: OpenDyslexic carries none of them.
 pub(super) fn body_text<'a>(
     typography: UiTypography,
     content: impl text::IntoFragment<'a>,
@@ -201,7 +207,19 @@ pub(super) fn glyph_text<'a>(
 ) -> Text<'a> {
     text(content)
         .size(typography.caption)
-        .font(typography.body_font)
+        .font(typography.glyph_font)
+}
+
+/// A Nerd Font icon at body size, set in the Nerd Font whatever the dyslexia
+/// toggle says. Next to a label it is a separate text: a glyph and a word are
+/// two texts in two fonts.
+pub(super) fn icon_text<'a>(
+    typography: UiTypography,
+    content: impl text::IntoFragment<'a>,
+) -> Text<'a> {
+    text(content)
+        .size(typography.body)
+        .font(typography.glyph_font)
 }
 
 pub(super) fn title_text<'a>(
@@ -237,8 +255,12 @@ pub(super) fn hover_button_style(
     }
 }
 
-/// A row or tile that can be selected and focused: list rows, grid tiles, tree
-/// nodes. The focus ring is the selection outline drawn twice as thick.
+/// A row or tile that can be selected and focused: list rows and grid tiles.
+///
+/// Selection is the accent fill with text in `contrast_on(accent)`, and hover
+/// is `bg_card_hover`, so the two never look alike; a selected row keeps its
+/// fill under the pointer. The focus ring is drawn in the text colour, the
+/// one colour guaranteed to stand out on the accent.
 pub(super) fn selectable_button_style(
     colors: UiColors,
     selected: bool,
@@ -246,25 +268,31 @@ pub(super) fn selectable_button_style(
     radius: f32,
 ) -> impl Fn(&Theme, ButtonStatus) -> button::Style + Copy {
     move |_theme: &Theme, status: ButtonStatus| {
-        let mut style = button::Style {
-            text_color: colors.text_primary,
-            ..Default::default()
-        };
-
         if selected {
-            style.background = Some(Background::Color(colors.selection));
-            style.border = border::rounded(radius)
-                .color(colors.selection_border)
-                .width(if focused { 2.0 } else { 1.0 });
+            let on_accent = colony_ui::contrast_on(colors.accent);
+            return button::Style {
+                background: Some(Background::Color(colors.accent)),
+                text_color: on_accent,
+                border: border::rounded(radius).color(on_accent).width(if focused {
+                    2.0
+                } else {
+                    0.0
+                }),
+                ..Default::default()
+            };
         }
 
-        match status {
-            ButtonStatus::Hovered => style.background = Some(Background::Color(colors.hover)),
-            ButtonStatus::Pressed => style.background = Some(Background::Color(colors.pressed)),
-            ButtonStatus::Active | ButtonStatus::Disabled => {}
+        let background = match status {
+            ButtonStatus::Hovered => Some(Background::Color(colors.hover)),
+            ButtonStatus::Pressed => Some(Background::Color(colors.pressed)),
+            ButtonStatus::Active | ButtonStatus::Disabled => None,
+        };
+        button::Style {
+            background,
+            text_color: colors.text_primary,
+            border: border::rounded(radius),
+            ..Default::default()
         }
-
-        style
     }
 }
 
@@ -283,14 +311,12 @@ pub(super) fn toggle_button_style(
             ..Default::default()
         };
 
-        // `md` plutôt que `sm` : sur un carré de vingt-six pixels, un rayon de
-        // quatre laisse des coins presque droits, et le bouton se lit comme une
-        // case à cocher plutôt que comme une bascule.
+        // `md` rather than `sm`: on a twenty-six pixel square, a radius of four
+        // leaves almost square corners, and the button reads as a checkbox
+        // rather than a toggle.
         if active {
             style.background = Some(Background::Color(colors.selection));
-            style.border = border::rounded(RADIUS.md)
-                .color(colors.selection_border)
-                .width(1.0);
+            style.border = border::rounded(RADIUS.md).color(colors.accent).width(1.0);
         }
 
         if matches!(status, ButtonStatus::Hovered) {
@@ -302,24 +328,29 @@ pub(super) fn toggle_button_style(
     }
 }
 
-/// The toolbar button used by the navigation arrows, the command bar and the
-/// rename prompt.
+/// The toolbar button for a word, such as the rename prompt's Confirm.
 pub(super) fn toolbar_button<'a>(ctx: ViewCtx, label: String) -> Button<'a, UiMessage> {
-    button(
-        text(label)
-            .size(ctx.typography.body)
-            .font(ctx.typography.body_font),
-    )
-    .padding([ctx.spacing.xs, ctx.spacing.sm])
-    .style(raised_button_style(ctx.colors, true))
+    toolbar_face(ctx, body_text(ctx.typography, label))
+}
+
+/// The toolbar button for a glyph: the navigation arrows, `⋯`, the address
+/// history.
+pub(super) fn toolbar_icon<'a>(ctx: ViewCtx, glyph: &'a str) -> Button<'a, UiMessage> {
+    toolbar_face(ctx, icon_text(ctx.typography, glyph))
+}
+
+fn toolbar_face<'a>(ctx: ViewCtx, face: Text<'a>) -> Button<'a, UiMessage> {
+    button(face)
+        .padding([ctx.spacing.xs, ctx.spacing.sm])
+        .style(raised_button_style(ctx.colors, true))
 }
 
 /// Which tooltip look a call site wants.
 ///
 /// There were two, because the navigation arrows and the command bar had each
-/// grown their own tooltip code. The command bar is gone — its contents moved
+/// grown their own tooltip code. The command bar is gone, its contents moved
 /// into the `⋯` menu, where entries carry their shortcut inline and need no
-/// tooltip — so only one look is left.
+/// tooltip, so only one look is left.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum TipVariant {
     /// Navigation arrows: chrome surface, default text, 4px inner padding.

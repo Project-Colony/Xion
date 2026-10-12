@@ -1,27 +1,27 @@
-//! Quel interpréteur lance le terminal intégré, et sous quel nom.
+//! Which shell the integrated terminal starts, and under which name.
 //!
-//! Le sélecteur affichait les mêmes trois boutons sur les deux systèmes —
-//! `CMD`, `PS`, `Bash` — parce que l'énumération avait été écrite en pensant
-//! Windows. Sous Linux cela donnait un bouton « CMD » qui lançait en réalité le
-//! `$SHELL` de l'utilisateur, donc juste mal nommé, et un bouton « PS » qui ne
-//! lançait rien du tout : le code appelle `powershell`, or même PowerShell
-//! installé sous Linux s'appelle `pwsh`.
+//! The picker used to show the same three buttons on both systems (`CMD`,
+//! `PS`, `Bash`) because the enumeration had been written with Windows in mind.
+//! On Linux that gave a "CMD" button that actually started the user's
+//! `$SHELL`, so merely misnamed, and a "PS" button that started nothing at all:
+//! the code calls `powershell`, while even PowerShell installed on Linux is
+//! called `pwsh`.
 //!
-//! Ici la liste est **découverte** au moment de l'affichage, et la variante par
-//! défaut porte enfin le nom de ce qu'elle fait.
+//! Here the list is **discovered** when it is displayed, and the default
+//! variant finally carries the name of what it does.
 
 use crate::core::ShellConfig;
 
-/// Une entrée du sélecteur : ce qui s'affiche, et ce que ça lance.
+/// One picker entry: what is displayed, and what it starts.
 pub(super) struct ShellChoice {
     pub(super) label: String,
     pub(super) config: ShellConfig,
 }
 
-/// Le programme à lancer et ses arguments.
+/// The program to start and its arguments.
 ///
-/// Ne démarre rien : c'est `iced_term` qui ouvre le pseudo-terminal, et il
-/// attend un nom de programme. Xion se contente de dire lequel.
+/// Starts nothing: `iced_term` opens the pseudo-terminal, and it expects a
+/// program name. Xion only says which one.
 pub(super) fn resolve(shell: &ShellConfig) -> std::io::Result<(String, Vec<String>)> {
     let resolved = match shell {
         ShellConfig::System => (system_shell(), Vec::new()),
@@ -31,8 +31,8 @@ pub(super) fn resolve(shell: &ShellConfig) -> std::io::Result<(String, Vec<Strin
         ),
         ShellConfig::Bash => (bash_path().ok_or_else(|| not_found("bash"))?, Vec::new()),
         ShellConfig::Custom(path) => {
-            // Un shell personnalisé est un chemin arbitraire lu dans
-            // config.toml : il est résolu et vérifié avant d'être transmis.
+            // A custom shell is an arbitrary path read from config.toml: it is
+            // resolved and checked before being passed on.
             (validated_custom_shell(path)?, Vec::new())
         }
     };
@@ -46,11 +46,11 @@ fn not_found(name: &str) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::NotFound, name.to_string())
 }
 
-/// Les interpréteurs proposés sur cette machine, dans l'ordre d'affichage.
+/// The shells offered on this machine, in display order.
 ///
-/// Le premier est toujours celui de l'utilisateur ; les suivants n'apparaissent
-/// que s'ils existent réellement. Un bouton qui ne peut rien lancer ne rend
-/// service à personne — il occupe la place et fait douter du reste.
+/// The first is always the user's own; the others only appear when they really
+/// exist. A button that cannot start anything helps nobody: it takes up room
+/// and casts doubt on the rest.
 #[cfg(not(windows))]
 pub(super) fn available_shells() -> Vec<ShellChoice> {
     let system = system_shell();
@@ -59,8 +59,8 @@ pub(super) fn available_shells() -> Vec<ShellChoice> {
         config: ShellConfig::System,
     }];
 
-    // Bash en second, sauf quand c'est déjà le shell de connexion : deux
-    // boutons pour le même programme se lisent comme deux choix.
+    // Bash second, unless it already is the login shell: two buttons for the
+    // same program read as two choices.
     if let Some(bash) = bash_path()
         && display_name(&bash) != display_name(&system)
     {
@@ -73,8 +73,8 @@ pub(super) fn available_shells() -> Vec<ShellChoice> {
     choices
 }
 
-/// Voir la version Unix. Sous Windows les trois interpréteurs sont des
-/// programmes distincts, et le choix a un sens que le nom seul ne rend pas.
+/// See the Unix version. On Windows the three shells are distinct programs, and
+/// the choice has a meaning the name alone does not convey.
 #[cfg(windows)]
 pub(super) fn available_shells() -> Vec<ShellChoice> {
     let mut choices = vec![
@@ -88,7 +88,7 @@ pub(super) fn available_shells() -> Vec<ShellChoice> {
         },
     ];
 
-    // Git Bash n'est pas livré avec Windows : ne l'annoncer que s'il est là.
+    // Git Bash does not ship with Windows: only offer it when it is there.
     if bash_path().is_some() {
         choices.push(ShellChoice {
             label: "Git Bash".to_string(),
@@ -99,8 +99,8 @@ pub(super) fn available_shells() -> Vec<ShellChoice> {
     choices
 }
 
-/// Le nom affiché d'une configuration, pour les préférences comme pour le
-/// sélecteur.
+/// The display name of a configuration, for the preferences as well as the
+/// picker.
 pub(super) fn label_for(shell: &ShellConfig) -> String {
     match shell {
         ShellConfig::System => display_name(&system_shell()),
@@ -112,12 +112,12 @@ pub(super) fn label_for(shell: &ShellConfig) -> String {
     }
 }
 
-/// Le shell de connexion de l'utilisateur.
+/// The user's login shell.
 ///
-/// `$SHELL` d'abord, parce que c'est la convention et que la session la pose.
-/// Mais elle peut manquer selon la façon dont Xion est lancé, et retomber
-/// directement sur `/bin/sh` donnerait un shell que l'utilisateur n'a pas
-/// choisi alors que le système, lui, sait lequel c'est.
+/// `$SHELL` first, because it is the convention and the session sets it. But it
+/// can be missing depending on how Xion is started, and falling straight back
+/// to `/bin/sh` would give a shell the user did not choose while the system
+/// knows which one it is.
 #[cfg(not(windows))]
 fn system_shell() -> String {
     if let Some(shell) = std::env::var_os("SHELL") {
@@ -139,19 +139,19 @@ fn system_shell() -> String {
     })
 }
 
-/// Le shell inscrit dans la base des comptes, quand `$SHELL` est muette.
+/// The shell recorded in the account database, when `$SHELL` is silent.
 ///
-/// Lit `/etc/passwd` plutôt que d'appeler `getpwuid_r` : cela évite un bloc
-/// `unsafe` et une dépendance directe, et surtout cela rend l'analyse
-/// testable. La contrepartie est un utilisateur déclaré ailleurs — LDAP,
-/// systemd-homed — qu'on ne verra pas ; mais celui-là a une session qui pose
-/// `$SHELL`, donc il n'arrive jamais jusqu'ici.
+/// Reads `/etc/passwd` rather than calling `getpwuid_r`: that avoids an
+/// `unsafe` block and a direct dependency, and above all keeps the parsing
+/// testable. The trade-off is a user declared elsewhere (LDAP, systemd-homed)
+/// that we will not see; but such a user has a session that sets `$SHELL`, so
+/// they never get this far.
 #[cfg(target_os = "linux")]
 fn shell_from_passwd() -> Option<String> {
     use std::os::unix::fs::MetadataExt;
 
-    // `/proc/self` appartient à l'uid réel du processus. Le lire évite de
-    // dépendre de `$USER`, qui peut manquer exactement quand `$SHELL` manque.
+    // `/proc/self` belongs to the real uid of the process. Reading it avoids
+    // depending on `$USER`, which can be missing exactly when `$SHELL` is.
     let uid = std::fs::metadata("/proc/self").ok()?.uid();
     let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
     shell_for_uid(&passwd, uid)
@@ -162,9 +162,9 @@ fn shell_from_passwd() -> Option<String> {
     None
 }
 
-/// Extrait le shell de l'uid donné d'un contenu de `/etc/passwd`.
+/// Extract the shell of the given uid from the contents of `/etc/passwd`.
 ///
-/// Séparée de la lecture du fichier pour être exerçable sans en fabriquer un.
+/// Kept apart from reading the file so it can be exercised without making one.
 #[cfg(target_os = "linux")]
 fn shell_for_uid(passwd: &str, uid: u32) -> Option<String> {
     // nom:mot_de_passe:uid:gid:commentaire:accueil:shell
@@ -172,10 +172,10 @@ fn shell_for_uid(passwd: &str, uid: u32) -> Option<String> {
     const SHELL: usize = 6;
 
     for line in passwd.lines() {
-        // Indexer plutôt que d'avancer un itérateur : la première écriture
-        // enchaînait deux `nth(2)`, ce qui atterrissait sur le dossier
-        // personnel et non sur le shell. Et son `?` sortait de la fonction
-        // entière à la première ligne malformée, au lieu de la sauter.
+        // Index rather than advance an iterator: the first version chained two
+        // `nth(2)` calls, which landed on the home directory and not the
+        // shell. And its `?` returned from the whole function at the first
+        // malformed line, instead of skipping it.
         let fields: Vec<&str> = line.split(':').collect();
         if fields.len() <= SHELL {
             continue;
@@ -191,14 +191,14 @@ fn shell_for_uid(passwd: &str, uid: u32) -> Option<String> {
     None
 }
 
-/// Le nom court d'un interpréteur : `/usr/bin/zsh` devient `zsh`.
+/// The short name of a shell: `/usr/bin/zsh` becomes `zsh`.
 fn display_name(path: &str) -> String {
     let name = std::path::Path::new(path)
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string());
 
-    // `cmd.exe` se lit mieux en `cmd`, et l'extension n'apprend rien.
+    // `cmd.exe` reads better as `cmd`, and the extension tells nothing.
     match name.rfind('.') {
         Some(dot) if name[dot..].eq_ignore_ascii_case(".exe") => name[..dot].to_string(),
         _ => name,
@@ -215,24 +215,24 @@ fn validated_custom_shell(path: &str) -> std::io::Result<String> {
     if !candidate.is_absolute() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            format!("terminal_shell doit être un chemin absolu : {path}"),
+            crate::i18n::tf("shell_not_absolute", &[("path", &path)]),
         ));
     }
     let resolved = candidate.canonicalize()?;
     if !resolved.is_file() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            format!("terminal_shell introuvable : {path}"),
+            crate::i18n::tf("shell_missing", &[("path", &path)]),
         ));
     }
     Ok(resolved.to_string_lossy().into_owned())
 }
 
-/// PowerShell, par son chemin canonique quand il est connu.
+/// PowerShell, by its canonical path when it is known.
 ///
-/// Pas le nom nu : sous Windows la recherche visite le dossier de l'exécutable
-/// en cours avant celui du système, ce qui est le même piège que pour un shell
-/// personnalisé. `pwsh` d'abord, c'est la version maintenue.
+/// Not the bare name: on Windows the search visits the running executable's
+/// directory before the system one, which is the same trap as for a custom
+/// shell. `pwsh` first, it is the maintained version.
 fn find_powershell() -> Option<String> {
     #[cfg(windows)]
     {
@@ -260,11 +260,11 @@ fn find_powershell() -> Option<String> {
         .map(|path| path.to_string_lossy().into_owned())
 }
 
-/// Où se trouve bash, ou `None` s'il n'est pas installé.
+/// Where bash is, or `None` when it is not installed.
 ///
 /// The hard-coded `C:\\Program Files\\Git` pair missed scoop, winget and
 /// per-user installs, and the `where bash` fallback returned
-/// `C:\\Windows\\System32\\bash.exe` — the WSL launcher, not Git Bash — on any
+/// `C:\\Windows\\System32\\bash.exe` (the WSL launcher, not Git Bash) on any
 /// machine with WSL enabled.
 pub(super) fn bash_path() -> Option<String> {
     if let Ok(env_path) = std::env::var("GIT_BASH")
@@ -322,19 +322,18 @@ mod tests {
         assert_eq!(display_name("fish"), "fish");
     }
 
-    /// `cmd.exe` affiché tel quel ferait le seul bouton à porter une extension.
+    /// `cmd.exe` displayed as is would be the only button with an extension.
     ///
-    /// Sur le nom seul, pas sur un chemin Windows complet : `Path` ne traite la
-    /// barre inversée comme un séparateur que *sur* Windows, donc une telle
-    /// assertion échouerait ici pour une raison sans rapport avec ce qu'elle
-    /// prétend vérifier.
+    /// On the bare name, not a full Windows path: `Path` only treats the
+    /// backslash as a separator *on* Windows, so such an assertion would fail
+    /// here for a reason unrelated to what it claims to check.
     #[test]
     fn a_windows_executable_loses_its_extension() {
         assert_eq!(display_name("cmd.exe"), "cmd");
         assert_eq!(display_name("PowerShell.EXE"), "PowerShell");
     }
 
-    /// Un point qui n'est pas une extension Windows ne doit rien couper.
+    /// A dot that is not a Windows extension must not cut anything.
     #[test]
     fn a_dot_that_is_not_an_extension_is_kept() {
         assert_eq!(display_name("/usr/bin/python3.11"), "python3.11");
@@ -349,7 +348,7 @@ mod tests {
         assert_eq!(label_for(&ShellConfig::PowerShell), "PowerShell");
     }
 
-    /// Le premier choix proposé est toujours celui de l'utilisateur.
+    /// The first choice offered is always the user's own.
     #[test]
     fn the_first_choice_is_the_users_own_shell() {
         let choices = available_shells();
@@ -357,16 +356,16 @@ mod tests {
         assert_eq!(choices[0].config, ShellConfig::System);
     }
 
-    /// Chaque interpréteur proposé doit désigner un exécutable qui existe.
+    /// Every offered shell must point at an executable that exists.
     ///
-    /// C'est le test qui manquait à la version précédente : le bouton « PS »
-    /// s'affichait sous Linux en ne pouvant rien lancer, et rien ne le disait.
-    /// Proposer un choix, c'est promettre qu'il fonctionne.
+    /// The test the previous version was missing: the "PS" button showed on
+    /// Linux without being able to start anything, and nothing said so.
+    /// Offering a choice is promising that it works.
     #[test]
     fn every_offered_shell_resolves_to_a_real_program() {
         for choice in available_shells() {
             let resolved = resolve(&choice.config);
-            let (program, _) = resolved.expect("un interpréteur proposé doit se résoudre");
+            let (program, _) = resolved.expect("an offered shell must resolve");
             // Neither the path nor the label goes into the message: both can
             // come from the user's account entry, and CodeQL flags formatting
             // them as cleartext logging. The variant names the shell.
@@ -378,8 +377,8 @@ mod tests {
         }
     }
 
-    /// Aucune entrée ne doit se répéter, sans quoi le même programme aurait
-    /// deux boutons — le cas de quelqu'un dont le shell de connexion est bash.
+    /// No entry may repeat, otherwise the same program would get two buttons:
+    /// the case of someone whose login shell is bash.
     #[test]
     fn no_two_choices_carry_the_same_label() {
         let choices = available_shells();
@@ -387,7 +386,7 @@ mod tests {
         labels.sort_unstable();
         let before = labels.len();
         labels.dedup();
-        assert_eq!(before, labels.len(), "un interpréteur proposé deux fois");
+        assert_eq!(before, labels.len(), "a shell offered twice");
     }
 
     #[cfg(target_os = "linux")]
@@ -413,21 +412,21 @@ mod tests {
             assert_eq!(shell_for_uid(SAMPLE, 4242), None);
         }
 
-        /// Un compte système sans shell déclaré ne doit pas produire une chaîne
-        /// vide, qui serait ensuite lancée comme un programme.
+        /// A system account with no declared shell must not produce an empty
+        /// string, which would then be started as a program.
         #[test]
         fn an_empty_shell_field_is_not_a_shell() {
             assert_eq!(shell_for_uid("daemon:x:2:2:daemon:/sbin:\n", 2), None);
         }
 
-        /// Une ligne tronquée ne doit pas faire paniquer l'analyse.
+        /// A truncated line must not make the parser panic.
         #[test]
         fn a_malformed_line_is_skipped() {
             assert_eq!(
-                shell_for_uid("cassé\nalice:x:1000:1000::/home:/bin/sh\n", 1000).as_deref(),
+                shell_for_uid("broken\nalice:x:1000:1000::/home:/bin/sh\n", 1000).as_deref(),
                 Some("/bin/sh")
             );
-            assert_eq!(shell_for_uid("a:x:pas-un-nombre:0::/:/bin/sh\n", 0), None);
+            assert_eq!(shell_for_uid("a:x:not-a-number:0::/:/bin/sh\n", 0), None);
         }
     }
 }

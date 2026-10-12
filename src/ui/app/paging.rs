@@ -4,9 +4,10 @@
 
 use super::types::*;
 use crate::core::ViewMode;
+use crate::i18n::tf;
 use crate::services::{VirtualList, VirtualWindow};
 use crate::ui::UiMessage;
-use crate::ui::theme::layout::TREE_ROW_HEIGHT;
+use crate::ui::theme::layout::{self, TREE_ROW_HEIGHT};
 use iced::Task;
 
 use super::XionApp;
@@ -31,10 +32,12 @@ impl XionApp {
             .min(total_pages);
 
         if allowed_pages < total_pages {
-            self.last_action = Some(format!(
-                "Recherche limitée aux {} premiers éléments sur {}",
-                allowed_pages * self.entries.page_size,
-                self.entries.total
+            self.last_action = Some(tf(
+                "search_limited",
+                &[
+                    ("shown", &(allowed_pages * self.entries.page_size)),
+                    ("total", &self.entries.total),
+                ],
             ));
         }
 
@@ -95,9 +98,20 @@ impl XionApp {
         }
     }
 
+    /// A list row's height at the user's text scale. Rendering, scrolling and
+    /// the rubber band all read it here, so they agree on where a row is.
+    pub(in crate::ui::app) fn row_height(&self) -> f32 {
+        layout::scaled(self.state.config.view.row_height)
+    }
+
+    /// A grid tile's height at the user's text scale.
+    pub(in crate::ui::app) fn grid_row_height(&self) -> f32 {
+        layout::scaled(self.state.config.view.grid_row_height)
+    }
+
     pub(in crate::ui::app) fn list_virtual_window_for(&self, total: usize) -> VirtualWindow {
         let virtual_list = VirtualList {
-            item_height: self.state.config.view.row_height,
+            item_height: self.row_height(),
             viewport_height: self.scroll.height,
             overscan: self.state.config.view.overscan,
         };
@@ -108,7 +122,7 @@ impl XionApp {
         let columns = self.state.config.view.grid_columns.max(1);
         let rows = total.div_ceil(columns);
         let virtual_list = VirtualList {
-            item_height: self.state.config.view.grid_row_height,
+            item_height: self.grid_row_height(),
             viewport_height: self.scroll.height,
             overscan: self.state.config.view.overscan,
         };
@@ -122,7 +136,7 @@ impl XionApp {
 
     pub(in crate::ui::app) fn tree_virtual_window(&self, total: usize) -> VirtualWindow {
         let virtual_list = VirtualList {
-            item_height: TREE_ROW_HEIGHT,
+            item_height: layout::scaled(TREE_ROW_HEIGHT),
             viewport_height: self.scroll.tree_height,
             overscan: self.state.config.view.overscan,
         };

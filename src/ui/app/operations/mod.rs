@@ -12,6 +12,7 @@ mod entry;
 mod rename;
 
 use super::XionApp;
+use crate::i18n::{t, tf};
 
 /// Validate a name typed into the rename dialog.
 ///
@@ -22,25 +23,25 @@ use super::XionApp;
 /// stays portable.
 pub(in crate::ui::app) fn validate_file_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
-        return Err("nom vide".to_string());
+        return Err(t("name_error_empty").to_string());
     }
     if name == "." || name == ".." {
-        return Err("« . » et « .. » ne sont pas des noms valides".to_string());
+        return Err(t("name_error_dots").to_string());
     }
     if name.contains(['/', '\\']) {
-        return Err("le nom ne doit pas contenir de séparateur de chemin".to_string());
+        return Err(t("name_error_separator").to_string());
     }
     if let Some(bad) = name
         .chars()
         .find(|c| matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
     {
-        return Err(format!("le caractère « {bad} » est interdit"));
+        return Err(tf("name_error_character", &[("character", &bad)]));
     }
     if name.chars().any(|c| (c as u32) < 0x20) {
-        return Err("le nom contient un caractère de contrôle".to_string());
+        return Err(t("name_error_control").to_string());
     }
     if name.ends_with(' ') || name.ends_with('.') {
-        return Err("le nom ne doit pas se terminer par un point ou une espace".to_string());
+        return Err(t("name_error_trailing").to_string());
     }
     Ok(())
 }
@@ -56,8 +57,8 @@ impl XionApp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // The parent module no longer needs these itself — the methods that used
-    // them moved into the submodules — but the tests still do.
+    // The parent module no longer needs these itself, the methods that used
+    // them moved into the submodules, but the tests still do.
     use crate::ui::app::XionApp;
     use crate::ui::app::types::ConfirmedAction;
     use std::path::PathBuf;
@@ -72,8 +73,8 @@ mod tests {
 
     #[test]
     fn rename_rejects_path_separators() {
-        assert!(validate_file_name("dossier/fichier.txt").is_err());
-        assert!(validate_file_name(r"dossier\fichier.txt").is_err());
+        assert!(validate_file_name("folder/file.txt").is_err());
+        assert!(validate_file_name(r"folder\file.txt").is_err());
     }
 
     #[test]
@@ -81,7 +82,7 @@ mod tests {
         for name in ["a<b", "a>b", "a:b", "a\"b", "a|b", "a?b", "a*b"] {
             assert!(
                 validate_file_name(name).is_err(),
-                "{name} devrait être refusé"
+                "{name} should be refused"
             );
         }
     }
@@ -108,7 +109,7 @@ mod tests {
         ] {
             assert!(
                 validate_file_name(name).is_ok(),
-                "{name} devrait être accepté"
+                "{name} should be accepted"
             );
         }
     }
@@ -126,11 +127,8 @@ mod tests {
 
         let _ = app.request_permanent_delete();
 
-        let dialog = app
-            .confirm_dialog
-            .as_ref()
-            .expect("un dialogue doit s'ouvrir");
-        assert!(dialog.message.contains("définitivement"));
+        let dialog = app.confirm_dialog.as_ref().expect("a dialog must open");
+        assert!(dialog.message.contains("permanently"));
         assert!(matches!(
             dialog.action,
             ConfirmedAction::DeletePermanently(ref items) if items.len() == 1
@@ -161,7 +159,7 @@ mod tests {
         assert!(app.confirm_dialog.is_none());
         assert_eq!(
             app.last_action.as_deref(),
-            Some("Aucune sélection à supprimer")
+            Some(crate::i18n::t("notice_nothing_to_delete"))
         );
     }
 }

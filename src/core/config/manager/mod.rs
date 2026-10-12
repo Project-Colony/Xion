@@ -25,14 +25,19 @@ use super::types::{AppConfig, AppConfigLoad, ConfigSource, ConfigWarning, TabPer
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+/// A configuration file that cannot be used at all, worded like a warning.
 #[derive(Debug)]
-pub struct ConfigError {
-    message: String,
+pub struct ConfigError(ConfigWarning);
+
+impl ConfigError {
+    fn new(key: &'static str, args: &[(&'static str, &dyn fmt::Display)]) -> Self {
+        Self(ConfigWarning::new(key, args))
+    }
 }
 
 impl fmt::Display for ConfigError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}", self.message)
+        self.0.fmt(formatter)
     }
 }
 
@@ -91,15 +96,12 @@ impl ConfigManager {
         let contents = match toml::to_string_pretty(&file) {
             Ok(contents) => contents,
             Err(error) => {
-                tracing::warn!("Config: erreur sérialisation TOML: {error}");
+                tracing::warn!("Config: TOML serialisation error: {error}");
                 return;
             }
         };
         if let Err(error) = write_atomic(&self.path, &contents, true) {
-            tracing::warn!(
-                "Config: impossible d'écrire {}: {error}",
-                self.path.display()
-            );
+            tracing::warn!("Config: cannot write {}: {error}", self.path.display());
         }
     }
 
@@ -132,30 +134,28 @@ impl ConfigManager {
     /// flattened by the next `save()`. Move it aside and try the backup copy,
     /// so a truncated or hand-broken file never costs the whole configuration.
     fn recover_unreadable_file(&self, error: ConfigError) -> AppConfigLoad {
-        let mut warnings = vec![ConfigWarning {
-            message: error.to_string(),
-        }];
+        let mut warnings = vec![error.0];
 
         let quarantine = sibling_path(&self.path, &format!(".corrupt-{}", unix_timestamp()));
         match fs::rename(&self.path, &quarantine) {
-            Ok(()) => warnings.push(ConfigWarning {
-                message: format!(
-                    "Config illisible mise de côté dans {}",
-                    quarantine.display()
-                ),
-            }),
-            Err(error) => warnings.push(ConfigWarning {
-                message: format!("Config illisible, mise de côté impossible: {error}"),
-            }),
+            Ok(()) => warnings.push(ConfigWarning::new(
+                "config_quarantined",
+                &[("path", &quarantine.display())],
+            )),
+            Err(error) => warnings.push(ConfigWarning::new(
+                "config_quarantine_failed",
+                &[("error", &error)],
+            )),
         }
 
         let backup = self.backup_path();
         if let Ok(mut restored) = load_from_path(&backup)
             && !matches!(restored.source, ConfigSource::Default)
         {
-            warnings.push(ConfigWarning {
-                message: format!("Configuration restaurée depuis {}", backup.display()),
-            });
+            warnings.push(ConfigWarning::new(
+                "config_restored",
+                &[("path", &backup.display())],
+            ));
             warnings.append(&mut restored.warnings);
             return AppConfigLoad {
                 config: restored.config,
@@ -196,10 +196,7 @@ fn unix_timestamp() -> u64 {
 
 fn remove_stale_temp(path: &Path) {
     if let Err(error) = fs::remove_file(path) {
-        tracing::debug!(
-            "Config: nettoyage de {} impossible: {error}",
-            path.display()
-        );
+        tracing::debug!("Config: cannot clean up {}: {error}", path.display());
     }
 }
 
@@ -244,7 +241,7 @@ pub(in crate::core::config) fn write_atomic(
         && path.exists()
         && let Err(error) = fs::copy(path, sibling_path(path, ".bak"))
     {
-        tracing::debug!("Config: sauvegarde .bak impossible: {error}");
+        tracing::debug!("Config: cannot write the .bak backup: {error}");
     }
 
     if let Err(error) = fs::rename(&temp_path, path) {
@@ -258,15 +255,15 @@ pub(in crate::core::config) fn write_atomic(
 // ── Loading logic ─────────────────────────────────────────────────────────────
 
 fn default_config_path() -> PathBuf {
-    // `locate::` et non `paths::config_dir` : ce dernier **crée** le dossier,
-    // c'est la raison de son `io::Result`. Créé avant la migration, il faisait
-    // croire à une configuration déjà en place, la migration était sautée, et
-    // Xion écrivait des valeurs par défaut à côté d'une configuration
-    // existante — constaté : deux onglets et un dossier de démarrage perdus.
+    // `locate::` and not `paths::config_dir`: the latter **creates** the
+    // directory, which is why it returns an `io::Result`. Created before the
+    // migration, it made a configuration look already in place, the migration
+    // was skipped, and Xion wrote defaults next to an existing configuration
+    // (observed: two tabs and a start folder lost).
     //
-    // La documentation de `colony-ui` le dit : « afficher où les préférences
-    // vivraient ne doit pas faire exister le dossier ». `save` crée son parent
-    // lui-même, donc personne n'a besoin de le devancer.
+    // The `colony-ui` documentation says so: "showing where the preferences
+    // would live must not make the directory exist". `save` creates its parent
+    // itself, so nobody needs to get there first.
     let Ok(dir) = colony_ui::paths::locate::config_dir(COLONY_PROGRAM) else {
         return PathBuf::from(CONFIG_FILE);
     };
@@ -277,18 +274,18 @@ fn default_config_path() -> PathBuf {
     }
 }
 
-/// Le nom du programme tel que l'écosystème l'écrit.
+/// The program name as the ecosystem writes it.
 ///
-/// Capitalisé, pas un identifiant en minuscules : la convention est
-/// `<racine>/Colony/<Programme>/`, avec `<Programme>` orthographié comme le
-/// programme s'écrit — voir `design/filesystem.md` de Project-Colony-Resources.
+/// Capitalised, not a lowercase identifier: the convention is
+/// `<root>/Colony/<Program>/`, with `<Program>` spelt the way the program is
+/// written; see `design/filesystem.md` in Project-Colony-Resources.
 pub(in crate::core::config) const COLONY_PROGRAM: &str = "Xion";
 
-/// Là où Xion écrivait avant d'adopter la disposition Colony.
+/// Where Xion wrote before adopting the Colony layout.
 ///
-/// `ProjectDirs::from("io", "xion", "Xion")` produisait `~/.config/xion/` sous
-/// Linux. Les programmes Colony se rangent désormais côte à côte sous un même
-/// dossier, pour qu'une sauvegarde de celui-ci les emporte tous.
+/// `ProjectDirs::from("io", "xion", "Xion")` produced `~/.config/xion/` on
+/// Linux. Colony programs now sit side by side under one directory, so that
+/// backing it up takes all of them.
 fn legacy_config_dir() -> Option<PathBuf> {
     ProjectDirs::from("io", "xion", "Xion").map(|dirs| dirs.config_dir().to_path_buf())
 }
@@ -471,9 +468,7 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
             });
         }
         Err(error) => {
-            return Err(ConfigError {
-                message: format!("Lecture config impossible: {error}"),
-            });
+            return Err(ConfigError::new("config_read_failed", &[("error", &error)]));
         }
     };
 
@@ -483,32 +478,25 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
         return Ok(AppConfigLoad {
             config: AppConfig::default(),
             source: ConfigSource::Default,
-            warnings: vec![ConfigWarning {
-                message: format!(
-                    "Config vide ({}), valeurs par défaut utilisées",
-                    path.display()
-                ),
-            }],
+            warnings: vec![ConfigWarning::new(
+                "config_empty",
+                &[("path", &path.display())],
+            )],
         });
     }
 
-    let header: VersionHeader = toml::from_str(&contents).map_err(|error| ConfigError {
-        message: format!("Header de config invalide: {error}"),
-    })?;
+    let header: VersionHeader = toml::from_str(&contents)
+        .map_err(|error| ConfigError::new("config_invalid_header", &[("error", &error)]))?;
     let version = header.version.unwrap_or(0);
 
     let mut warnings = Vec::new();
     if header.version.is_none() {
-        warnings.push(ConfigWarning {
-            message: "Clé 'version' absente: fichier relu au format V0, \
-                      les réglages plus récents seront réinitialisés"
-                .to_string(),
-        });
+        warnings.push(ConfigWarning::new("config_missing_version", &[]));
     }
     let config = match version {
         0 => {
-            let file: AppConfigFileV0 = toml::from_str(&contents).map_err(|error| ConfigError {
-                message: format!("Config V0 invalide: {error}"),
+            let file: AppConfigFileV0 = toml::from_str(&contents).map_err(|error| {
+                ConfigError::new("config_invalid", &[("version", &0), ("error", &error)])
             })?;
             let config = merge_from_v0(file, &mut warnings);
             return Ok(AppConfigLoad {
@@ -518,18 +506,19 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
             });
         }
         CURRENT_CONFIG_VERSION => {
-            let file: AppConfigFileV1 = toml::from_str(&contents).map_err(|error| ConfigError {
-                message: format!("Config V{CURRENT_CONFIG_VERSION} invalide: {error}"),
+            let file: AppConfigFileV1 = toml::from_str(&contents).map_err(|error| {
+                ConfigError::new(
+                    "config_invalid",
+                    &[("version", &CURRENT_CONFIG_VERSION), ("error", &error)],
+                )
             })?;
             merge_from_v1(file, &mut warnings)
         }
         other => {
-            return Err(ConfigError {
-                message: format!(
-                    "Version de config {other} non supportée (max: {CURRENT_CONFIG_VERSION}). \
-                     Mettez à jour Xion ou supprimez le fichier de config pour le recréer."
-                ),
-            });
+            return Err(ConfigError::new(
+                "config_unsupported_version",
+                &[("version", &other), ("max", &CURRENT_CONFIG_VERSION)],
+            ));
         }
     };
 
@@ -543,7 +532,43 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::config::types::{ListConfig, SortKeyConfig, ThemeChoice};
+    use crate::core::config::types::{Language, ListConfig, SortKeyConfig};
+    use colony_ui::preferences::StandardPreferences;
+
+    fn theme(family: &str, variant: &str) -> StandardPreferences {
+        StandardPreferences {
+            selected_theme: family.to_string(),
+            selected_variant: variant.to_string(),
+            ..StandardPreferences::default()
+        }
+    }
+
+    fn keys(config: &AppConfig) -> (&str, &str) {
+        (
+            &config.standard.selected_theme,
+            &config.standard.selected_variant,
+        )
+    }
+
+    /// A language this version does not know (a typo, a newer file) keeps the
+    /// session's language and says so, instead of failing the whole load.
+    #[test]
+    fn an_unknown_language_falls_back_with_a_warning() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let manager = manager_in(dir.path());
+        fs::write(manager.path(), "version = 1\nlanguage = \"klingon\"\n").unwrap();
+
+        let loaded = manager.load();
+        assert_eq!(loaded.config.language, Language::Auto);
+        assert!(
+            loaded
+                .warnings
+                .iter()
+                .any(|warning| warning.to_string().contains("klingon")),
+            "{:?}",
+            loaded.warnings
+        );
+    }
 
     /// Every test writes through `with_path`, never through `new()`: the
     /// default path is the developer's real `config.toml`.
@@ -641,11 +666,11 @@ mod tests {
     fn a_sub_directory_fails_the_copy_and_keeps_the_old_profile() {
         let root = tempfile::tempdir().expect("tempdir");
         let (legacy, target) = legacy_and_target(root.path());
-        fs::create_dir_all(legacy.join("sous-dossier")).unwrap();
-        fs::write(legacy.join("sous-dossier").join("precieux"), "à garder").unwrap();
+        fs::create_dir_all(legacy.join("subfolder")).unwrap();
+        fs::write(legacy.join("subfolder").join("precious"), "keep me").unwrap();
 
         assert_failed_copy_falls_back(&legacy, &target);
-        assert!(legacy.join("sous-dossier").join("precieux").exists());
+        assert!(legacy.join("subfolder").join("precious").exists());
     }
 
     #[cfg(unix)]
@@ -674,7 +699,7 @@ mod tests {
     fn a_folder_holding_only_the_session_is_not_a_migrated_profile() {
         let root = tempfile::tempdir().expect("tempdir");
         let (legacy, target) = legacy_and_target(root.path());
-        let blocker = legacy.join("sous-dossier");
+        let blocker = legacy.join("subfolder");
         fs::create_dir_all(&blocker).unwrap();
         assert_failed_copy_falls_back(&legacy, &target);
 
@@ -794,12 +819,7 @@ mod tests {
 
         let config = AppConfig {
             start_path: dir.path().to_path_buf(),
-            theme: ThemeChoice {
-                family: "nord".to_string(),
-                variant: "dark".to_string(),
-                high_contrast: false,
-                accent: None,
-            },
+            standard: theme("nord", "dark"),
             dark_mode: true,
             list: ListConfig {
                 sort_key: SortKeyConfig::Size,
@@ -816,7 +836,7 @@ mod tests {
             "warnings: {:?}",
             loaded.warnings
         );
-        assert_eq!(loaded.config.theme.keys(), ("nord", "dark"));
+        assert_eq!(keys(&loaded.config), ("nord", "dark"));
         assert_eq!(loaded.config.list.sort_key, SortKeyConfig::Size);
         assert_eq!(loaded.config.user_favorites, vec![dir.path().to_path_buf()]);
     }
@@ -835,7 +855,7 @@ mod tests {
             .collect();
         assert!(
             leftovers.is_empty(),
-            "fichiers temporaires restants: {leftovers:?}"
+            "temporary files left behind: {leftovers:?}"
         );
         assert!(manager.path().exists());
     }
@@ -846,12 +866,7 @@ mod tests {
         let manager = manager_in(dir.path());
 
         let first = AppConfig {
-            theme: ThemeChoice {
-                family: "nord".to_string(),
-                variant: "dark".to_string(),
-                high_contrast: false,
-                accent: None,
-            },
+            standard: theme("nord", "dark"),
             ..AppConfig::default()
         };
         manager.save(&first);
@@ -859,12 +874,7 @@ mod tests {
         assert!(!manager.backup_path().exists());
 
         let second = AppConfig {
-            theme: ThemeChoice {
-                family: "gruvbox".to_string(),
-                variant: "light".to_string(),
-                high_contrast: false,
-                accent: None,
-            },
+            standard: theme("gruvbox", "light"),
             ..AppConfig::default()
         };
         manager.save(&second);
@@ -872,9 +882,9 @@ mod tests {
         let backup = fs::read_to_string(manager.backup_path()).expect("read backup");
         assert!(
             backup.contains("nord"),
-            "le .bak doit contenir la version précédente"
+            "the .bak must hold the previous version"
         );
-        assert_eq!(manager.load().config.theme.keys(), ("gruvbox", "light"));
+        assert_eq!(keys(&manager.load().config), ("gruvbox", "light"));
     }
 
     #[test]
@@ -883,12 +893,7 @@ mod tests {
         let manager = manager_in(dir.path());
 
         let good = AppConfig {
-            theme: ThemeChoice {
-                family: "solarized".to_string(),
-                variant: "dark".to_string(),
-                high_contrast: false,
-                accent: None,
-            },
+            standard: theme("solarized", "dark"),
             ..AppConfig::default()
         };
         manager.save(&good);
@@ -898,19 +903,16 @@ mod tests {
         fs::write(manager.path(), "version = 1\nthis is not toml <<<").expect("corrupt");
         let loaded = manager.load();
 
-        assert_eq!(loaded.config.theme.keys(), ("solarized", "dark"));
+        assert_eq!(keys(&loaded.config), ("solarized", "dark"));
         assert!(
             !manager.path().exists(),
-            "le fichier fautif doit être déplacé"
+            "the faulty file must be moved away"
         );
         let quarantined = fs::read_dir(dir.path())
             .expect("read_dir")
             .filter_map(|entry| entry.ok())
             .any(|entry| entry.file_name().to_string_lossy().contains(".corrupt-"));
-        assert!(
-            quarantined,
-            "le fichier fautif doit être conservé sous .corrupt-*"
-        );
+        assert!(quarantined, "the faulty file must be kept as .corrupt-*");
     }
 
     #[test]
@@ -922,10 +924,7 @@ mod tests {
         let loaded = manager.load();
         assert!(matches!(loaded.source, ConfigSource::Default));
         assert_eq!(loaded.warnings.len(), 1);
-        assert!(
-            manager.path().exists(),
-            "un fichier vide n'est pas corrompu"
-        );
+        assert!(manager.path().exists(), "an empty file is not corrupt");
     }
 
     #[test]
@@ -954,7 +953,7 @@ mod tests {
             loaded
                 .warnings
                 .iter()
-                .any(|w| w.message.contains("version"))
+                .any(|w| w.to_string().contains("version"))
         );
     }
 
@@ -988,7 +987,7 @@ mod tests {
         // Legacy V1 file carrying only the boolean.
         fs::write(manager.path(), "version = 1\ndark_mode = true\n").expect("write v1");
         let loaded = manager.load();
-        assert_eq!(loaded.config.theme.keys(), ("gruvbox", "dark"));
+        assert_eq!(keys(&loaded.config), ("gruvbox", "dark"));
         assert!(loaded.config.dark_mode);
     }
 
@@ -1003,14 +1002,87 @@ mod tests {
         .expect("write v1");
 
         let loaded = manager.load();
-        assert_eq!(loaded.config.theme.keys(), ("nord", "dark"));
-        assert!(loaded.config.dark_mode, "dark_mode doit suivre le thème");
+        assert_eq!(keys(&loaded.config), ("nord", "dark"));
+        assert!(loaded.config.dark_mode, "dark_mode must follow the theme");
         assert!(
             loaded
                 .warnings
                 .iter()
-                .any(|w| w.message.contains("dark_mode"))
+                .any(|w| w.to_string().contains("dark_mode"))
         );
+    }
+
+    /// The keys written before colony-ui's `StandardPreferences` carry over,
+    /// and the next save writes only the new ones.
+    #[test]
+    fn the_previous_theme_keys_carry_over_and_are_not_written_again() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let manager = manager_in(dir.path());
+        fs::write(
+            manager.path(),
+            "version = 1\ndark_mode = true\ntheme_family = \"nord\"\n\
+             theme_variant = \"dark\"\nhigh_contrast = true\naccent = \"violet\"\n",
+        )
+        .expect("write v1");
+
+        let loaded = manager.load();
+        assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+        let standard = &loaded.config.standard;
+        assert_eq!(keys(&loaded.config), ("nord", "dark"));
+        assert!(standard.high_contrast);
+        assert_eq!(standard.selected_accent.as_deref(), Some("violet"));
+
+        manager.save(&loaded.config);
+        let written = fs::read_to_string(manager.path()).expect("read back");
+        for old in ["theme_family", "theme_variant", "dark_mode", "\naccent"] {
+            assert!(!written.contains(old), "{old} written again:\n{written}");
+        }
+        assert!(written.contains("selected_theme = \"nord\""), "{written}");
+        assert_eq!(manager.load().config, loaded.config);
+    }
+
+    /// A pre-Colony file with only `dark_mode = false` was a light theme.
+    #[test]
+    fn a_file_with_only_dark_mode_false_starts_light() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let manager = manager_in(dir.path());
+        fs::write(manager.path(), "version = 1\ndark_mode = false\n").expect("write v1");
+        assert_eq!(keys(&manager.load().config), ("gruvbox", "light"));
+    }
+
+    /// The new settings round-trip, and a bad value in one of them costs only
+    /// that value, not the file.
+    #[test]
+    fn the_shared_preferences_round_trip_and_tolerate_a_bad_value() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let manager = manager_in(dir.path());
+        let config = AppConfig {
+            standard: StandardPreferences {
+                auto_accent: true,
+                selected_accent: Some("amber".to_string()),
+                font_size: colony_ui::FontSize::Small,
+                text_size_a11y: colony_ui::TextSize::XLarge,
+                animations: false,
+                dyslexia_font: true,
+                reduce_motion: true,
+                ..theme("solarized", "light")
+            },
+            compact_mode: true,
+            ..AppConfig::default()
+        };
+        manager.save(&config);
+        assert_eq!(manager.load().config.standard, config.standard);
+
+        fs::write(
+            manager.path(),
+            "version = 1\nfont_size = \"enormous\"\nreduce_motion = true\n\
+             compact_mode = true\n",
+        )
+        .expect("write v1");
+        let loaded = manager.load().config;
+        assert_eq!(loaded.standard.font_size, colony_ui::FontSize::Default);
+        assert!(loaded.standard.reduce_motion);
+        assert!(loaded.compact_mode, "Xion's own keys survive");
     }
 
     #[test]

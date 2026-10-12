@@ -28,16 +28,16 @@ pub trait FileWatcher {
     fn poll(&mut self) -> AppResult<Vec<WatchEvent>>;
 }
 
-/// Traduit une erreur de `notify` en gardant son type d'entrée-sortie.
+/// Convert a `notify` error while keeping its I/O kind.
 ///
-/// L'aplatir en texte — ce que faisait `XionError::Watcher(error.to_string())`
-/// — perdait le `io::ErrorKind`, donc l'appelant ne pouvait plus distinguer une
-/// permission refusée, qui est normale et sur laquelle l'utilisateur ne peut
-/// rien, d'une panne réelle comme une limite d'inotify atteinte, qui se corrige.
+/// Flattening it to text (what `XionError::Watcher(error.to_string())` did)
+/// lost the `io::ErrorKind`, so the caller could no longer tell a denied
+/// permission, which is normal and which the user can do nothing about, from a
+/// real failure such as a reached inotify limit, which can be fixed.
 ///
-/// Le texte de `notify` cite en outre les chemins concernés au format `Debug`,
-/// d'où le `about ["/boot"]` que la barre d'état affichait à côté du chemin déjà
-/// écrit en clair.
+/// `notify`'s text also quotes the paths involved in `Debug` format, hence the
+/// `about ["/boot"]` the status bar showed next to the path already written
+/// plainly.
 fn watcher_error(error: notify::Error) -> XionError {
     match error.kind {
         notify::ErrorKind::Io(io) => XionError::Io(io),
@@ -78,7 +78,7 @@ impl NativeFileWatcher {
             if self.queued.len() < MAX_QUEUED_EVENTS {
                 self.queued.push_back(WatchEvent { path, kind });
             } else {
-                tracing::warn!("FileWatcher: queue pleine ({MAX_QUEUED_EVENTS}), events ignorés");
+                tracing::warn!("FileWatcher: queue full ({MAX_QUEUED_EVENTS}), events dropped");
                 break;
             }
         }
@@ -171,8 +171,8 @@ mod watcher_error_tests {
     use crate::core::XionError;
     use std::io;
 
-    /// Le cas rencontré : ouvrir `/boot`, qui est en `drwx------ root:root`.
-    /// L'appelant doit pouvoir reconnaître un refus pour se taire.
+    /// The case met: opening `/boot`, which is `drwx------ root:root`. The
+    /// caller must be able to recognise a refusal to stay quiet.
     #[test]
     fn a_permission_refusal_keeps_its_io_kind() {
         let error = notify::Error {
@@ -181,13 +181,13 @@ mod watcher_error_tests {
         };
         match watcher_error(error) {
             XionError::Io(io) => assert_eq!(io.kind(), io::ErrorKind::PermissionDenied),
-            other => panic!("type d'erreur perdu : {other}"),
+            other => panic!("error kind lost: {other}"),
         }
     }
 
-    /// Une limite d'inotify atteinte se corrige, elle
-    /// (`fs.inotify.max_user_watches`) : elle doit rester signalée, donc
-    /// arriver distincte d'un refus de permission.
+    /// A reached inotify limit can be fixed (`fs.inotify.max_user_watches`):
+    /// it must stay reported, so it must arrive distinct from a permission
+    /// refusal.
     #[test]
     fn a_real_failure_is_not_mistaken_for_a_refusal() {
         let error = notify::Error {
@@ -197,9 +197,9 @@ mod watcher_error_tests {
         assert!(matches!(watcher_error(error), XionError::Watcher(_)));
     }
 
-    /// Le message ne doit plus porter la liste de chemins que `notify` ajoute
-    /// au format `Debug` : c'est elle qui produisait `about ["/boot"]` dans la
-    /// barre d'état, à côté du chemin déjà écrit en clair.
+    /// The message must no longer carry the path list `notify` appends in
+    /// `Debug` format: it is what produced `about ["/boot"]` in the status bar,
+    /// next to the path already written plainly.
     #[test]
     fn the_message_no_longer_carries_a_debug_path_list() {
         let error = notify::Error {
@@ -207,7 +207,7 @@ mod watcher_error_tests {
             paths: vec!["/boot".into()],
         };
         let rendered = watcher_error(error).to_string();
-        assert!(!rendered.contains("about"), "message : {rendered}");
-        assert!(!rendered.contains("/boot"), "message : {rendered}");
+        assert!(!rendered.contains("about"), "message: {rendered}");
+        assert!(!rendered.contains("/boot"), "message: {rendered}");
     }
 }

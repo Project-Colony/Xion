@@ -1,202 +1,134 @@
-//! La page de préférences.
+//! The preferences page.
 //!
-//! Elle **remplace la zone de contenu**. Ce n'est ni une modale, ni une
-//! fenêtre, ni une bulle — la convention Colony nomme les trois comme
-//! contre-exemples, et la première écriture de cet écran était précisément une
-//! modale. Le chrome du programme, lui, ne bouge pas : l'en-tête et la barre
-//! d'état restent en place, on ne remplace que ce qu'il y a entre les deux.
+//! It **replaces the content area**. It is not a modal, a window or a popover:
+//! the Colony convention names all three as counter-examples, and the first
+//! version of this screen was precisely a modal. The program's chrome stays
+//! put: the header and the status bar remain, only what sits between them is
+//! replaced.
 //!
-//! On y entre et on en sort par le bouton « Xion » de la bande d'onglets. Le
-//! bouton « Fermer » de la page envoie le même message que lui : deux sorties,
-//! un seul message, donc aucun moyen de les faire diverger.
+//! It is entered and left through the "Xion" button in the top-left corner of
+//! the header. The page's Close button sends the same message: two exits, one
+//! message, so no way for them to diverge.
 //!
-//! Il n'y a pas de bouton « Enregistrer », et il ne doit pas y en avoir : un
-//! changement s'applique au moment où il est fait.
+//! There is no Save button, and there must not be one: a change applies the
+//! moment it is made.
+//!
+//! The frame, the category list, General's heading and the whole of
+//! Appearance and Accessibility come from colony-ui's preferences kit, so they
+//! look and behave as in every other Colony program. Xion adds its own
+//! sections to General and Appearance, and its own Files and About categories.
 
-use iced::widget::button::Status as ButtonStatus;
-use iced::widget::{button, column, container, row, scrollable};
-use iced::{Alignment, Background, Element, Length, Theme};
+use iced::widget::{column, row};
+use iced::{Alignment, Element};
 
-use crate::ui::theme::icons;
+use colony_ui::widgets::{self, ABOUT_CATEGORY, PreferencesView, STANDARD_CATEGORIES};
+
+use crate::core::Language;
+use crate::i18n::t;
 use crate::ui::{PreferencesCategory, UiMessage};
 
 use super::XionApp;
 use super::widgets::ViewCtx;
-use super::widgets::body_text;
 use super::widgets::caption_text;
-use super::widgets::title_text;
 
-/// La colonne des catégories. Assez large pour « Accessibilité », qui est le
-/// plus long des cinq intitulés, sans que la colonne ne se redimensionne quand
-/// la catégorie change.
-const CATEGORY_COLUMN_WIDTH: f32 = 190.0;
+/// The program's name, as the identity button and About show it. A proper
+/// noun: the same in every language.
+pub(super) const PROGRAM_NAME: &str = "Xion";
 
 impl PreferencesCategory {
-    /// L'intitulé affiché dans la colonne de gauche.
-    fn label(self) -> &'static str {
+    /// The locale key of the label in the category list.
+    ///
+    /// The first three and About are colony-ui's shared labels, so they read
+    /// the same in every Colony program.
+    fn label_key(self) -> &'static str {
         match self {
-            Self::General => "Général",
-            Self::Appearance => "Apparence",
-            Self::Accessibility => "Accessibilité",
-            Self::Files => "Fichiers",
-            Self::About => "À propos",
-        }
-    }
-
-    /// La ligne sous le titre de la catégorie : ce qu'elle change, pas son nom
-    /// répété.
-    fn description(self) -> &'static str {
-        match self {
-            // La convention impose cette phrase-ci, mot pour mot, parce qu'elle
-            // porte le contrat qui compte : il n'y a pas de bouton
-            // « Enregistrer », et son absence doit être expliquée quelque part.
-            Self::General => "Les préférences sont enregistrées automatiquement.",
-            Self::Appearance => "Le thème s'applique immédiatement, sans redémarrage.",
-            Self::Accessibility => "Ces réglages se combinent avec le thème choisi.",
-            Self::Files => "Ce que la liste affiche, et dans quel ordre.",
-            Self::About => "Version, licence et provenance des composants.",
+            Self::General => STANDARD_CATEGORIES[0],
+            Self::Appearance => STANDARD_CATEGORIES[1],
+            Self::Accessibility => STANDARD_CATEGORIES[2],
+            Self::Files => "preferences_cat_files",
+            Self::About => ABOUT_CATEGORY,
         }
     }
 }
 
+/// How a language is named in the picker.
+fn language_label_key(language: Language) -> &'static str {
+    match language {
+        Language::Auto => "preferences_language_auto",
+        Language::English => "preferences_language_en",
+        Language::French => "preferences_language_fr",
+    }
+}
+
 impl XionApp {
-    /// La page entière, ou `None` quand elle est fermée.
+    /// The whole page, or `None` when it is closed.
     ///
-    /// Rendue par `view()` à la place du corps — la barre latérale des fichiers
-    /// disparaît avec lui. Deux colonnes de gauche, l'une de dossiers et
-    /// l'autre de catégories, ne se distingueraient pas au premier regard.
+    /// Rendered by `view()` in place of the body, and the file sidebar goes
+    /// with it. Two left columns, one of folders and one of categories, would
+    /// not be told apart at first glance.
     pub(super) fn render_preferences_page(&self, ctx: ViewCtx) -> Option<Element<'_, UiMessage>> {
-        if !self.menus.preferences.open {
+        let preferences = &self.menus.preferences;
+        if !preferences.open {
             return None;
         }
 
-        let ViewCtx {
-            colors,
-            spacing,
-            typography,
-        } = ctx;
+        let typo = ctx.typography.colony();
+        let kit = PreferencesView::new(
+            typo,
+            &self.state.config.standard,
+            &preferences.expanded,
+            UiMessage::Preference,
+            UiMessage::TogglePreferencesSection,
+        );
 
-        let close = button(caption_text(typography, "Fermer").color(colors.text_muted))
-            .padding([6.0, 14.0])
-            .style(
-                move |_theme: &Theme, status: ButtonStatus| iced::widget::button::Style {
-                    background: matches!(status, ButtonStatus::Hovered)
-                        .then(|| Background::Color(colors.hover)),
-                    text_color: colors.text_muted,
-                    border: iced::Border {
-                        radius: 6.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-            )
-            .on_press(UiMessage::TogglePreferences);
-
-        let heading = row![
-            title_text(typography, "Préférences").color(colors.text_primary),
-            iced::widget::space::horizontal(),
-            close,
-        ]
-        .align_y(Alignment::Center);
-
-        let selected = self.menus.preferences.category;
-        let mut categories = column![].spacing(spacing.xs).width(Length::Fill);
-        for category in PreferencesCategory::ALL {
-            let active = category == selected;
-            categories = categories.push(
-                button(body_text(typography, category.label()))
-                    .width(Length::Fill)
-                    .padding([8.0, 14.0])
-                    .style(move |_theme: &Theme, status: ButtonStatus| {
-                        iced::widget::button::Style {
-                            background: if active {
-                                Some(Background::Color(colors.accent))
-                            } else if matches!(status, ButtonStatus::Hovered) {
-                                Some(Background::Color(colors.hover))
-                            } else {
-                                None
-                            },
-                            text_color: if active {
-                                colors.text_primary
-                            } else {
-                                colors.text_muted
-                            },
-                            border: iced::Border {
-                                radius: 8.0.into(),
-                                ..Default::default()
-                            },
-                            ..Default::default()
-                        }
-                    })
-                    .on_press(UiMessage::SelectPreferencesCategory(category)),
-            );
-        }
-
-        let category_column = container(categories)
-            .width(Length::Fixed(CATEGORY_COLUMN_WIDTH))
-            .height(Length::Fill);
-
-        let panel = column![
-            title_text(typography, selected.label()).color(colors.text_primary),
-            caption_text(typography, selected.description()).color(colors.text_muted),
-            self.render_preferences_category(ctx, selected),
-        ]
-        .spacing(spacing.md)
-        .width(Length::Fill);
-
-        let body = row![
-            category_column,
-            scrollable(container(panel).padding(iced::Padding {
-                left: spacing.lg,
-                ..iced::Padding::ZERO
-            }))
-            .width(Length::Fill)
-            .height(Length::Fill),
-        ]
-        .height(Length::Fill);
-
-        Some(
-            container(column![heading, body].spacing(spacing.lg))
-                .padding(spacing.lg)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into(),
-        )
-    }
-
-    /// Le contenu d'une catégorie : une liste de sections repliées.
-    fn render_preferences_category(
-        &self,
-        ctx: ViewCtx,
-        category: PreferencesCategory,
-    ) -> Element<'_, UiMessage> {
-        match category {
-            PreferencesCategory::General => self.preferences_general(ctx),
-            PreferencesCategory::Appearance => self.preferences_appearance(ctx),
-            PreferencesCategory::Accessibility => self.preferences_accessibility(ctx),
+        let content: Element<'_, UiMessage> = match preferences.category {
+            PreferencesCategory::General => self.preferences_general(ctx, kit.general()),
+            PreferencesCategory::Appearance => self.preferences_appearance(ctx, kit.appearance()),
+            PreferencesCategory::Accessibility => kit.accessibility().into(),
             PreferencesCategory::Files => self.preferences_files(ctx),
             PreferencesCategory::About => self.preferences_about(ctx),
-        }
+        };
+
+        let selected = PreferencesCategory::ALL
+            .iter()
+            .position(|category| *category == preferences.category)
+            .unwrap_or(0);
+        let categories = widgets::category_list(
+            &typo,
+            PreferencesCategory::ALL.map(|category| t(category.label_key())),
+            selected,
+            |index| UiMessage::SelectPreferencesCategory(PreferencesCategory::ALL[index]),
+        );
+
+        Some(widgets::preferences_page(
+            &typo,
+            categories,
+            content,
+            UiMessage::TogglePreferences,
+        ))
     }
 
-    /// Une section repliable, dont l'état d'ouverture vit dans `menus`.
+    /// A collapsible section, whose open state lives in `menus`, opening on a
+    /// line that says what its settings change.
     fn section<'a>(
         &self,
         ctx: ViewCtx,
         key: &'static str,
         title: &str,
+        description: &str,
         content: Element<'a, UiMessage>,
     ) -> Element<'a, UiMessage> {
+        let typo = ctx.typography.colony();
         colony_ui::widgets::collapsible_section(
-            &ctx.typography.colony(),
+            &typo,
             title,
             self.menus.preferences.expanded.contains(key),
             UiMessage::TogglePreferencesSection(key),
-            content,
+            column![widgets::section_description(&typo, description), content].into(),
         )
     }
 
-    /// Une ligne « intitulé : valeur » pour ce qui se lit sans se modifier.
+    /// A "label: value" line for what is read and not edited.
     fn readout<'a>(ctx: ViewCtx, label: &str, value: String) -> Element<'a, UiMessage> {
         let ViewCtx {
             colors,
@@ -213,108 +145,93 @@ impl XionApp {
         .into()
     }
 
-    fn preferences_general(&self, ctx: ViewCtx) -> Element<'_, UiMessage> {
+    /// General: the kit's heading and contract, then Language, Startup and
+    /// Terminal.
+    fn preferences_general<'a>(
+        &'a self,
+        ctx: ViewCtx,
+        page: iced::widget::Column<'a, UiMessage>,
+    ) -> Element<'a, UiMessage> {
         let spacing = ctx.spacing;
         let config = &self.state.config;
+        let typo = ctx.typography.colony();
+
+        let languages =
+            Language::ALL.map(|language| (language, t(language_label_key(language)).to_string()));
+        let language = widgets::setting_row(
+            &typo,
+            t("preferences_language"),
+            t("preferences_language_desc"),
+            widgets::dropdown(&typo, languages, &config.language, UiMessage::SetLanguage),
+        );
 
         let startup = column![
             Self::readout(
                 ctx,
-                "Dossier d'ouverture",
+                t("preferences_start_folder"),
                 config.start_path.display().to_string(),
             ),
             Self::readout(
                 ctx,
-                "Onglets restaurés au démarrage",
+                t("preferences_restored_tabs"),
                 self.tab_manager.count().to_string(),
             ),
         ]
         .spacing(spacing.sm);
 
-        // Le même intitulé que le sélecteur du panneau terminal, produit par la
-        // même fonction : deux noms pour le même interpréteur donneraient
-        // l'impression de deux réglages distincts.
+        // The same label as the terminal panel's picker, produced by the same
+        // function: two names for the same shell would look like two separate
+        // settings.
         let shell = crate::ui::app::shell::label_for(&config.terminal_shell);
+        let terminal = Self::readout(ctx, t("preferences_shell"), shell);
 
-        let terminal = column![
-            Self::readout(ctx, "Interpréteur", shell),
-            caption_text(
-                ctx.typography,
-                "Se change depuis le panneau terminal, en bas de la fenêtre.",
-            )
-            .color(ctx.colors.text_muted),
-        ]
-        .spacing(spacing.sm);
-
-        column![
-            self.section(ctx, "general.startup", "Démarrage", startup.into()),
-            self.section(ctx, "general.terminal", "Terminal", terminal.into()),
-        ]
-        .spacing(spacing.sm)
+        page.push(self.section(
+            ctx,
+            "general.language",
+            t("preferences_section_language"),
+            t("preferences_section_language_desc"),
+            language,
+        ))
+        .push(self.section(
+            ctx,
+            "general.startup",
+            t("preferences_section_startup"),
+            t("preferences_section_startup_desc"),
+            startup.into(),
+        ))
+        .push(self.section(
+            ctx,
+            "general.terminal",
+            t("preferences_section_terminal"),
+            t("preferences_section_terminal_desc"),
+            terminal,
+        ))
         .into()
     }
 
-    fn preferences_appearance(&self, ctx: ViewCtx) -> Element<'_, UiMessage> {
-        let ViewCtx {
-            colors,
-            spacing,
-            typography,
-        } = ctx;
-        let typo = typography.colony();
-        let choice = &self.state.config.theme;
-
-        // Les deux sélecteurs se rendent seuls depuis le catalogue partagé :
-        // ajouter une famille de thèmes ne demande aucun changement ici.
-        let theme = colony_ui::widgets::theme_picker(
-            &typo,
-            &choice.family,
-            &choice.variant,
-            UiMessage::SetThemeVariant,
-        );
-
-        let accent = column![
-            colony_ui::widgets::accent_picker(
-                &typo,
-                choice.accent.as_deref(),
-                UiMessage::SetAccent
-            ),
-            caption_text(typography, "Sans accent choisi, celui du thème s'applique.")
-                .color(colors.text_muted),
-        ]
-        .spacing(spacing.sm);
-
-        let density = colony_ui::widgets::functional_toggle(
-            &typo,
-            "Densité compacte",
-            "Des lignes de 22 pixels au lieu de 32 : plus de fichiers à l'écran.",
+    /// Appearance: the kit's Theme, Colors, Typography, Effects and Preview,
+    /// then the list density, which is Xion's own.
+    fn preferences_appearance<'a>(
+        &'a self,
+        ctx: ViewCtx,
+        page: iced::widget::Column<'a, UiMessage>,
+    ) -> Element<'a, UiMessage> {
+        let density = widgets::functional_toggle(
+            &ctx.typography.colony(),
+            t("preferences_compact"),
+            t("preferences_compact_desc"),
             self.state.config.compact_mode,
             UiMessage::ToggleCompactMode,
         );
 
-        column![
-            self.section(ctx, "appearance.theme", "Thème", theme),
-            self.section(ctx, "appearance.accent", "Couleurs", accent.into()),
-            self.section(ctx, "appearance.density", "Densité", density),
-        ]
-        .spacing(spacing.sm)
+        page.push(self.section(
+            ctx,
+            "appearance.density",
+            t("preferences_section_density"),
+            t("preferences_section_density_desc"),
+            density,
+        ))
         .into()
-    }
-
-    fn preferences_accessibility(&self, ctx: ViewCtx) -> Element<'_, UiMessage> {
-        let spacing = ctx.spacing;
-        let typo = ctx.typography.colony();
-
-        let vision = colony_ui::widgets::functional_toggle(
-            &typo,
-            "Contraste élevé",
-            "Renforce la séparation des surfaces et du texte, sur n'importe quelle palette.",
-            self.state.config.theme.high_contrast,
-            UiMessage::ToggleHighContrast,
-        );
-
-        column![self.section(ctx, "a11y.vision", "Vision", vision)]
-            .spacing(spacing.sm)
-            .into()
     }
 
     fn preferences_files(&self, ctx: ViewCtx) -> Element<'_, UiMessage> {
@@ -323,79 +240,93 @@ impl XionApp {
         let config = &self.state.config;
 
         let display = column![
-            colony_ui::widgets::functional_toggle(
+            widgets::functional_toggle(
                 &typo,
-                "Afficher les fichiers cachés",
-                "Ceux dont le nom commence par un point.",
+                t("preferences_show_hidden"),
+                t("preferences_show_hidden_desc"),
                 config.list.show_hidden,
                 UiMessage::ToggleShowHidden,
             ),
-            colony_ui::widgets::functional_toggle(
+            widgets::functional_toggle(
                 &typo,
-                "Dossiers en premier",
-                "Regroupe les dossiers en tête de liste plutôt que de tout trier ensemble.",
+                t("preferences_directories_first"),
+                t("preferences_directories_first_desc"),
                 config.list.directories_first,
                 UiMessage::ToggleDirectoriesFirst,
             ),
         ]
         .spacing(spacing.sm);
 
-        let git = colony_ui::widgets::functional_toggle(
+        let git = widgets::functional_toggle(
             &typo,
-            "Respecter .gitignore",
-            "Masque dans un dépôt les fichiers que Git ignore.",
+            t("preferences_respect_gitignore"),
+            t("preferences_respect_gitignore_desc"),
             config.respect_gitignore,
             UiMessage::ToggleGitignore,
         );
 
-        column![
-            self.section(ctx, "files.display", "Affichage", display.into()),
-            self.section(ctx, "files.git", "Git", git),
-        ]
-        .spacing(spacing.sm)
+        widgets::category_heading(
+            &typo,
+            t("preferences_cat_files"),
+            t("preferences_cat_files_desc"),
+        )
+        .push(self.section(
+            ctx,
+            "files.display",
+            t("preferences_section_display"),
+            t("preferences_section_display_desc"),
+            display.into(),
+        ))
+        .push(self.section(
+            ctx,
+            "files.git",
+            t("preferences_section_git"),
+            t("preferences_section_git_desc"),
+            git,
+        ))
         .into()
     }
 
     fn preferences_about(&self, ctx: ViewCtx) -> Element<'_, UiMessage> {
-        let ViewCtx {
-            colors,
-            spacing,
-            typography,
-        } = ctx;
+        let spacing = ctx.spacing;
+        let typo = ctx.typography.colony();
 
         let identity = column![
-            row![
-                body_text(typography, icons::SETTINGS).color(colors.accent),
-                title_text(typography, "Xion").color(colors.text_primary),
-            ]
-            .spacing(spacing.sm)
-            .align_y(Alignment::Center),
-            Self::readout(ctx, "Version", env!("CARGO_PKG_VERSION").to_string()),
-            Self::readout(ctx, "Licence", "GPL-3.0-or-later".to_string()),
-        ]
-        .spacing(spacing.sm);
-
-        let credits = column![
-            caption_text(
-                typography,
-                "Les thèmes, les accents et les sélecteurs de cette page viennent de \
-                 colony-ui, la caisse partagée de l'écosystème Colony.",
-            )
-            .color(colors.text_muted),
             Self::readout(
                 ctx,
-                "Familles de thèmes",
-                colony_ui::THEME_FAMILIES.len().to_string(),
+                t("preferences_version"),
+                env!("CARGO_PKG_VERSION").to_string()
+            ),
+            Self::readout(
+                ctx,
+                t("preferences_license"),
+                env!("CARGO_PKG_LICENSE").to_string()
             ),
         ]
         .spacing(spacing.sm);
 
-        column![
-            self.section(ctx, "about.identity", "Xion", identity.into()),
-            self.section(ctx, "about.credits", "Composants", credits.into()),
-        ]
-        .spacing(spacing.sm)
-        .into()
+        let components = Self::readout(
+            ctx,
+            t("preferences_theme_families"),
+            colony_ui::THEME_FAMILIES.len().to_string(),
+        );
+
+        widgets::category_heading(&typo, t(ABOUT_CATEGORY), t("preferences_cat_about_desc"))
+            .push(self.section(
+                ctx,
+                "about.identity",
+                PROGRAM_NAME,
+                t("preferences_section_identity_desc"),
+                identity.into(),
+            ))
+            .push(self.section(
+                ctx,
+                "about.components",
+                t("preferences_section_components"),
+                t("preferences_section_components_desc"),
+                components,
+            ))
+            .into()
     }
 }
 
@@ -403,11 +334,11 @@ impl XionApp {
 mod tests {
     use crate::ui::PreferencesCategory;
 
-    /// La position qu'occupe chaque catégorie, énoncée à part de `ALL`.
+    /// The position each category holds, stated apart from `ALL`.
     ///
-    /// Ce `match` est exhaustif, donc ajouter une variante sans lui donner de
-    /// rang ne compile pas. C'est là tout l'intérêt : `ALL` est un tableau
-    /// écrit à la main, et rien d'autre n'obligerait à l'y ajouter.
+    /// This `match` is exhaustive, so adding a variant without giving it a rank
+    /// does not compile. That is the whole point: `ALL` is a hand-written array,
+    /// and nothing else would force adding the variant to it.
     fn expected_rank(category: PreferencesCategory) -> usize {
         match category {
             PreferencesCategory::General => 0,
@@ -418,71 +349,42 @@ mod tests {
         }
     }
 
-    /// « Do not reorder the first three. They are what a user hunting for a
-    /// setting scans first » — la convention de l'écosystème est explicite, et
-    /// c'est le genre de contrainte qu'un remaniement casse sans s'en rendre
-    /// compte. Le test la rend visible.
+    /// "Do not reorder the first three. They are what a user hunting for a
+    /// setting scans first": the ecosystem convention is explicit, and the
+    /// first three carry colony-ui's own labels, in its order.
     #[test]
-    fn the_first_three_categories_are_the_imposed_ones_in_order() {
-        assert_eq!(
-            &PreferencesCategory::ALL[..3],
-            &[
-                PreferencesCategory::General,
-                PreferencesCategory::Appearance,
-                PreferencesCategory::Accessibility,
-            ]
-        );
+    fn the_first_three_categories_are_the_shared_ones_in_order() {
+        let keys: Vec<&str> = PreferencesCategory::ALL[..3]
+            .iter()
+            .map(|category| category.label_key())
+            .collect();
+        assert_eq!(keys, colony_ui::widgets::STANDARD_CATEGORIES);
     }
 
-    /// « About last where it exists ».
+    /// "About last where it exists".
     #[test]
     fn about_comes_last() {
         assert_eq!(
             PreferencesCategory::ALL.last(),
             Some(&PreferencesCategory::About)
         );
+        assert_eq!(
+            PreferencesCategory::About.label_key(),
+            colony_ui::widgets::ABOUT_CATEGORY
+        );
     }
 
     #[test]
     fn every_category_appears_once_and_at_its_rank() {
         for (rank, category) in PreferencesCategory::ALL.into_iter().enumerate() {
-            assert_eq!(rank, expected_rank(category), "{category:?} mal placée");
+            assert_eq!(rank, expected_rank(category), "{category:?} out of place");
         }
         assert_eq!(PreferencesCategory::ALL.len(), 5);
     }
 
-    /// La catégorie ouverte à l'arrivée est la première, pas une au hasard.
+    /// The category open on arrival is the first one, not a random one.
     #[test]
     fn the_default_category_is_the_first_one() {
         assert_eq!(PreferencesCategory::default(), PreferencesCategory::ALL[0]);
-    }
-
-    /// Une description qui répète le titre n'apprend rien ; la convention
-    /// demande qu'elle dise la conséquence du réglage.
-    #[test]
-    fn each_category_says_something_different() {
-        let mut descriptions: Vec<&str> = PreferencesCategory::ALL
-            .into_iter()
-            .map(|category| category.description())
-            .collect();
-        descriptions.sort_unstable();
-        let before = descriptions.len();
-        descriptions.dedup();
-        assert_eq!(before, descriptions.len(), "deux descriptions identiques");
-
-        for category in PreferencesCategory::ALL {
-            assert_ne!(category.label(), category.description());
-        }
-    }
-
-    /// Le contrat que porte la page : pas de bouton « Enregistrer », donc la
-    /// phrase qui l'explique doit être là.
-    #[test]
-    fn general_carries_the_automatic_saving_contract() {
-        assert!(
-            PreferencesCategory::General
-                .description()
-                .contains("automatiquement")
-        );
     }
 }

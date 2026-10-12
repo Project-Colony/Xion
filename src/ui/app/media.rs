@@ -3,6 +3,7 @@
 //! Moved verbatim out of the single 809-line `impl XionApp` block in `mod.rs`.
 
 use crate::filesystem::FsEntryType;
+use crate::i18n::t;
 use crate::services::{generate_preview, generate_thumbnail};
 use crate::ui::UiMessage;
 use iced::Task;
@@ -14,8 +15,8 @@ use super::XionApp;
 impl XionApp {
     pub(in crate::ui::app) fn request_visible_thumbnails(&mut self) -> Task<UiMessage> {
         // The only reader of `media.thumbnail_handles` is the grid tile
-        // builder, behind `matches!(view_mode, ViewMode::Grid)`. In list mode —
-        // the default — every decode was thrown away: up to 40 concurrent
+        // builder, behind `matches!(view_mode, ViewMode::Grid)`. In list mode,
+        // the default, every decode was thrown away: up to 40 concurrent
         // `spawn_blocking` image decodes per navigation, for pixels nothing
         // would ever draw.
         if !matches!(self.state.config.view.mode, crate::core::ViewMode::Grid) {
@@ -27,7 +28,7 @@ impl XionApp {
         // afterwards mutates `self.media`, which cannot coexist with a borrow of
         // the entry buffer. The two branches this replaces were byte-identical
         // apart from index resolution, and the filtered one consulted a
-        // search-only helper — so thumbnails were still generated for rows the
+        // search-only helper, so thumbnails were still generated for rows the
         // quick filter had hidden.
         let candidates: Vec<std::path::PathBuf> = {
             let visible = self.visible_indices();
@@ -162,7 +163,7 @@ impl XionApp {
                             },
                             None => UiMessage::TextPreviewLoaded {
                                 path: err_path,
-                                content: "Impossible d'extraire le texte du PDF".to_string(),
+                                content: t("preview_pdf_failed").to_string(),
                                 encoding: None,
                             },
                         },
@@ -207,10 +208,10 @@ impl XionApp {
                                 }
                             }
                             None => {
-                                tracing::warn!("Preview: lecture fichier {:?} échouée", path);
+                                tracing::warn!("Preview: reading file {:?} failed", path);
                                 UiMessage::TextPreviewLoaded {
                                     path,
-                                    content: "Impossible de lire le fichier".to_string(),
+                                    content: t("preview_read_failed").to_string(),
                                     encoding: None,
                                 }
                             }

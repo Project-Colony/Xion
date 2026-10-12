@@ -1,15 +1,16 @@
-//! The two context menus themselves — the one for a selected entry, the one for
-//! empty space — and the submenu panels they open.
+//! The two context menus themselves, the one for a selected entry, the one for
+//! empty space, and the submenu panels they open.
 //!
 //! Moved out of `render_context_menu`, which now only decides which one to show
 //! and where to place it.
 
 use iced::widget::{column, container, mouse_area};
-use iced::{Color, Element, Length};
+use iced::{Element, Length};
 
 use crate::filesystem::FsEntryType;
+use crate::i18n::t;
 use crate::ui::theme::icons;
-use crate::ui::{ContextAction, UiMessage};
+use crate::ui::{ContextAction, FileLabel, UiMessage};
 
 use super::XionApp;
 use super::menu_items;
@@ -36,7 +37,7 @@ impl XionApp {
             .and_then(|path| ArchiveType::detect(path))
             .is_some();
         // `Path::is_file()`/`is_dir()` are syscalls, and these ran on every
-        // rebuild of the widget tree — several times a second, and blocking for
+        // rebuild of the widget tree, several times a second, and blocking for
         // seconds at a time on a dead network share. The entry type is already
         // loaded in memory.
         let focused_entry_type = self
@@ -61,14 +62,14 @@ impl XionApp {
             .push(menu_items::item(
                 ctx,
                 icons::OPEN,
-                "Ouvrir",
-                "Entrée",
+                t("menu_open"),
+                t("shortcut_enter"),
                 UiMessage::ContextAction(ContextAction::Open),
             ))
             .push(menu_items::item(
                 ctx,
                 icons::OPEN,
-                "Ouvrir avec\u{2026}",
+                t("menu_open_with"),
                 "",
                 UiMessage::ContextAction(ContextAction::OpenWith),
             ));
@@ -76,7 +77,7 @@ impl XionApp {
             context_col = context_col.push(menu_items::item(
                 ctx,
                 icons::TERMINAL,
-                "Ouvrir terminal ici",
+                t("menu_open_terminal_here"),
                 "",
                 UiMessage::ToggleTerminal,
             ));
@@ -85,7 +86,7 @@ impl XionApp {
             context_col = context_col.push(menu_items::item(
                 ctx,
                 icons::FILE_ARCHIVE,
-                "Ouvrir l'archive",
+                t("menu_open_archive"),
                 "",
                 UiMessage::ActivateEntry(
                     self.state
@@ -106,14 +107,14 @@ impl XionApp {
             .push(menu_items::item(
                 ctx,
                 icons::CUT,
-                "Couper",
+                t("menu_cut"),
                 "Ctrl+X",
                 UiMessage::ClipboardCut,
             ))
             .push(menu_items::item(
                 ctx,
                 icons::COPY,
-                "Copier",
+                t("menu_copy"),
                 "Ctrl+C",
                 UiMessage::ClipboardCopy,
             ));
@@ -121,7 +122,7 @@ impl XionApp {
             context_col = context_col.push(menu_items::item(
                 ctx,
                 icons::PASTE,
-                "Coller",
+                t("menu_paste"),
                 "Ctrl+V",
                 UiMessage::ClipboardPaste,
             ));
@@ -135,22 +136,22 @@ impl XionApp {
             .push(menu_items::item(
                 ctx,
                 icons::RENAME,
-                "Renommer",
+                t("menu_rename"),
                 "F2",
                 UiMessage::ContextAction(ContextAction::Rename),
             ))
             .push(menu_items::item(
                 ctx,
                 icons::DELETE,
-                "Supprimer",
-                "Suppr",
+                t("menu_delete"),
+                t("shortcut_delete"),
                 UiMessage::ContextAction(ContextAction::MoveToTrash),
             ));
         if selection_count > 1 {
             context_col = context_col.push(menu_items::item(
                 ctx,
                 icons::RENAME,
-                "Renommer plusieurs\u{2026}",
+                t("menu_bulk_rename"),
                 "",
                 UiMessage::ContextAction(ContextAction::OpenBulkRename),
             ));
@@ -159,7 +160,7 @@ impl XionApp {
             context_col = context_col.push(menu_items::item(
                 ctx,
                 icons::FILE,
-                "Comparer",
+                t("menu_compare"),
                 "Ctrl+D",
                 UiMessage::ContextAction(ContextAction::OpenDiff),
             ));
@@ -173,7 +174,7 @@ impl XionApp {
             mouse_area(menu_items::item(
                 ctx,
                 icons::FILE_ARCHIVE,
-                "Compresser  \u{276f}",
+                t("menu_compress"),
                 "",
                 UiMessage::ToggleContextSubmenu(0),
             ))
@@ -185,7 +186,7 @@ impl XionApp {
             mouse_area(menu_items::item(
                 ctx,
                 "",
-                "\u{25cf} Étiquette  \u{276f}",
+                t("menu_label"),
                 "",
                 UiMessage::ToggleContextSubmenu(1),
             ))
@@ -200,14 +201,14 @@ impl XionApp {
             .push(menu_items::item(
                 ctx,
                 icons::SYMLINK,
-                "Copier le chemin",
-                "Ctrl+Shift+C",
+                t("menu_copy_path"),
+                t("shortcut_copy_path"),
                 UiMessage::ContextAction(ContextAction::CopyPath),
             ))
             .push(menu_items::item(
                 ctx,
                 icons::HOME,
-                "Ajouter aux favoris",
+                t("menu_add_favorite"),
                 "",
                 UiMessage::ContextAction(ContextAction::AddToFavorites),
             ));
@@ -215,7 +216,7 @@ impl XionApp {
             context_col = context_col.push(menu_items::item(
                 ctx,
                 icons::FILE,
-                "Voir en hexadécimal",
+                t("menu_view_hex"),
                 "",
                 UiMessage::ContextAction(ContextAction::OpenHexView),
             ));
@@ -223,8 +224,8 @@ impl XionApp {
         context_col = context_col.push(menu_items::item(
             ctx,
             icons::FILE,
-            "Propriétés",
-            "Alt+Entrée",
+            t("menu_properties"),
+            t("shortcut_alt_enter"),
             UiMessage::ContextAction(ContextAction::OpenProperties),
         ));
 
@@ -239,7 +240,7 @@ impl XionApp {
             typography: _,
         } = ctx;
         // `Path::is_file()`/`is_dir()` are syscalls, and these ran on every
-        // rebuild of the widget tree — several times a second, and blocking for
+        // rebuild of the widget tree, several times a second, and blocking for
         // seconds at a time on a dead network share. The entry type is already
         // loaded in memory.
         let has_clipboard = self.clipboard.kind.is_some() && !self.clipboard.items.is_empty();
@@ -250,7 +251,7 @@ impl XionApp {
                 .push(menu_items::item(
                     ctx,
                     icons::PASTE,
-                    "Coller",
+                    t("menu_paste"),
                     "Ctrl+V",
                     UiMessage::ClipboardPaste,
                 ))
@@ -260,14 +261,14 @@ impl XionApp {
             .push(menu_items::item(
                 ctx,
                 icons::FOLDER,
-                "Nouveau dossier",
-                "Ctrl+Shift+N",
+                t("menu_new_folder"),
+                t("shortcut_new_folder"),
                 UiMessage::ContextAction(ContextAction::NewFolder),
             ))
             .push(menu_items::item(
                 ctx,
                 icons::FILE,
-                "Nouveau fichier",
+                t("menu_new_file"),
                 "",
                 UiMessage::ContextAction(ContextAction::NewFile),
             ))
@@ -275,14 +276,14 @@ impl XionApp {
             .push(menu_items::item(
                 ctx,
                 icons::TERMINAL,
-                "Ouvrir terminal ici",
+                t("menu_open_terminal_here"),
                 "",
                 UiMessage::ToggleTerminal,
             ))
             .push(menu_items::item(
                 ctx,
                 icons::REFRESH,
-                "Rafraîchir",
+                t("menu_refresh"),
                 "Ctrl+R",
                 UiMessage::Refresh,
             ))
@@ -290,7 +291,7 @@ impl XionApp {
             .push(menu_items::item(
                 ctx,
                 icons::FILE,
-                "Propriétés du dossier",
+                t("menu_folder_properties"),
                 "",
                 UiMessage::ContextAction(ContextAction::OpenProperties),
             ));
@@ -306,7 +307,7 @@ impl XionApp {
             typography: _,
         } = ctx;
         // `Path::is_file()`/`is_dir()` are syscalls, and these ran on every
-        // rebuild of the widget tree — several times a second, and blocking for
+        // rebuild of the widget tree, several times a second, and blocking for
         // seconds at a time on a dead network share. The entry type is already
         // loaded in memory.
 
@@ -348,45 +349,45 @@ impl XionApp {
                 let sub = column![
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(220, 50, 50),
-                        "Rouge".into(),
+                        FileLabel::Red.color(&colors),
+                        t("label_red").into(),
                         ContextAction::SetLabelRed
                     ),
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(255, 165, 0),
-                        "Orange".into(),
+                        FileLabel::Orange.color(&colors),
+                        t("label_orange").into(),
                         ContextAction::SetLabelOrange
                     ),
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(220, 200, 50),
-                        "Jaune".into(),
+                        FileLabel::Yellow.color(&colors),
+                        t("label_yellow").into(),
                         ContextAction::SetLabelYellow
                     ),
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(50, 180, 50),
-                        "Verte".into(),
+                        FileLabel::Green.color(&colors),
+                        t("label_green").into(),
                         ContextAction::SetLabelGreen
                     ),
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(50, 100, 220),
-                        "Bleue".into(),
+                        FileLabel::Blue.color(&colors),
+                        t("label_blue").into(),
                         ContextAction::SetLabelBlue
                     ),
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(150, 50, 200),
-                        "Violette".into(),
+                        FileLabel::Purple.color(&colors),
+                        t("label_purple").into(),
                         ContextAction::SetLabelPurple
                     ),
                     menu_items::separator(ctx),
                     menu_items::item(
                         ctx,
                         "",
-                        "Supprimer",
+                        t("menu_remove_label"),
                         "",
                         UiMessage::ContextAction(ContextAction::RemoveLabel)
                     ),

@@ -11,6 +11,7 @@ use iced::{Alignment, Background, Element, Length, border};
 
 use crate::core::{ViewColumn, ViewMode};
 use crate::filesystem::{FsEntry, FsEntryType};
+use crate::i18n::t;
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
@@ -36,6 +37,7 @@ pub(super) struct RowCtx<'c> {
 use super::widgets::RADIUS;
 use super::widgets::body_text;
 use super::widgets::caption_text;
+use super::widgets::icon_text;
 
 impl XionApp {
     /// The icon or thumbnail shown at the start of a row or tile.
@@ -51,7 +53,7 @@ impl XionApp {
         } = cx.ui;
         let view_mode = cx.view_mode;
         match entry.entry_type {
-            FsEntryType::Directory => body_text(typography, icons::FOLDER).into(),
+            FsEntryType::Directory => icon_text(typography, icons::FOLDER).into(),
             FsEntryType::File if matches!(view_mode, ViewMode::Grid) => {
                 // Grid mode: show thumbnail preview if available
                 self.media
@@ -63,11 +65,11 @@ impl XionApp {
                             .height(Length::Fixed(self.state.config.view.thumbnail_size as f32))
                             .into()
                     })
-                    .unwrap_or_else(|| body_text(typography, icons::icon_for_entry(entry)).into())
+                    .unwrap_or_else(|| icon_text(typography, icons::icon_for_entry(entry)).into())
             }
             // List mode: always an icon, so every row is the same height.
             FsEntryType::File | FsEntryType::Symlink | FsEntryType::Other => {
-                body_text(typography, icons::icon_for_entry(entry)).into()
+                icon_text(typography, icons::icon_for_entry(entry)).into()
             }
         }
     }
@@ -91,7 +93,7 @@ impl XionApp {
                     // Feature F: File label dot
                     let label_dot: Option<Element<'_, UiMessage>> =
                         self.state.config.labels.get(&entry.path).map(|label| {
-                            let dot_color = label.color();
+                            let dot_color = label.color(&colors);
                             container(row![])
                                 .width(Length::Fixed(8.0))
                                 .height(Length::Fixed(8.0))
@@ -125,15 +127,15 @@ impl XionApp {
                     // Borrowed: `text` takes a `Cow`, and now that this is a
                     // method with an explicit `'a` tied to `&self`, the
                     // borrow outlives the returned tree. Names under the
-                    // limit — nearly all of them — no longer allocate.
+                    // limit, nearly all of them, no longer allocate.
                     let display_name = truncate_name(&entry.name, 60);
-                    // Jamais de retour à la ligne.
+                    // Never wrap.
                     //
-                    // La troncature compte soixante *caractères* alors que la
-                    // contrainte est en *pixels* : sur une colonne étroite le
-                    // nom restait trop large, iced le repliait sur une seconde
-                    // ligne, et la ligne débordait de sa hauteur fixe pour
-                    // chevaucher ses voisines. Rien ne rognait derrière.
+                    // Truncation counts sixty *characters* while the constraint
+                    // is in *pixels*: on a narrow column the name stayed too
+                    // wide, iced wrapped it onto a second line, and the row
+                    // overflowed its fixed height to overlap its neighbours.
+                    // Nothing clipped behind it.
                     let name_text = body_text(typography, display_name)
                         .wrapping(iced::widget::text::Wrapping::None);
                     let name_text = if is_cut {
@@ -149,8 +151,8 @@ impl XionApp {
                     container(name_row)
                         .width(spec.width)
                         .align_x(spec.align)
-                        // Ce qui dépasse de la colonne est coupé net plutôt que
-                        // peint par-dessus la colonne voisine.
+                        // What overflows the column is cut cleanly rather than
+                        // painted over the neighbouring column.
                         .clip(true)
                         .into()
                 }
@@ -174,13 +176,12 @@ impl XionApp {
                                 formatted
                             }
                         } else {
-                            // Un seul changement à l'écran, pas deux. La taille
-                            // d'un dossier n'est pas lisible sur son inode : il
-                            // faut le parcourir. Afficher « — » puis « … » puis
-                            // le nombre montrait à l'utilisateur une étape qui
-                            // ne le renseignait pas — le tiret voulait dire
-                            // « pas encore demandé », ce qui n'est pas son
-                            // affaire.
+                            // One change on screen, not two. A folder's size
+                            // cannot be read from its inode: it has to be
+                            // walked. Showing "-" then "..." then the number
+                            // showed the user a step that told them nothing:
+                            // the dash meant "not requested yet", which is none
+                            // of their business.
                             "…".to_string()
                         }
                     } else {
@@ -217,8 +218,8 @@ impl XionApp {
         for (index, spec) in column_specs.iter().enumerate() {
             let cell: Element<'_, UiMessage> = if index == 0 {
                 let content = row![
-                    body_text(typography, icons::LOADING),
-                    body_text(typography, "Chargement…")
+                    icon_text(typography, icons::LOADING),
+                    body_text(typography, t("loading"))
                 ]
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center);
@@ -246,7 +247,7 @@ impl XionApp {
         entry: &'a FsEntry,
     ) -> Element<'a, UiMessage> {
         let ViewCtx {
-            colors: _,
+            colors,
             spacing,
             typography,
         } = cx.ui;
@@ -254,7 +255,7 @@ impl XionApp {
         let mut name_row = row![].spacing(spacing.xs).align_y(Alignment::Center);
         // Label dot in grid view
         if let Some(label) = self.state.config.labels.get(&entry.path) {
-            let dot_color = label.color();
+            let dot_color = label.color(&colors);
             name_row = name_row.push(
                 container(row![])
                     .width(Length::Fixed(6.0))

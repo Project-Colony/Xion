@@ -9,6 +9,7 @@ use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_s
 use iced::widget::{button, column, container, mouse_area, opaque, row, stack, text_input};
 use iced::{Alignment, Element, Length, Point};
 
+use crate::i18n::t;
 use crate::ui::UiMessage;
 
 use super::XionApp;
@@ -34,11 +35,11 @@ impl XionApp {
             spacing,
             typography,
         } = ctx;
-        let toolbar_button = |label: String| widgets::toolbar_button(ctx, label);
+        let toolbar_icon = |glyph: &'static str| widgets::toolbar_icon(ctx, glyph);
 
         let address_bar: Element<'_, UiMessage> = if self.address_editing {
             // Editable text input mode
-            let address_input = text_input("Chemin…", &self.address_input)
+            let address_input = text_input(t("address_placeholder"), &self.address_input)
                 .on_input(UiMessage::AddressInputChanged)
                 .on_submit(UiMessage::AddressInputSubmitted)
                 .size(typography.body)
@@ -51,7 +52,7 @@ impl XionApp {
                 .style(surface_style(colors, RADIUS.md))
                 .into()
         } else {
-            // Breadcrumb mode — clickable path segments
+            // Breadcrumb mode: clickable path segments
             let current_path = self.state.route.address_label();
             let mut breadcrumb_row = row![].spacing(0).align_y(Alignment::Center);
 
@@ -136,11 +137,13 @@ impl XionApp {
                     .get(&self.address_input, || self.address_target_from_input())
                     .map(|v| match v {
                         AddressValidation::Directory => {
-                            ("Dossier".to_string(), colors.address_directory)
+                            (t("address_folder").to_string(), colors.address_directory)
                         }
-                        AddressValidation::File => ("Fichier".to_string(), colors.address_file),
+                        AddressValidation::File => {
+                            (t("address_file").to_string(), colors.address_file)
+                        }
                         AddressValidation::NotFound => {
-                            ("Introuvable".to_string(), colors.address_not_found)
+                            (t("address_not_found").to_string(), colors.address_not_found)
                         }
                     })
             } else {
@@ -171,18 +174,19 @@ impl XionApp {
         };
 
         let address_suggestions = self.address_suggestions();
-        let history_button = toolbar_button("▼".to_string())
-            .on_press(UiMessage::ToggleHistoryMenu(!self.menus.history_open));
+        let history_button =
+            toolbar_icon("▼").on_press(UiMessage::ToggleHistoryMenu(!self.menus.history_open));
 
         let history_menu: Option<Element<'_, UiMessage>> =
             if self.menus.history_open && !address_suggestions.is_empty() {
-                let mut suggestions_list =
-                    column![caption_text(typography, "Historique").style(move |_| {
+                let mut suggestions_list = column![
+                    caption_text(typography, t("address_history")).style(move |_| {
                         iced::widget::text::Style {
                             color: Some(colors.text_muted),
                         }
-                    })]
-                    .spacing(spacing.xs);
+                    })
+                ]
+                .spacing(spacing.xs);
                 for suggestion in address_suggestions {
                     suggestions_list = suggestions_list.push(suggestion_button(
                         suggestion.display().to_string(),

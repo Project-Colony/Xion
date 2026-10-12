@@ -29,16 +29,19 @@ pub enum FileLabel {
 }
 
 impl FileLabel {
-    pub fn color(&self) -> iced::Color {
-        match self {
-            FileLabel::Red => iced::Color::from_rgb(0.9, 0.2, 0.2),
-            FileLabel::Orange => iced::Color::from_rgb(0.9, 0.5, 0.1),
-            FileLabel::Yellow => iced::Color::from_rgb(0.9, 0.8, 0.1),
-            FileLabel::Green => iced::Color::from_rgb(0.2, 0.7, 0.3),
-            FileLabel::Blue => iced::Color::from_rgb(0.2, 0.5, 0.9),
-            FileLabel::Purple => iced::Color::from_rgb(0.6, 0.2, 0.8),
-            FileLabel::Gray => iced::Color::from_rgb(0.5, 0.5, 0.5),
-        }
+    /// The label's dot colour: one of Colony's shared accents, so the labels
+    /// match the accent picker, and the theme's muted text for grey.
+    pub fn color(self, colors: &UiColors) -> iced::Color {
+        let accent_key = match self {
+            FileLabel::Red => "red",
+            FileLabel::Orange => "orange",
+            FileLabel::Yellow => "yellow",
+            FileLabel::Green => "green",
+            FileLabel::Blue => "blue",
+            FileLabel::Purple => "violet",
+            FileLabel::Gray => return colors.text_muted,
+        };
+        colony_ui::accent_key_to_color(accent_key).unwrap_or(colors.accent)
     }
 }
 
@@ -83,7 +86,7 @@ pub mod app;
 pub mod theme;
 
 pub use app::{XionApp, run};
-pub use theme::{UiColors, UiSpacing, UiTokens, UiTypography, fonts, icons, layout, timing};
+pub use theme::{UiColors, UiSpacing, UiTokens, UiTypography, icons, layout, timing};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneKind {
@@ -136,8 +139,8 @@ impl Route {
     pub fn display_label(&self) -> String {
         match &self.kind {
             RouteKind::Local(path) => path.display().to_string(),
-            RouteKind::Network => "Réseau".to_string(),
-            RouteKind::Recent => "Récents".to_string(),
+            RouteKind::Network => crate::i18n::t("location_network").to_string(),
+            RouteKind::Recent => crate::i18n::t("location_recent").to_string(),
         }
     }
 
@@ -203,14 +206,14 @@ impl AppState {
     }
 }
 
-/// Les catégories de la page de préférences.
+/// The categories of the preferences page.
 ///
-/// Les trois premières sont imposées par la convention Colony, dans cet ordre :
-/// « Do not reorder the first three. They are what a user hunting for a setting
-/// scans first ». Viennent ensuite celles propres au programme — pour Xion, la
-/// liste de fichiers — et « À propos » en dernier.
+/// The first three are imposed by the Colony convention, in this order: "Do
+/// not reorder the first three. They are what a user hunting for a setting
+/// scans first". The program's own follow (for Xion, the file list), and
+/// About comes last.
 ///
-/// Un programme peut en omettre ; il ne peut pas en détourner une.
+/// A program may leave some out; it may not repurpose one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PreferencesCategory {
     #[default]
@@ -222,7 +225,7 @@ pub enum PreferencesCategory {
 }
 
 impl PreferencesCategory {
-    /// Dans l'ordre d'affichage.
+    /// In display order.
     pub const ALL: [Self; 5] = [
         Self::General,
         Self::Appearance,
@@ -306,16 +309,15 @@ pub enum UiMessage {
     FinalizeDrag,
     TreeResizeStart,
     TreeResizeEnd,
-    /// Détruit les émulateurs mis à la retraite au tour précédent.
+    /// Destroy the emulators retired on the previous round.
     ///
-    /// Envoyé comme tâche et non appelé sur place : une tâche revient dans un
-    /// *lot* de messages ultérieur, donc après qu'iced a recalculé ses
-    /// souscriptions. Vider en tête d'`update` ne suffisait pas — iced traite
-    /// tout un lot de messages avant de recalculer, si bien qu'un second
-    /// message du même lot lâchait le terminal alors que sa souscription
-    /// vivait encore.
+    /// Sent as a task and not called in place: a task comes back in a later
+    /// *batch* of messages, so after iced has recomputed its subscriptions.
+    /// Emptying at the top of `update` was not enough: iced handles a whole
+    /// batch of messages before recomputing, so a second message of the same
+    /// batch dropped the terminal while its subscription was still alive.
     ReapRetiredTerminals,
-    /// Saisit la bordure haute du panneau terminal pour le redimensionner.
+    /// Grab the top border of the terminal panel to resize it.
     TerminalResizeStart,
     TerminalResizeEnd,
     PreviewResizeStart,
@@ -346,11 +348,11 @@ pub enum UiMessage {
     },
     PreviewAnimTick,
     ToggleTerminal,
-    /// Ce que le pseudo-terminal a produit, ou ce que la vue lui destine.
+    /// What the pseudo-terminal produced, or what the view sends to it.
     ///
-    /// Un seul message pour les deux sens : `iced_term` fait circuler ses
-    /// commandes de moteur par là, qu'elles viennent d'une frappe, d'un
-    /// redimensionnement ou de la sortie du programme.
+    /// One message for both directions: `iced_term` routes its backend
+    /// commands through here, whether they come from a keystroke, a resize or
+    /// the program's output.
     TerminalEvent(iced_term::Event),
     TerminalAnimTick,
     // Feature 1: Trash
@@ -362,8 +364,6 @@ pub enum UiMessage {
         hash: String,
     },
     CloseProperties,
-    // Feature 4: Color themes
-    SetTheme(crate::core::ThemeChoice),
     // Feature 5: Bulk rename
     OpenBulkRename,
     BulkRenameFindChanged(String),
@@ -386,9 +386,8 @@ pub enum UiMessage {
     DirSizeLoaded {
         path: PathBuf,
         bytes: u64,
-        /// `true` quand le parcours s'est arrêté sur une de ses limites, de
-        /// profondeur ou de nombre de fichiers : `bytes` est alors un plancher,
-        /// pas un total.
+        /// `true` when the walk stopped on one of its limits, depth or file
+        /// count: `bytes` is then a lower bound, not a total.
         truncated: bool,
     },
     // Feature 10: Archive browser
@@ -448,26 +447,27 @@ pub enum UiMessage {
     OpenRequestTick,
     /// Opens or closes the `⋯` menu at the end of the header bar.
     ToggleOverflowMenu(bool),
-    /// Ouvre ou ferme la page de préférences.
+    /// Open or close the preferences page.
     ///
-    /// Une bascule sans argument, et c'est voulu : la convention Colony veut
-    /// que le bouton « Fermer » de la page envoie *le même* message que le
-    /// bouton d'identité qui l'a ouverte. Deux sorties, un seul message.
+    /// A toggle with no argument, on purpose: the Colony convention wants the
+    /// page's Close button to send *the same* message as the identity button
+    /// that opened it. Two exits, one message.
     TogglePreferences,
-    /// Choisit la catégorie affichée dans la page de préférences.
+    /// Choose the category shown in the preferences page.
     SelectPreferencesCategory(PreferencesCategory),
-    /// Déplie ou replie une section de la page de préférences.
+    /// Expand or collapse a section of the preferences page.
     TogglePreferencesSection(&'static str),
-    /// Affiche ou masque les fichiers dont le nom commence par un point.
+    /// Show or hide files whose name starts with a dot.
     ToggleShowHidden,
-    /// Regroupe les dossiers avant les fichiers, ou trie tout ensemble.
+    /// Group folders before files, or sort everything together.
     ToggleDirectoriesFirst,
-    /// Choisit une famille et une variante du catalogue Colony.
-    SetThemeVariant(&'static str, &'static str),
-    /// Choisit un accent ; la même clé deux fois revient à « celui du thème ».
-    SetAccent(&'static str),
-    /// Rehausse le contraste, sur n'importe quelle palette.
-    ToggleHighContrast,
+    /// A change from the shared Appearance and Accessibility settings: theme,
+    /// accent, text sizes, effects, contrast, dyslexia font or motion.
+    Preference(colony_ui::preferences::Change),
+    /// Hide the "Theme applied." toast, if it is still the one with this id.
+    DismissToast(u64),
+    /// Choose the interface language.
+    SetLanguage(crate::core::Language),
     ColumnResizeStart(&'static str),
     ColumnResizeEnd,
     ColumnResized(&'static str, f32),

@@ -39,7 +39,7 @@ impl DirectoryLoader {
         // Read and sort the directory ONCE, then cache the whole listing.
         //
         // The old code called `list_dir_paged` per page and only cached when
-        // `items.len() == total` — a condition `page_size = 120` makes false
+        // `items.len() == total`, a condition `page_size = 120` makes false
         // for any directory with more than 120 entries. Scrolling a folder of
         // 100 000 files therefore re-ran a full `read_dir` plus a full sort for
         // every page: 834 complete listings for one pass down the list.
@@ -89,7 +89,7 @@ impl DirectoryLoader {
 }
 
 // `MetadataCache` used to live here, populated on every listing and cleared on
-// every invalidation — and never read once: `MetadataCache::get` had no caller
+// every invalidation, and never read once: `MetadataCache::get` had no caller
 // anywhere in the crate. A 10 000-entry listing paid 20 000 allocations to
 // clone a `PathBuf` and an `FsMetadata` that the `FsEntry` in the directory
 // cache already held, then threw them away. Removed rather than wired up: the
@@ -179,7 +179,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["c", "d"]
         );
-        assert_eq!(fs.calls.get(), 1, "le dossier ne doit être lu qu'une fois");
+        assert_eq!(fs.calls.get(), 1, "the folder must be read only once");
     }
 
     /// Regression: the cache key was the path alone, so changing the sort
@@ -199,7 +199,7 @@ mod tests {
 
         assert_eq!(ascending.items[0].name, "a");
         assert_eq!(descending.items[0].name, "c");
-        assert_eq!(fs.calls.get(), 2, "chaque tri doit relire le dossier");
+        assert_eq!(fs.calls.get(), 2, "each sort must read the folder again");
     }
 
     #[test]
@@ -224,6 +224,6 @@ mod tests {
         loader
             .load_page(&fs, path, options(SortOrder::Desc), PageRequest::new(0, 10))
             .unwrap();
-        assert_eq!(fs.calls.get(), 4, "les deux variantes doivent être purgées");
+        assert_eq!(fs.calls.get(), 4, "both variants must be purged");
     }
 }

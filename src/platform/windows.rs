@@ -11,6 +11,19 @@ use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 /// `CREATE_NO_WINDOW`: keeps console helpers from flashing a window.
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Reattach stdout/stderr to the console that launched the process.
+///
+/// The `windows_subsystem = "windows"` attribute starts the process without
+/// one, so command-line output would otherwise go nowhere.
+pub fn attach_parent_console() {
+    // ATTACH_PARENT_PROCESS. Failure just means there is no parent console
+    // (launched from Explorer), in which case there is nothing to attach to.
+    // SAFETY: AttachConsole takes a plain process id and touches no memory of ours.
+    unsafe {
+        let _ = windows_sys::Win32::System::Console::AttachConsole(u32::MAX);
+    }
+}
+
 /// Absolute path to a binary shipped in `%SystemRoot%\System32`.
 ///
 /// `Command::new("reg")` lets Windows resolve the name, and that search visits
@@ -58,7 +71,7 @@ pub fn shell_open(path: &Path) -> io::Result<()> {
         Ok(())
     } else {
         Err(io::Error::other(format!(
-            "ShellExecuteW a échoué (code {}) pour {}",
+            "ShellExecuteW failed (code {}) for {}",
             result as isize,
             path.display()
         )))
@@ -87,7 +100,7 @@ pub fn open_with(path: &Path) -> io::Result<()> {
         Ok(())
     } else {
         Err(io::Error::other(format!(
-            "SHOpenWithDialog a échoué (HRESULT {result:#x})"
+            "SHOpenWithDialog failed (HRESULT {result:#x})"
         )))
     }
 }
@@ -131,13 +144,13 @@ use super::single_instance::{Claim, Primary};
 ///
 /// Windows has no session bus. The equivalent is a named pipe: `CreateNamedPipeW`
 /// under a per-session name, a thread accepting connections, `ReadFile` for the
-/// path. That is roughly a hundred and fifty lines of `unsafe` Win32 — and this
+/// path. That is roughly a hundred and fifty lines of `unsafe` Win32, and this
 /// crate is developed on Linux, where it can be neither run nor even compiled,
 /// because cross-compiling to `x86_64-pc-windows-msvc` still stops on the C
 /// dependency `libz-sys` pulls in through `git2`.
 ///
 /// Untested `unsafe` in a file manager is a worse trade than the thing it buys,
-/// which is only a faster second launch — never correctness. So Windows keeps
+/// which is only a faster second launch, never correctness. So Windows keeps
 /// the behaviour it has always had, one process per launch, and says so here
 /// rather than in a commit message nobody will find.
 ///

@@ -29,13 +29,13 @@ fn temp_dir() -> TempDir {
     tempfile::Builder::new()
         .prefix("xion-test-")
         .tempdir()
-        .expect("créer un répertoire temporaire")
+        .expect("create a temporary directory")
 }
 
 /// Writes a small file inside `dir` and returns its path.
 fn write_file(dir: &Path, name: &str) -> PathBuf {
     let path = dir.join(name);
-    fs::write(&path, b"contenu").expect("écrire un fichier de test");
+    fs::write(&path, b"content").expect("write a test file");
     path
 }
 
@@ -51,8 +51,8 @@ mod filesystem_integration {
     fn list_and_sort_by_name() {
         let temp = temp_dir();
         let root = temp.path();
-        fs::create_dir_all(root.join("zebra")).expect("créer zebra");
-        fs::create_dir_all(root.join("alpha")).expect("créer alpha");
+        fs::create_dir_all(root.join("zebra")).expect("create zebra");
+        fs::create_dir_all(root.join("alpha")).expect("create alpha");
         write_file(root, "middle.txt");
 
         let filesystem = LocalFileSystem::new();
@@ -106,7 +106,7 @@ mod filesystem_integration {
     fn filter_files_only() {
         let temp = temp_dir();
         let root = temp.path();
-        fs::create_dir_all(root.join("folder")).expect("créer folder");
+        fs::create_dir_all(root.join("folder")).expect("create folder");
         write_file(root, "file.txt");
 
         let filesystem = LocalFileSystem::new();
@@ -124,8 +124,8 @@ mod filesystem_integration {
     fn filter_directories_only() {
         let temp = temp_dir();
         let root = temp.path();
-        fs::create_dir_all(root.join("folder1")).expect("créer folder1");
-        fs::create_dir_all(root.join("folder2")).expect("créer folder2");
+        fs::create_dir_all(root.join("folder1")).expect("create folder1");
+        fs::create_dir_all(root.join("folder2")).expect("create folder2");
         write_file(root, "file.txt");
 
         let filesystem = LocalFileSystem::new();
@@ -274,7 +274,7 @@ mod services_integration {
 
         let flipped = loader
             .load_page(&filesystem, root, descending, PageRequest::new(0, 10))
-            .expect("tri décroissant");
+            .expect("descending sort");
         assert_eq!(names(&flipped.items), vec!["c.txt", "b.txt", "a.txt"]);
 
         // The first ordering is still cached under its own key, and still right.
@@ -306,8 +306,7 @@ mod services_integration {
 mod config_integration {
     use super::*;
     use xion::core::{
-        ConfigSource, ListConfig, PagingConfig, SortKeyConfig, SortOrderConfig, ThemeChoice,
-        ViewConfig,
+        ConfigSource, ListConfig, PagingConfig, SortKeyConfig, SortOrderConfig, ViewConfig,
     };
 
     #[test]
@@ -359,14 +358,14 @@ mod config_integration {
         assert!(matches!(load.source, ConfigSource::Default));
         assert!(
             load.warnings.is_empty(),
-            "un fichier absent n'est pas une anomalie : {:?}",
+            "a missing file is not an anomaly: {:?}",
             load.warnings
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
         );
         assert_eq!(load.config, AppConfig::default());
-        assert!(!manager.path().exists(), "un load ne doit rien écrire");
+        assert!(!manager.path().exists(), "a load must write nothing");
     }
 
     /// The round-trip the former `dark_mode_roundtrip` claimed but never did:
@@ -380,14 +379,21 @@ mod config_integration {
         let defaults = AppConfig::default();
         let saved = AppConfig {
             dark_mode: true,
-            theme: ThemeChoice {
-                family: "nord".to_string(),
-                variant: "dark".to_string(),
-                high_contrast: false,
-                accent: None,
+            standard: colony_ui::preferences::StandardPreferences {
+                selected_theme: "nord".to_string(),
+                selected_variant: "dark".to_string(),
+                selected_accent: Some("violet".to_string()),
+                auto_accent: true,
+                font_size: colony_ui::FontSize::Large,
+                animations: false,
+                high_contrast: true,
+                dyslexia_font: true,
+                reduce_motion: true,
+                text_size_a11y: colony_ui::TextSize::XLarge,
             },
             compact_mode: true,
             respect_gitignore: true,
+            language: xion::core::Language::French,
             list: ListConfig {
                 show_hidden: true,
                 sort_key: SortKeyConfig::Size,
@@ -405,14 +411,14 @@ mod config_integration {
         };
 
         manager.save(&saved);
-        assert!(manager.path().exists(), "save doit créer le fichier");
+        assert!(manager.path().exists(), "save must create the file");
 
         let load = manager.load();
 
         assert!(matches!(load.source, ConfigSource::File(_)));
         assert!(
             load.warnings.is_empty(),
-            "relecture bruyante : {:?}",
+            "the reload raised warnings: {:?}",
             load.warnings
                 .iter()
                 .map(ToString::to_string)
@@ -427,14 +433,13 @@ mod config_integration {
     fn a_v0_file_is_migrated_to_the_current_format() {
         let temp = temp_dir();
         let path = temp.path().join("config.toml");
-        fs::write(&path, "show_hidden = true\nthumbnail_size = 64\n")
-            .expect("écrire une config V0");
+        fs::write(&path, "show_hidden = true\nthumbnail_size = 64\n").expect("write a V0 config");
 
         let load = ConfigManager::with_path(path).load();
 
         assert!(
             matches!(load.source, ConfigSource::Migrated(_)),
-            "une config sans version doit être signalée comme migrée"
+            "a config without a version must be reported as migrated"
         );
         assert!(load.config.list.show_hidden);
         assert_eq!(load.config.view.thumbnail_size, 64);
@@ -456,14 +461,14 @@ mod config_integration {
             &path,
             "version = 1\ncompact_mode = true\n\n[view]\nrow_height = 32.0\n",
         )
-        .expect("écrire une config V1");
+        .expect("write a V1 config");
 
         let load = ConfigManager::with_path(path).load();
 
         assert!(load.config.compact_mode);
         assert!(
             (load.config.view.row_height - 22.0).abs() < f32::EPSILON,
-            "hauteur de ligne non compacte : {}",
+            "row height not compact: {}",
             load.config.view.row_height
         );
     }
@@ -475,7 +480,7 @@ mod config_integration {
         let temp = temp_dir();
         let path = temp.path().join("config.toml");
         fs::write(&path, "version = 1\n\n[paging]\npage_size = 100000\n")
-            .expect("écrire une config V1");
+            .expect("write a V1 config");
 
         let load = ConfigManager::with_path(path).load();
 
@@ -486,7 +491,7 @@ mod config_integration {
         );
         assert!(
             !load.warnings.is_empty(),
-            "le repli doit être signalé à l'utilisateur"
+            "the fallback must be reported to the user"
         );
     }
 }
@@ -549,7 +554,7 @@ mod file_operations {
     fn delete_items_removes_a_tree_and_leaves_its_siblings_alone() {
         let temp = temp_dir();
         let doomed = temp.path().join("doomed");
-        fs::create_dir_all(doomed.join("nested")).expect("créer l'arborescence");
+        fs::create_dir_all(doomed.join("nested")).expect("create the tree");
         write_file(&doomed, "top.txt");
         write_file(&doomed.join("nested"), "deep.txt");
         let survivor = write_file(temp.path(), "survivor.txt");
@@ -560,7 +565,7 @@ mod file_operations {
         assert!(report.failed.is_empty());
         assert_eq!(report.succeeded, vec![doomed.clone()]);
         assert!(!doomed.exists());
-        assert!(survivor.exists(), "un frère ne doit jamais être emporté");
+        assert!(survivor.exists(), "a sibling must never be taken along");
     }
 
     /// `rename_item` is what undo replays backwards for a move or a rename.
@@ -581,8 +586,8 @@ mod file_operations {
         assert!(original.exists());
         assert!(!renamed.exists());
         assert_eq!(
-            fs::read(&original).expect("relire le fichier"),
-            b"contenu".to_vec()
+            fs::read(&original).expect("read the file back"),
+            b"content".to_vec()
         );
     }
 
@@ -612,7 +617,7 @@ mod file_operations {
         let dst = temp_dir();
         // Built inside a real temp directory rather than from a hard-coded
         // absolute path, which was Unix-shaped and meant nothing on Windows.
-        let nonexistent = src.path().join("jamais_créé.txt");
+        let nonexistent = src.path().join("never_created.txt");
 
         let ops = LocalFileOperations::new();
         let report = ops.copy_items(&[nonexistent], dst.path(), None);
@@ -626,7 +631,7 @@ mod file_operations {
         let src = temp_dir();
         let dst = temp_dir();
         let sub = src.path().join("subdir");
-        fs::create_dir_all(&sub).expect("créer subdir");
+        fs::create_dir_all(&sub).expect("create subdir");
         write_file(&sub, "nested.txt");
 
         let ops = LocalFileOperations::new();
@@ -644,20 +649,24 @@ mod config_defaults {
     /// What was left of `dark_mode_roundtrip` once the name stopped lying: a
     /// default-value check. The actual round-trip now lives in
     /// `config_integration::saving_then_loading_restores_the_configuration`.
-    /// Le défaut suit celui de l'écosystème.
+    /// The default follows the ecosystem's.
     ///
-    /// Xion démarrait en clair sur ses palettes maison. La palette de repli du
-    /// catalogue Colony est `gruvbox/dark`, donc une installation neuve démarre
-    /// désormais en sombre — un changement visible, assumé pour que Xion
-    /// ressemble à ses voisins dès le premier lancement. Les configurations
-    /// existantes conservent leur choix, qui est migré.
+    /// Xion used to start light on its home-made palettes. The Colony
+    /// catalogue's fallback palette is `gruvbox/dark`, so a fresh install now
+    /// starts dark: a visible change, accepted so Xion looks like its
+    /// neighbours from the first launch. Existing configurations keep their
+    /// choice, which is migrated.
     #[test]
     fn the_default_theme_follows_the_ecosystem_fallback() {
         let config = AppConfig::default();
-        assert_eq!(config.theme.family, "gruvbox");
-        assert_eq!(config.theme.variant, "dark");
-        assert!(!config.theme.high_contrast);
-        assert_eq!(config.theme.accent, None);
+        assert_eq!(config.standard.selected_theme, "gruvbox");
+        assert_eq!(config.standard.selected_variant, "dark");
+        assert!(!config.standard.high_contrast);
+        assert_eq!(config.standard.selected_accent, None);
+        assert!(
+            !config.standard.auto_accent,
+            "auto accent is off by default"
+        );
     }
 
     #[test]
@@ -743,26 +752,35 @@ mod ui_update {
 
     // ── Dark mode ──────────────────────────────────────────────────────────────
 
-    /// `ToggleDarkMode` ne fait plus tourner cinq thèmes en dur : il bascule la
-    /// variante claire ou sombre de la famille courante. Le catalogue en compte
-    /// cinquante-sept ; les parcourir un par un n'aurait plus de sens.
+    /// `ToggleDarkMode` no longer cycles five hard-coded themes: it toggles the
+    /// light or dark variant of the current family. The catalogue has
+    /// fifty-seven; walking them one by one would make no sense any more.
     #[test]
     fn toggle_dark_mode_flips_the_variant_of_the_current_family() {
         let mut app = XionApp::new_for_test();
-        assert_eq!(app.state_for_test().config.theme.variant, "dark");
+        assert_eq!(
+            app.state_for_test().config.standard.selected_variant,
+            "dark"
+        );
         assert!(app.state_for_test().config.dark_mode);
 
         let _ = app.update_for_test(UiMessage::ToggleDarkMode);
-        assert_eq!(app.state_for_test().config.theme.variant, "light");
         assert_eq!(
-            app.state_for_test().config.theme.family,
+            app.state_for_test().config.standard.selected_variant,
+            "light"
+        );
+        assert_eq!(
+            app.state_for_test().config.standard.selected_theme,
             "gruvbox",
-            "la famille ne doit pas changer"
+            "the family must not change"
         );
         assert!(!app.state_for_test().config.dark_mode);
 
         let _ = app.update_for_test(UiMessage::ToggleDarkMode);
-        assert_eq!(app.state_for_test().config.theme.variant, "dark");
+        assert_eq!(
+            app.state_for_test().config.standard.selected_variant,
+            "dark"
+        );
         assert!(app.state_for_test().config.dark_mode);
     }
 
@@ -968,7 +986,7 @@ mod ui_update {
 ///
 /// Delete goes to the trash without asking; Shift+Delete is irreversible and
 /// always waits for a confirmation. Both stage their real work in the returned
-/// `Task`, which no runtime drives here — so the observable difference is the
+/// `Task`, which no runtime drives here, so the observable difference is the
 /// selection: the trash path clears it at once, the permanent path only after
 /// `ConfirmAccept` consumes the pending dialog.
 #[cfg(feature = "test-util")]
@@ -1000,7 +1018,7 @@ mod deletion_flow {
 
     /// Regression: Delete used to call `remove_file`/`remove_dir_all` outright.
     /// It must hand the selection to the trash, erase nothing on the spot, and
-    /// raise no confirmation — a recoverable action has nothing to confirm.
+    /// raise no confirmation, a recoverable action has nothing to confirm.
     #[test]
     fn delete_key_goes_to_the_trash_without_asking() {
         let temp = temp_dir();
@@ -1012,10 +1030,10 @@ mod deletion_flow {
 
         let _ = app.update_for_test(UiMessage::KeyboardCommand(KeyboardCommand::Delete));
 
-        assert!(victim.exists(), "Suppr ne doit rien effacer directement");
+        assert!(victim.exists(), "Delete must not erase anything directly");
         assert!(
             selection(&app).is_empty(),
-            "la sélection est partie à la corbeille"
+            "the selection went to the trash"
         );
 
         // Nothing is pending, so accepting a confirmation is a no-op and the
@@ -1038,14 +1056,11 @@ mod deletion_flow {
             KeyboardCommand::DeletePermanently,
         ));
 
-        assert!(
-            victim.exists(),
-            "rien ne doit disparaître avant la confirmation"
-        );
+        assert!(victim.exists(), "nothing may disappear before confirmation");
         assert_eq!(
             selection(&app),
             vec![victim.clone()],
-            "la sélection reste intacte tant que le dialogue est ouvert"
+            "the selection stays intact while the dialog is open"
         );
 
         // Accepting consumes the pending action, which clears the selection.

@@ -10,6 +10,7 @@ use std::time::Instant;
 use iced::{Point, Task, keyboard};
 
 use crate::filesystem::{FileOperationKind, LocalFileOperations};
+use crate::i18n::{t, tf};
 use crate::ui::{KeyboardCommand, SelectionKind, UiMessage};
 
 use crate::ui::theme::layout::{
@@ -35,10 +36,10 @@ impl XionApp {
         match message {
             UiMessage::Noop => {}
             UiMessage::ExitRequested => {
-                // Les shells partent avec le programme. Pas par le cimetière :
-                // l'application s'arrête, il n'y aura pas de tour suivant pour
-                // le vider, et le processus meurt avant qu'un flux ne s'en
-                // aperçoive.
+                // The shells go with the program. Not through the retirement
+                // list: the application is stopping, there will be no next
+                // round to empty it, and the process dies before any stream
+                // notices.
                 for tab in &mut self.terminal.tabs {
                     tab.terminal = None;
                 }
@@ -70,8 +71,8 @@ impl XionApp {
                 if self.pane_resize.terminal_resizing
                     && let Some((start_y, start_height)) = self.pane_resize.terminal_resize_anchor
                 {
-                    // La poignée est en haut du panneau : le tirer vers le
-                    // haut l'agrandit, donc la hauteur croît quand y décroît.
+                    // The handle is at the top of the panel: dragging it up
+                    // makes it taller, so the height grows as y shrinks.
                     let delta = position.y - start_y;
                     self.pane_resize.terminal_height =
                         (start_height - delta).clamp(TERMINAL_MIN_HEIGHT, TERMINAL_MAX_HEIGHT);
@@ -312,7 +313,7 @@ impl XionApp {
                     0 => ContextSubmenu::Compress,
                     _ => ContextSubmenu::Label,
                 };
-                // Always open on hover/click (not toggle) — closing is handled
+                // Always open on hover/click (not toggle): closing is handled
                 // by hovering a different area or dismissing the menu
                 self.menus.context_submenu = Some(target);
             }
@@ -453,12 +454,12 @@ impl XionApp {
                     let destination = path.clone();
                     let items = drag_state.items;
                     let is_copy = self.modifiers.control;
-                    let action_label = if is_copy { "Copie" } else { "Déplacement" };
-                    self.last_action = Some(format!(
-                        "{} (glisser-déposer) vers {}",
-                        action_label,
-                        destination.display()
-                    ));
+                    let key = if is_copy {
+                        "drop_copy_to"
+                    } else {
+                        "drop_move_to"
+                    };
+                    self.last_action = Some(tf(key, &[("destination", &destination.display())]));
                     self.ignore_next_navigation = Some(destination.clone());
                     let operation = if is_copy {
                         FileOperationKind::Copy
@@ -502,7 +503,7 @@ impl XionApp {
                             })
                             .await
                             .unwrap_or_else(|error| {
-                                tracing::error!("Tâche de dépôt interrompue : {error}");
+                                tracing::error!("Drop task interrupted: {error}");
                                 crate::filesystem::OperationReport::empty(operation)
                             })
                         },
@@ -512,7 +513,7 @@ impl XionApp {
             }
             // Feature Q: Undo
             UiMessage::ExternalFileHovered(path) => {
-                self.last_action = Some(format!("Fichier survolé : {}", path.display()));
+                self.last_action = Some(tf("drop_hovered", &[("path", &path.display())]));
             }
             UiMessage::ExternalFileDropped(path) => {
                 // Copy the dropped file/folder into the current directory
@@ -520,8 +521,10 @@ impl XionApp {
                     let file_name = path.file_name().unwrap_or_default().to_os_string();
                     let source = path.clone();
                     let external_drop_id = self.next_operation_id();
-                    self.last_action =
-                        Some(format!("Copie de {} ...", file_name.to_string_lossy()));
+                    self.last_action = Some(tf(
+                        "drop_copying",
+                        &[("name", &file_name.to_string_lossy())],
+                    ));
                     tasks.push(Task::perform(
                         async move {
                             tokio::task::spawn_blocking(move || {
@@ -546,7 +549,7 @@ impl XionApp {
                         move |report| UiMessage::FileOperationFinished(external_drop_id, report),
                     ));
                 } else {
-                    self.last_action = Some("Drop non supporté ici".to_string());
+                    self.last_action = Some(t("drop_unsupported").to_string());
                 }
             }
             UiMessage::ExternalFileCancelled => {

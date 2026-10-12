@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use iced::Task;
 
+use crate::i18n::{t, tf, tn};
 use crate::ui::UiMessage;
 
 use crate::ui::app::helpers::{self};
@@ -22,7 +23,7 @@ impl XionApp {
     /// A truly exhaustive match is impossible here: the compiler cannot know
     /// that the seven handlers before this one already consumed their
     /// variants, so it would demand an arm for all 156. The catch-all is
-    /// therefore loud rather than silent — an unrouted message fails the test
+    /// therefore loud rather than silent, an unrouted message fails the test
     /// suite in debug and is logged in release, instead of quietly doing
     /// nothing forever.
     pub(super) fn update_tools(
@@ -47,22 +48,25 @@ impl XionApp {
             }
             UiMessage::TogglePreferences => {
                 self.menus.preferences.open = !self.menus.preferences.open;
-                // Le menu `⋯` couvrirait la page qui vient de s'ouvrir.
+                // Every visit starts on General, as in every Colony program.
+                self.menus.preferences.category = crate::ui::PreferencesCategory::default();
+                // The `⋯` menu would cover the page that just opened.
                 self.menus.overflow_open = false;
             }
             UiMessage::SelectPreferencesCategory(category) => {
                 self.menus.preferences.category = category;
             }
             UiMessage::TogglePreferencesSection(key) => {
-                if !self.menus.preferences.expanded.remove(key) {
-                    self.menus.preferences.expanded.insert(key);
+                let expanded = &mut self.menus.preferences.expanded;
+                if !expanded.remove(key) {
+                    expanded.insert(key.to_string());
                 }
             }
             UiMessage::ToggleShowHidden => {
                 self.state.config.list.show_hidden = !self.state.config.list.show_hidden;
                 self.config_manager.save(&self.state.config);
-                // Le filtrage se fait au chargement, pas au rendu : sans
-                // relecture, la liste garde l'ancien contenu.
+                // Filtering happens at load, not at render: without a reload,
+                // the list keeps the old content.
                 tasks.push(self.refresh_entries());
             }
             UiMessage::ToggleDirectoriesFirst => {
@@ -71,41 +75,19 @@ impl XionApp {
                 self.config_manager.save(&self.state.config);
                 tasks.push(self.refresh_entries());
             }
-            UiMessage::SetThemeVariant(family, variant) => {
-                self.state.config.theme.family = family.to_string();
-                self.state.config.theme.variant = variant.to_string();
-                self.state.config.dark_mode =
-                    crate::ui::theme::resolves_dark(&self.state.config.theme);
-                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
-                // Le surligneur garde des couleurs calculées pour l'ancien
-                // thème tant qu'on ne le vide pas.
-                self.cached_highlighted_preview = None;
-                self.config_manager.save(&self.state.config);
+            UiMessage::Preference(change) => {
+                if let Some(task) = self.apply_preference(change) {
+                    tasks.push(task);
+                }
             }
-            UiMessage::SetAccent(key) => {
-                // Rechoisir le même accent revient à « celui du thème » : sans
-                // ça, le sélecteur n'aurait aucun moyen de revenir en arrière.
-                let current = self.state.config.theme.accent.as_deref();
-                self.state.config.theme.accent = if current == Some(key) {
-                    None
-                } else {
-                    Some(key.to_string())
-                };
-                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
-                self.config_manager.save(&self.state.config);
+            UiMessage::DismissToast(id) => {
+                if self.menus.preferences.toast == Some(id) {
+                    self.menus.preferences.toast = None;
+                }
             }
-            UiMessage::ToggleHighContrast => {
-                self.state.config.theme.high_contrast = !self.state.config.theme.high_contrast;
-                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
-                self.config_manager.save(&self.state.config);
-            }
-            // Feature 4: Color themes
-            UiMessage::SetTheme(theme) => {
-                self.state.config.dark_mode = crate::ui::theme::resolves_dark(&theme);
-                self.state.config.theme = theme;
-                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
-                // Invalidate syntax highlight cache so it's regenerated with the new theme colors
-                self.cached_highlighted_preview = None;
+            UiMessage::SetLanguage(language) => {
+                self.state.config.language = language;
+                crate::i18n::apply(language);
                 self.config_manager.save(&self.state.config);
             }
             // Feature 5: Bulk rename
@@ -139,8 +121,7 @@ impl XionApp {
                         error: None,
                     });
                 } else {
-                    self.last_action =
-                        Some("Sélectionnez plusieurs fichiers pour renommer".to_string());
+                    self.last_action = Some(t("bulk_rename_select_several").to_string());
                 }
             }
             UiMessage::BulkRenameFindChanged(val) => {
@@ -171,11 +152,11 @@ impl XionApp {
                 self.bulk_rename = None;
                 match result {
                     Ok(n) => {
-                        self.last_action = Some(format!("{} fichiers renommés", n));
+                        self.last_action = Some(tn("bulk_rename_done", n, &[]));
                         tasks.push(self.refresh_entries_in_place());
                     }
                     Err(e) => {
-                        self.last_action = Some(format!("Erreur renommage : {}", e));
+                        self.last_action = Some(tf("error_rename", &[("error", &e)]));
                     }
                 }
             }
@@ -214,7 +195,7 @@ impl XionApp {
             // ── Feature A: Compress to ZIP ──────────────────────────────────
             UiMessage::OpenWith(path) => {
                 if let Err(error) = crate::platform::open_with(&path) {
-                    self.last_action = Some(format!("« Ouvrir avec » : {error}"));
+                    self.last_action = Some(tf("error_open_with", &[("error", &error)]));
                 }
             }
             // ── Feature C: File Diff ──────────────────────────────────────────
@@ -303,8 +284,7 @@ impl XionApp {
                         },
                     ));
                 } else {
-                    self.last_action =
-                        Some("Sélectionnez exactement 2 fichiers pour comparer".to_string());
+                    self.last_action = Some(t("compare_select_two").to_string());
                 }
             }
             UiMessage::DiffLoaded {
@@ -377,18 +357,14 @@ impl XionApp {
                                     let entries = permissions::parse_icacls_output(&text);
                                     Ok((path, entries))
                                 }
-                                Err(error) => Err((
-                                    path,
-                                    format!("Impossible de lire les permissions : {error}"),
-                                )),
+                                Err(error) => {
+                                    Err((path, tf("permissions_read_failed", &[("error", &error)])))
+                                }
                             }
                         })
                         .await
                         .unwrap_or_else(|_| {
-                            Err((
-                                path_fallback,
-                                "Erreur interne lors de la lecture des permissions".to_string(),
-                            ))
+                            Err((path_fallback, t("permissions_internal_error").to_string()))
                         })
                     },
                     |result| match result {
@@ -484,32 +460,38 @@ impl XionApp {
                 different,
                 common,
             } => {
-                self.last_action = Some(format!(
-                    "Comparaison : {} communs, {} différents, {} unique A, {} unique B",
-                    common,
-                    different.len(),
-                    only_a.len(),
-                    only_b.len()
+                self.last_action = Some(tf(
+                    "compare_summary",
+                    &[
+                        ("common", &common),
+                        ("different", &different.len()),
+                        ("only_a", &only_a.len()),
+                        ("only_b", &only_b.len()),
+                    ],
                 ));
                 // Build diff lines for display in diff viewer
                 let mut lines = Vec::new();
-                lines.push(crate::ui::DiffLine::Header(format!(
-                    "--- {} fichiers en commun ---",
-                    common
+                lines.push(crate::ui::DiffLine::Header(tn(
+                    "compare_common_files",
+                    common,
+                    &[],
                 )));
                 for name in &different {
-                    lines.push(crate::ui::DiffLine::Header(format!(
-                        "≠ {name} (taille différente)"
+                    lines.push(crate::ui::DiffLine::Header(tf(
+                        "compare_size_differs",
+                        &[("name", name)],
                     )));
                 }
                 for name in &only_a {
-                    lines.push(crate::ui::DiffLine::Removed(format!(
-                        "Seulement dans A: {name}"
+                    lines.push(crate::ui::DiffLine::Removed(tf(
+                        "compare_only_a",
+                        &[("name", name)],
                     )));
                 }
                 for name in &only_b {
-                    lines.push(crate::ui::DiffLine::Added(format!(
-                        "Seulement dans B: {name}"
+                    lines.push(crate::ui::DiffLine::Added(tf(
+                        "compare_only_b",
+                        &[("name", name)],
                     )));
                 }
                 let path_a = self.state.route.local_path().cloned().unwrap_or_default();
@@ -528,34 +510,40 @@ impl XionApp {
             }
             // ── #18: Tab drag reorder ────────────────────────────────────────
             UiMessage::ToggleDarkMode => {
-                // Bascule clair/sombre dans la famille courante, au lieu de
-                // faire tourner cinq thèmes en dur. Le catalogue en compte
-                // cinquante-sept ; les parcourir un par un n'aurait plus de
-                // sens, et le choix précis appartient au sélecteur.
+                // Toggle light/dark within the current family, instead of
+                // cycling five hard-coded themes. The catalogue has fifty-seven;
+                // walking them one by one would make no sense any more, and the
+                // precise choice belongs to the picker.
                 //
-                // Une famille dont la variante ne s'appelle ni `dark` ni
-                // `light` — `catppuccin` et ses quatre saveurs — n'a pas de
-                // contraire évident : `resolve` retombe alors sur le repli, ce
-                // qui serait un saut brutal. On reste sur place dans ce cas.
-                let choice = &self.state.config.theme;
-                let opposite = match choice.variant.as_str() {
+                // A family whose variants are called neither `dark` nor `light`
+                // (`catppuccin` and its four flavours) has no obvious opposite:
+                // stay in place and say so rather than jump to another family.
+                let standard = &self.state.config.standard;
+                let opposite = match standard.selected_variant.as_str() {
                     "dark" => Some("light"),
                     "light" => Some("dark"),
                     _ => None,
                 };
-                if let Some(variant) = opposite {
-                    let mut next = choice.clone();
-                    next.variant = variant.to_string();
-                    self.state.config.dark_mode = crate::ui::theme::resolves_dark(&next);
-                    self.state.config.theme = next;
-                    crate::ui::theme::sync_colony_globals(&self.state.config.theme);
-                    self.cached_highlighted_preview = None;
-                    self.config_manager.save(&self.state.config);
-                } else {
-                    self.last_action = Some(format!(
-                        "« {} » n'a pas de variante claire ou sombre — choisissez dans le menu",
-                        choice.family
-                    ));
+                let change =
+                    colony_ui::theme::family(&standard.selected_theme).and_then(|family| {
+                        let variant = family.variant(opposite?)?;
+                        Some(colony_ui::preferences::Change::Theme {
+                            family: family.key,
+                            variant: variant.key,
+                        })
+                    });
+                match change {
+                    Some(change) => {
+                        if let Some(task) = self.apply_preference(change) {
+                            tasks.push(task);
+                        }
+                    }
+                    None => {
+                        self.last_action = Some(tf(
+                            "theme_no_light_dark_variant",
+                            &[("family", &standard.selected_theme)],
+                        ));
+                    }
                 }
             }
             UiMessage::ToggleCompactMode => {
@@ -569,11 +557,123 @@ impl XionApp {
             }
             // ── Feature O: Grep ───────────────────────────────────────────────
             other => {
-                debug_assert!(false, "UiMessage non routé vers un domaine : {other:?}");
-                tracing::error!("UiMessage non routé, ignoré : {other:?}");
+                debug_assert!(false, "UiMessage not routed to a domain: {other:?}");
+                tracing::error!("UiMessage not routed, ignored: {other:?}");
             }
         }
 
         Flow::Continue
+    }
+}
+
+impl XionApp {
+    /// Records a shared Appearance or Accessibility change, puts it into
+    /// effect and saves it: there is no Save button.
+    ///
+    /// A theme change also raises the "Theme applied." toast, since switching
+    /// to a neighbouring variant can otherwise go unnoticed, and returns the
+    /// timer that hides it again.
+    pub(in crate::ui::app) fn apply_preference(
+        &mut self,
+        change: colony_ui::preferences::Change,
+    ) -> Option<Task<UiMessage>> {
+        use colony_ui::preferences::Change;
+
+        let config = &mut self.state.config;
+        config.standard.update(change);
+        config.dark_mode = crate::ui::theme::resolves_dark(&config.standard);
+        self.config_manager.save(&self.state.config);
+
+        let Change::Theme { .. } = change else {
+            return None;
+        };
+        // The highlighter keeps colours computed for the old theme until it is
+        // cleared.
+        self.cached_highlighted_preview = None;
+
+        let preferences = &mut self.menus.preferences;
+        preferences.toast_counter += 1;
+        let id = preferences.toast_counter;
+        preferences.toast = Some(id);
+        // Inside `async`: the timer needs the runtime that runs the task, not
+        // the one (if any) that builds it.
+        Some(Task::perform(
+            async { tokio::time::sleep(crate::ui::theme::timing::TOAST_DURATION).await },
+            move |()| UiMessage::DismissToast(id),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod preference_tests {
+    use colony_ui::preferences::Change;
+
+    use crate::ui::UiMessage;
+    use crate::ui::app::XionApp;
+
+    fn apply_theme(app: &mut XionApp, family: &'static str, variant: &'static str) {
+        let _ = app.update(UiMessage::Preference(Change::Theme { family, variant }));
+    }
+
+    /// Applying a theme is immediate, and the toast makes it noticeable.
+    #[test]
+    fn a_theme_change_saves_the_choice_and_raises_the_toast() {
+        let mut app = XionApp::new_for_test();
+        assert_eq!(app.menus.preferences.toast, None);
+
+        apply_theme(&mut app, "nord", "dark");
+
+        let standard = &app.state.config.standard;
+        assert_eq!(
+            (
+                standard.selected_theme.as_str(),
+                standard.selected_variant.as_str()
+            ),
+            ("nord", "dark")
+        );
+        assert!(app.menus.preferences.toast.is_some());
+    }
+
+    /// The timer of an older toast must not hide the one raised after it.
+    #[test]
+    fn only_the_latest_toast_is_dismissed_by_its_timer() {
+        let mut app = XionApp::new_for_test();
+        apply_theme(&mut app, "nord", "dark");
+        let first = app.menus.preferences.toast.expect("first toast");
+        apply_theme(&mut app, "gruvbox", "light");
+        let second = app.menus.preferences.toast.expect("second toast");
+
+        let _ = app.update(UiMessage::DismissToast(first));
+        assert_eq!(app.menus.preferences.toast, Some(second));
+
+        let _ = app.update(UiMessage::DismissToast(second));
+        assert_eq!(app.menus.preferences.toast, None);
+    }
+
+    /// Only a theme change raises it: the other settings show their effect
+    /// on the page itself.
+    #[test]
+    fn other_changes_raise_no_toast() {
+        let mut app = XionApp::new_for_test();
+        let _ = app.update(UiMessage::Preference(Change::AutoAccent(true)));
+        assert!(app.state.config.standard.auto_accent);
+        assert_eq!(app.menus.preferences.toast, None);
+    }
+
+    /// Every visit to the page starts on General.
+    #[test]
+    fn opening_the_page_starts_on_general() {
+        let mut app = XionApp::new_for_test();
+        let _ = app.update(UiMessage::TogglePreferences);
+        let _ = app.update(UiMessage::SelectPreferencesCategory(
+            crate::ui::PreferencesCategory::Files,
+        ));
+        let _ = app.update(UiMessage::TogglePreferences);
+        let _ = app.update(UiMessage::TogglePreferences);
+        assert!(app.menus.preferences.open);
+        assert_eq!(
+            app.menus.preferences.category,
+            crate::ui::PreferencesCategory::General
+        );
     }
 }

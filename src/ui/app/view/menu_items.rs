@@ -14,6 +14,7 @@ use super::widgets::RADIUS;
 use super::widgets::ViewCtx;
 use super::widgets::body_text;
 use super::widgets::caption_text;
+use super::widgets::icon_text;
 use super::widgets::raised_button_style;
 
 /// One clickable menu entry, with its icon, label and optional shortcut hint.
@@ -29,7 +30,12 @@ pub(super) fn item<'a>(
         spacing,
         typography,
     } = ctx;
-    let main_text = body_text(typography, format!("{} {}", icon, label));
+    let main_text = row![
+        icon_text(typography, icon.to_string()),
+        body_text(typography, label.to_string())
+    ]
+    .spacing(spacing.xs)
+    .align_y(Alignment::Center);
     let content: Element<'_, UiMessage> = if shortcut.is_empty() {
         main_text.into()
     } else {
@@ -63,7 +69,12 @@ pub(super) fn disabled_item<'a>(
         spacing,
         typography,
     } = ctx;
-    let main_text = body_text(typography, format!("{} {}", icon, label)).color(colors.text_muted);
+    let main_text = row![
+        icon_text(typography, icon.to_string()).color(colors.text_muted),
+        body_text(typography, label.to_string()).color(colors.text_muted)
+    ]
+    .spacing(spacing.xs)
+    .align_y(Alignment::Center);
     let content: Element<'_, UiMessage> = if shortcut.is_empty() {
         main_text.into()
     } else {

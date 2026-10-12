@@ -17,15 +17,12 @@ categories = ["gui", "filesystem"]
 # self dev-dependency below turns the feature on for them alone.
 test-util = []
 
-# Remote FTP browsing. Unreachable from the UI today; see the note on suppaftp.
-ftp = ["dep:suppaftp"]
-
 [dependencies]
 # The shared Colony foundation: palettes, configuration paths, i18n and
 # widgets. Taken from crates.io, as Colony itself does.
-colony-ui = "0.1.5"
-# Le même tampon partagé que celui qu'iced attend pour ses images : garder les
-# octets d'une vignette dans un `Bytes` évite d'en donner une copie au handle.
+colony-ui = "0.1.6"
+# The same shared buffer iced expects for its images: keeping a thumbnail's
+# bytes in a `Bytes` avoids handing a copy to the handle.
 bytes = "1.12.1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 directories = "6.0.0"
@@ -33,34 +30,34 @@ directories = "6.0.0"
 # default feature set, which re-enabled every codec the line below deliberately
 # refuses (exr, avif, qoi...). They were compiled and linked regardless.
 iced = { version = "0.14.0", features = ["image-without-codecs", "wgpu", "tokio"] }
-# Uniquement pour demander à wgpu s'il trouve un adaptateur Vulkan, avant de le
-# restreindre à Vulkan — voir `prefer_vulkan_when_available` dans main.rs. Mêmes
-# version et mêmes features que ce qu'iced_wgpu déclare, donc la caisse déjà
-# compilée pour iced est réutilisée telle quelle : aucune compilation ajoutée.
+# Only to ask wgpu whether it finds a Vulkan adapter, before restricting it to
+# Vulkan: see `prefer_vulkan_when_available` in src/platform/gpu.rs. Same version
+# and features as iced_wgpu declares, so the crate already compiled for iced is
+# reused as is: no extra compilation.
 wgpu = { version = "27.0.1", default-features = false, features = ["std"] }
-# Le terminal intégré : une vraie grille VT, pas un lecteur de lignes.
-# Adossé à alacritty_terminal, et surtout construit pour iced 0.14 — la version
-# exacte de Xion. Le modèle écrit à la main ici ne savait pas positionner un
-# curseur en deux dimensions, donc tout programme plein écran — claude, vim,
-# htop, lazygit — empilait ses redessins au lieu de les recouvrir.
+# The integrated terminal: a real VT grid, not a line reader. Backed by
+# alacritty_terminal, and above all built for iced 0.14, Xion's exact version.
+# The model hand-written here could not position a cursor in two dimensions, so
+# every full-screen program (claude, vim, htop, lazygit) stacked its redraws
+# instead of overwriting them.
 #
-# Épinglé sur une révision amont plutôt que sur 0.8.0, à cause d'un défaut que
-# 0.8.0 porte et qui rendait le terminal inutilisable ici :
+# Pinned on an upstream revision rather than 0.8.0, because of a flaw 0.8.0
+# carries that made the terminal unusable here:
 # https://github.com/Harzu/iced_term/issues/67
 #
-# `TerminalSize::default()` déclare `layout_width: 80.0` et `layout_height: 50.0`
-# — des pixels — avec des cellules de 1×1. Dès que la mesure de police réelle
-# arrive sans que la taille du panneau ne soit encore connue, la grille tombe à
-# `80/8 = 10` colonnes sur `50/18 = 2` lignes. Sur dix colonnes, une invite zsh
-# enroule à chaque frappe et zle redessine sans fin : les caractères semblaient
-# se dupliquer alors que le shell recevait exactement ce qu'on tapait.
+# `TerminalSize::default()` declares `layout_width: 80.0` and
+# `layout_height: 50.0` (pixels) with 1x1 cells. As soon as the real font
+# measure arrives before the panel size is known, the grid drops to
+# `80/8 = 10` columns by `50/18 = 2` rows. On ten columns, a zsh prompt wraps on
+# every keystroke and zle redraws endlessly: characters seemed to duplicate
+# while the shell received exactly what was typed.
 #
-# Le correctif (PR #70) réinitialise l'état du widget quand l'identifiant du
-# terminal change ; sans lui, changer d'interpréteur ou d'onglet créait un
-# terminal que le widget ne redimensionnait jamais. La révision apporte aussi
-# #69 (interblocage sur l'envoi d'événements) et #89 (Ctrl+U envoyait « Q »).
+# The fix (PR #70) resets the widget state when the terminal id changes;
+# without it, switching shell or tab created a terminal the widget never
+# resized. The revision also brings #69 (deadlock on event sending) and #89
+# (Ctrl+U sent "Q").
 #
-# À repasser sur une version publiée dès qu'elle sort.
+# Move back to a published version as soon as one ships.
 iced_term = { git = "https://github.com/Harzu/iced_term", rev = "1df60bb08a6a0ffcf3dfc1a74ee568947fc48cb8", version = "0.8.0" }
 tokio = { version = "1.53.2", features = ["rt", "time", "sync", "process", "io-util"] }
 # No "tiff": it was the only thing pulling tiff -> zune-jpeg 0.4, a SECOND
@@ -74,6 +71,9 @@ image = { version = "0.25.10", default-features = false, features = [
 ] }
 notify = "8.2.0"
 serde = { version = "1.0.229", features = ["derive"] }
+# The locale tables in src/i18n/. Already in the tree through colony-ui, which
+# reads its own shared labels the same way.
+serde_json = "1.0.151"
 sysinfo = "0.39.6"
 toml = "1.1.7"
 tracing = "0.1.44"
@@ -92,27 +92,20 @@ flate2 = "1.1.10"
 sevenz-rust2 = { version = "0.23.0", default-features = false, features = ["bzip2", "compress", "ppmd"] }
 ignore = "0.4.33"
 encoding_rs = "0.8.42"
-# Optional, and off by default. `list_ftp_directory` has no caller anywhere in
-# src/ui/: nothing in the interface can reach it. Enabling it by default cost
-# twelve crates including the whole openssl chain — and a build dependency on
-# the system OpenSSL — for code that never runs. Turn it back on with
-# `--features ftp` once there is a command that calls it.
-suppaftp = { version = "12.1.1", features = ["native-tls"], optional = true }
 mdns-sd = "0.21.5"
 
-# Déjà compilé dans le binaire — iced le tire via mundy, qui lit les réglages
-# d'apparence du bureau. L'instance unique ne coûte donc aucune dépendance
-# supplémentaire, seulement la version sur laquelle Cargo s'accorde déjà.
+# Already compiled into the binary: iced pulls it in through mundy, which reads
+# the desktop appearance settings. The single instance therefore costs no extra
+# dependency, only the version Cargo already agrees on.
 [target.'cfg(unix)'.dependencies]
 zbus = "5.19.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
+    "Win32_Globalization",
     "Win32_NetworkManagement_WNet",
-    "Win32_Storage_FileSystem",
     "Win32_System_Console",
-    "Win32_System_Com",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

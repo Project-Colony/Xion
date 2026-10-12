@@ -1,31 +1,34 @@
 //! The window header: one bar, and a tab strip when there is more than one tab.
 //!
-//! It used to be three stacked bands — tabs, then navigation with the address
+//! It used to be three stacked bands, tabs, then navigation with the address
 //! and the search, then a command bar of seven buttons. On a 720-pixel window
 //! that was 92 pixels of chrome before the first file, and the command bar gave
 //! the same visual weight to six different kinds of thing: verbs acting on the
 //! selection, view toggles, a theme switch, a panel opener and a menu.
 //!
-//! Now: navigation, address, search and one `⋯` button. Everything the command
-//! bar held moved into that menu, grouped and separated. 56 pixels.
+//! Now: the "Xion" button that opens the preferences, navigation, address,
+//! search and one `⋯` button. Everything the command bar held moved into that
+//! menu, grouped and separated. 56 pixels.
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, mouse_area, row};
 use iced::{Alignment, Background, Element, Length, Theme};
 
+use crate::i18n::t;
 use crate::ui::theme::icons;
-use crate::ui::theme::layout::TAB_STRIP_HEIGHT;
+use crate::ui::theme::layout::{TAB_STRIP_HEIGHT, scaled};
 use crate::ui::{KeyboardCommand, UiMessage};
 
 use super::XionApp;
+use super::preferences::PROGRAM_NAME;
 use super::widgets::{self, TipVariant, ViewCtx};
 
 use super::widgets::RADIUS;
 use super::widgets::body_text;
-use super::widgets::caption_text;
 use super::widgets::glyph_text;
 use super::widgets::header_style;
+use super::widgets::icon_text;
 
 impl XionApp {
     /// Returns the header and, separately, the address-history dropdown: the
@@ -39,21 +42,22 @@ impl XionApp {
             colors, spacing, ..
         } = ctx;
 
-        let toolbar_button = |label: String| widgets::toolbar_button(ctx, label);
+        let toolbar_icon = |glyph: &'static str| widgets::toolbar_icon(ctx, glyph);
 
         let back_button = if self.history.can_back() {
-            toolbar_button(icons::BACK.to_string()).on_press(UiMessage::Back)
+            toolbar_icon(icons::BACK).on_press(UiMessage::Back)
         } else {
-            toolbar_button(icons::BACK.to_string())
+            toolbar_icon(icons::BACK)
         };
-        let back_button = widgets::tip(ctx, back_button, "Précédent (Alt+←)", TipVariant::Nav);
+        let back_button = widgets::tip(ctx, back_button, t("header_back"), TipVariant::Nav);
 
         let forward_button = if self.history.can_forward() {
-            toolbar_button(icons::FORWARD.to_string()).on_press(UiMessage::Forward)
+            toolbar_icon(icons::FORWARD).on_press(UiMessage::Forward)
         } else {
-            toolbar_button(icons::FORWARD.to_string())
+            toolbar_icon(icons::FORWARD)
         };
-        let forward_button = widgets::tip(ctx, forward_button, "Suivant (Alt+→)", TipVariant::Nav);
+        let forward_button =
+            widgets::tip(ctx, forward_button, t("header_forward"), TipVariant::Nav);
 
         let has_parent = self
             .state
@@ -61,14 +65,13 @@ impl XionApp {
             .local_path()
             .and_then(|path| path.parent())
             .is_some();
-        let go_up_button = toolbar_button("\u{2191}".to_string());
+        let go_up_button = toolbar_icon("\u{2191}");
         let go_up_button = if has_parent {
             go_up_button.on_press(UiMessage::KeyboardCommand(KeyboardCommand::GoToParent))
         } else {
             go_up_button
         };
-        let go_up_button =
-            widgets::tip(ctx, go_up_button, "Dossier parent (Alt+↑)", TipVariant::Nav);
+        let go_up_button = widgets::tip(ctx, go_up_button, t("header_parent"), TipVariant::Nav);
 
         // Refresh left the bar: it is one press of F5, it is in the `⋯` menu,
         // and it was the least-used of the four arrows.
@@ -79,13 +82,14 @@ impl XionApp {
 
         let overflow_button = widgets::tip(
             ctx,
-            toolbar_button("\u{22ef}".to_string())
+            toolbar_icon("\u{22ef}")
                 .on_press(UiMessage::ToggleOverflowMenu(!self.menus.overflow_open)),
-            "Plus d'actions",
+            t("header_more_actions"),
             TipVariant::Nav,
         );
 
         let bar = row![
+            self.render_identity_button(ctx),
             navigation,
             address_section,
             search_bar,
@@ -97,11 +101,10 @@ impl XionApp {
 
         let mut header_column = column![bar].spacing(spacing.xs);
 
-        // Toujours visible. Je l'avais masquée tant qu'il n'y avait qu'un onglet,
-        // pour gagner trente pixels — mais elle porte le seul « + » de
-        // l'interface, donc masquer la barre supprimait le seul moyen visible
-        // d'ouvrir un second onglet. Un raccourci clavier existe ; il ne se
-        // découvre pas.
+        // Always visible. It used to be hidden while there was only one tab, to
+        // save thirty pixels, but it carries the only "+" of the interface, so
+        // hiding the bar removed the only visible way to open a second tab. A
+        // keyboard shortcut exists; it is not discoverable.
         header_column = header_column.push(self.render_tab_strip(ctx));
 
         let header = container(header_column)
@@ -116,85 +119,40 @@ impl XionApp {
         (header.into(), history_menu)
     }
 
-    /// Le bouton « Xion », qui ouvre et ferme les préférences.
+    /// The "Xion" button, which opens and closes the preferences.
     ///
-    /// La convention Colony veut que l'identité du programme soit le chemin
-    /// vers ses réglages — « not a gear floating in a toolbar, not an entry
-    /// buried in a list of sections ». Xion a la forme de chrome de Digger, une
-    /// barre horizontale, et suit donc sa mise en œuvre : un bouton texte, pas
-    /// un fond de carte.
-    ///
-    /// Il vit dans la bande d'onglets, et tout l'enjeu est qu'il ne se lise pas
-    /// comme un onglet de plus. Ce qui fait qu'un bouton *devient* un onglet,
-    /// c'est le contact avec le bas de la bande — c'est écrit à
-    /// [`TAB_STRIP_HEIGHT`]. Celui-ci est donc centré verticalement, sans
-    /// jamais toucher ce bas, et garde un arrondi complet là où les onglets
-    /// sont carrés en bas. Les deux différences se voient d'un coup d'œil.
+    /// The Colony convention wants the program's identity to be the path to its
+    /// settings: "not a gear floating in a toolbar, not an entry buried in a
+    /// list of sections". It is the first thing in the header's top-left
+    /// corner, the largest and most stable target in the window, drawn by
+    /// colony-ui like every other Colony program's: the name in bold, the gear,
+    /// and a background while the page is open. The page's Close button sends
+    /// the same message.
     fn render_identity_button(&self, ctx: ViewCtx) -> Element<'_, UiMessage> {
-        let ViewCtx {
-            colors,
-            spacing,
-            typography,
-        } = ctx;
+        /// The name's base size: a tab bar's, where a sidebar would use 30.
+        const IDENTITY_SIZE: u16 = 15;
 
         let open = self.menus.preferences.open;
-
-        let label = row![
-            caption_text(typography, icons::SETTINGS),
-            body_text(typography, "Xion")
-        ]
-        .spacing(spacing.xs)
-        .align_y(Alignment::Center);
-
-        let identity = button(label)
-            .padding([spacing.xs, spacing.sm])
-            .style(move |_theme: &Theme, status: ButtonStatus| {
-                // Ouvert : l'accent et un fond. Fermé : discret, parce que le
-                // nom du programme n'a pas à concurrencer les onglets.
-                let background = if open {
-                    Some(Background::Color(colors.selection))
-                } else if matches!(status, ButtonStatus::Hovered) {
-                    Some(Background::Color(colors.hover))
-                } else {
-                    None
-                };
-
-                iced::widget::button::Style {
-                    background,
-                    text_color: if open {
-                        colors.accent
-                    } else {
-                        colors.text_muted
-                    },
-                    border: iced::Border {
-                        radius: RADIUS.md.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
-            })
-            .on_press(UiMessage::TogglePreferences);
+        let identity = colony_ui::widgets::identity_button(
+            &ctx.typography.colony(),
+            PROGRAM_NAME,
+            IDENTITY_SIZE,
+            open,
+            UiMessage::TogglePreferences,
+        );
 
         let tip = if open {
-            "Fermer les préférences"
+            t("header_close_preferences")
         } else {
-            "Préférences"
+            t("settings_title")
         };
-
-        container(widgets::tip(ctx, identity, tip, TipVariant::Nav))
-            .height(Length::Fixed(TAB_STRIP_HEIGHT))
-            .align_y(Alignment::Center)
-            .padding(iced::Padding {
-                right: spacing.md,
-                ..iced::Padding::ZERO
-            })
-            .into()
+        widgets::tip(ctx, identity, tip, TipVariant::Nav)
     }
 
     /// The tab strip.
     ///
-    /// The close cross used to be built with the very same widget as the tab —
-    /// same padding, same shape, same size — so a tab and its cross read as two
+    /// The close cross used to be built with the very same widget as the tab,
+    /// same padding, same shape, same size, so a tab and its cross read as two
     /// tabs, and so did the `+`. Here the cross lives inside the tab, the `+` is
     /// a lighter glyph, and the active tab reaches the bottom of the strip so
     /// that it joins the list underneath.
@@ -205,9 +163,7 @@ impl XionApp {
             typography,
         } = ctx;
 
-        let mut strip = row![self.render_identity_button(ctx)]
-            .spacing(0)
-            .align_y(Alignment::End);
+        let mut strip = row![].spacing(0).align_y(Alignment::End);
 
         for (index, tab) in self.tab_manager.tabs.iter().enumerate() {
             let active = index == self.tab_manager.active;
@@ -215,7 +171,7 @@ impl XionApp {
             // The folder icon, not `PC`: tabs carry the name of the directory
             // they show, so a computer glyph on every one of them said nothing.
             let mut inner = row![
-                caption_text(typography, icons::FOLDER).color(if active {
+                glyph_text(typography, icons::FOLDER).color(if active {
                     colors.accent
                 } else {
                     colors.text_muted
@@ -231,8 +187,8 @@ impl XionApp {
                 inner = inner.push(
                     button(glyph_text(typography, icons::CLOSE).color(colors.text_muted))
                         .padding(2.0)
-                        // Les jetons du thème, pas du blanc en dur : la croix
-                        // aurait disparu sur fond clair.
+                        // Theme tokens, not hard-coded white: the cross would
+                        // have vanished on a light background.
                         .style(move |_theme: &Theme, status: ButtonStatus| {
                             iced::widget::button::Style {
                                 background: None,
@@ -249,7 +205,7 @@ impl XionApp {
 
             let tab_body = button(inner)
                 .padding([spacing.xs, spacing.md])
-                .height(Length::Fixed(TAB_STRIP_HEIGHT))
+                .height(Length::Fixed(scaled(TAB_STRIP_HEIGHT)))
                 .style(move |_theme: &Theme, status: ButtonStatus| {
                     let mut style = iced::widget::button::Style {
                         text_color: if active {
@@ -298,7 +254,7 @@ impl XionApp {
         }
 
         strip = strip.push(
-            button(body_text(typography, icons::NEW).color(colors.text_muted))
+            button(icon_text(typography, icons::NEW).color(colors.text_muted))
                 .padding([spacing.xs, spacing.sm])
                 .style(widgets::hover_button_style(
                     colors,
@@ -309,7 +265,7 @@ impl XionApp {
         );
 
         container(row![strip, horizontal_space()].align_y(Alignment::End))
-            .height(Length::Fixed(TAB_STRIP_HEIGHT))
+            .height(Length::Fixed(scaled(TAB_STRIP_HEIGHT)))
             .width(Length::Fill)
             .into()
     }

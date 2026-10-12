@@ -3,6 +3,7 @@
 //! ZIP listing is handled by the zip crate elsewhere; this module covers
 //! TAR.GZ and 7Z listing, plus creation for all three formats.
 
+use crate::i18n::tf;
 use crate::ui::ArchiveEntry;
 use std::path::Path;
 
@@ -74,7 +75,12 @@ pub(super) fn create_tar_gz(
     use std::fs::File;
 
     let out_path = dest.to_path_buf();
-    let file = File::create(&out_path).map_err(|e| format!("Création tar.gz: {e}"))?;
+    let file = File::create(&out_path).map_err(|e| {
+        tf(
+            "archive_error_create",
+            &[("format", &"tar.gz"), ("error", &e)],
+        )
+    })?;
     let enc = GzEncoder::new(file, Compression::default());
     let mut builder = tar::Builder::new(enc);
 
@@ -84,19 +90,28 @@ pub(super) fn create_tar_gz(
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "file".to_string());
         if source.is_dir() {
-            builder
-                .append_dir_all(&name, source)
-                .map_err(|e| format!("tar.gz: ajout dossier '{}': {e}", name))?;
+            builder.append_dir_all(&name, source).map_err(|e| {
+                tf(
+                    "archive_error_add_folder",
+                    &[("format", &"tar.gz"), ("name", &name), ("error", &e)],
+                )
+            })?;
         } else {
-            builder
-                .append_path_with_name(source, &name)
-                .map_err(|e| format!("tar.gz: ajout fichier '{}': {e}", name))?;
+            builder.append_path_with_name(source, &name).map_err(|e| {
+                tf(
+                    "archive_error_add_file",
+                    &[("format", &"tar.gz"), ("name", &name), ("error", &e)],
+                )
+            })?;
         }
     }
 
-    builder
-        .finish()
-        .map_err(|e| format!("tar.gz: finalisation: {e}"))?;
+    builder.finish().map_err(|e| {
+        tf(
+            "archive_error_finish",
+            &[("format", &"tar.gz"), ("error", &e)],
+        )
+    })?;
 
     Ok(out_path)
 }
@@ -104,7 +119,7 @@ pub(super) fn create_tar_gz(
 /// Create a `.zip` archive from the given list of files/directories.
 ///
 /// This algorithm used to live inline inside `update()`, declared at the eighth
-/// level of nesting, and read each file fully into memory before writing it —
+/// level of nesting, and read each file fully into memory before writing it,
 /// an 8 GB file meant an 8 GB allocation. `io::copy` streams instead.
 pub(super) fn create_zip(
     sources: &[std::path::PathBuf],
@@ -113,7 +128,8 @@ pub(super) fn create_zip(
     use zip::write::FileOptions;
 
     let out_path = dest.to_path_buf();
-    let file = std::fs::File::create(&out_path).map_err(|e| format!("Création ZIP: {e}"))?;
+    let file = std::fs::File::create(&out_path)
+        .map_err(|e| tf("archive_error_create", &[("format", &"ZIP"), ("error", &e)]))?;
     let mut zip = zip::ZipWriter::new(file);
     let options = FileOptions::<()>::default().compression_method(zip::CompressionMethod::Deflated);
 
@@ -121,12 +137,17 @@ pub(super) fn create_zip(
         let name = source
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
-            .ok_or_else(|| format!("Source sans nom: {}", source.display()))?;
+            .ok_or_else(|| {
+                tf(
+                    "archive_error_unnamed_source",
+                    &[("path", &source.display())],
+                )
+            })?;
         zip_add(&mut zip, source, &name, options, 0)?;
     }
 
     zip.finish()
-        .map_err(|e| format!("ZIP: finalisation: {e}"))?;
+        .map_err(|e| tf("archive_error_finish", &[("format", &"ZIP"), ("error", &e)]))?;
     Ok(out_path)
 }
 
@@ -141,10 +162,7 @@ fn zip_add(
     depth: u32,
 ) -> Result<(), String> {
     if depth > MAX_ZIP_DEPTH {
-        return Err(format!(
-            "profondeur maximale dépassée sous {}",
-            source.display()
-        ));
+        return Err(tf("archive_error_too_deep", &[("path", &source.display())]));
     }
 
     let metadata =
@@ -159,7 +177,12 @@ fn zip_add(
 
     if metadata.is_dir() {
         zip.add_directory(format!("{name_in_zip}/"), options)
-            .map_err(|e| format!("ZIP: dossier '{name_in_zip}': {e}"))?;
+            .map_err(|e| {
+                tf(
+                    "archive_error_add_folder",
+                    &[("format", &"ZIP"), ("name", &name_in_zip), ("error", &e)],
+                )
+            })?;
         let mut children: Vec<_> = std::fs::read_dir(source)
             .map_err(|e| format!("{}: {e}", source.display()))?
             .collect::<Result<Vec<_>, _>>()
@@ -173,11 +196,20 @@ fn zip_add(
         return Ok(());
     }
 
-    zip.start_file(name_in_zip, options)
-        .map_err(|e| format!("ZIP: entrée '{name_in_zip}': {e}"))?;
+    zip.start_file(name_in_zip, options).map_err(|e| {
+        tf(
+            "archive_error_add_file",
+            &[("format", &"ZIP"), ("name", &name_in_zip), ("error", &e)],
+        )
+    })?;
     let mut input =
         std::fs::File::open(source).map_err(|e| format!("{}: {e}", source.display()))?;
-    std::io::copy(&mut input, zip).map_err(|e| format!("ZIP: écriture '{name_in_zip}': {e}"))?;
+    std::io::copy(&mut input, zip).map_err(|e| {
+        tf(
+            "archive_error_write_entry",
+            &[("format", &"ZIP"), ("name", &name_in_zip), ("error", &e)],
+        )
+    })?;
     Ok(())
 }
 
@@ -195,17 +227,28 @@ pub(super) fn create_7z(
     use sevenz_rust2::ArchiveWriter;
 
     let out_path = dest.to_path_buf();
-    let mut writer = ArchiveWriter::create(&out_path).map_err(|e| format!("Création 7z: {e}"))?;
+    let mut writer = ArchiveWriter::create(&out_path)
+        .map_err(|e| tf("archive_error_create", &[("format", &"7z"), ("error", &e)]))?;
 
     for source in sources {
         let root_name = source
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
-            .ok_or_else(|| format!("Source sans nom: {}", source.display()))?;
+            .ok_or_else(|| {
+                tf(
+                    "archive_error_unnamed_source",
+                    &[("path", &source.display())],
+                )
+            })?;
 
         if source.is_dir() {
             for entry in walkdir::WalkDir::new(source).follow_links(false) {
-                let entry = entry.map_err(|e| format!("Parcours '{}': {e}", source.display()))?;
+                let entry = entry.map_err(|e| {
+                    tf(
+                        "archive_error_walk",
+                        &[("path", &source.display()), ("error", &e)],
+                    )
+                })?;
                 // Symlinks are not followed and not stored: 7z cannot express
                 // them here, and silently storing their target would duplicate
                 // data the user did not select.
@@ -215,7 +258,7 @@ pub(super) fn create_7z(
                 let relative = entry
                     .path()
                     .strip_prefix(source)
-                    .map_err(|e| format!("Chemin relatif: {e}"))?;
+                    .map_err(|e| tf("archive_error_relative_path", &[("error", &e)]))?;
                 let name = archive_entry_name(&root_name, relative);
                 push_7z_entry(&mut writer, entry.path(), name, entry.file_type().is_dir())?;
             }
@@ -226,7 +269,7 @@ pub(super) fn create_7z(
 
     writer
         .finish()
-        .map_err(|e| format!("7z: finalisation: {e}"))?;
+        .map_err(|e| tf("archive_error_finish", &[("format", &"7z"), ("error", &e)]))?;
 
     Ok(out_path)
 }
@@ -257,15 +300,22 @@ fn push_7z_entry(
     let reader = if is_dir {
         None
     } else {
-        Some(
-            std::fs::File::open(path)
-                .map_err(|e| format!("Ouverture '{}': {e}", path.display()))?,
-        )
+        Some(std::fs::File::open(path).map_err(|e| {
+            tf(
+                "archive_error_open_file",
+                &[("path", &path.display()), ("error", &e)],
+            )
+        })?)
     };
     writer
         .push_archive_entry(entry, reader)
         .map(|_| ())
-        .map_err(|e| format!("7z: ajout '{}': {e}", path.display()))
+        .map_err(|e| {
+            tf(
+                "archive_error_add_file",
+                &[("format", &"7z"), ("name", &path.display()), ("error", &e)],
+            )
+        })
 }
 
 // ── Safe extraction ─────────────────────────────────────────────────────────
@@ -285,18 +335,18 @@ pub(super) fn safe_join(dest_dir: &Path, raw_name: &str) -> Result<std::path::Pa
         match segment {
             "" | "." => continue,
             ".." => {
-                return Err(format!("entrée refusée (remontée de dossier) : {raw_name}"));
+                return Err(tf("archive_refused_parent", &[("entry", &raw_name)]));
             }
             other => {
                 // `C:`, `C:evil` and any drive-relative form must never become
                 // a path root once joined.
                 let bytes = other.as_bytes();
                 if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
-                    return Err(format!("entrée refusée (préfixe de disque) : {raw_name}"));
+                    return Err(tf("archive_refused_drive", &[("entry", &raw_name)]));
                 }
                 // On Windows a colon also opens an alternate data stream.
                 if cfg!(windows) && other.contains(':') {
-                    return Err(format!("entrée refusée (flux alternatif) : {raw_name}"));
+                    return Err(tf("archive_refused_stream", &[("entry", &raw_name)]));
                 }
                 relative.push(other);
             }
@@ -304,7 +354,7 @@ pub(super) fn safe_join(dest_dir: &Path, raw_name: &str) -> Result<std::path::Pa
     }
 
     if relative.as_os_str().is_empty() {
-        return Err(format!("entrée refusée (nom vide) : {raw_name}"));
+        return Err(tf("archive_refused_empty_name", &[("entry", &raw_name)]));
     }
 
     Ok(dest_dir.join(relative))
@@ -313,27 +363,28 @@ pub(super) fn safe_join(dest_dir: &Path, raw_name: &str) -> Result<std::path::Pa
 /// Confirm that `out_path` really resolves inside `dest_dir`.
 ///
 /// `safe_join` handles the name; this handles the filesystem. A symlink already
-/// sitting inside the destination — possibly written by an earlier entry of the
-/// same archive — could otherwise redirect the write outside it. The parent is
+/// sitting inside the destination, possibly written by an earlier entry of the
+/// same archive, could otherwise redirect the write outside it. The parent is
 /// created first so it can be canonicalised.
 pub(super) fn create_parent_within(dest_dir: &Path, out_path: &Path) -> Result<(), String> {
     let parent = out_path
         .parent()
-        .ok_or_else(|| format!("Chemin sans parent: {}", out_path.display()))?;
+        .ok_or_else(|| tf("archive_error_no_parent", &[("path", &out_path.display())]))?;
 
-    std::fs::create_dir_all(parent).map_err(|e| format!("Création dossier parent: {e}"))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| tf("archive_error_create_folder", &[("error", &e)]))?;
 
     let real_parent = parent
         .canonicalize()
-        .map_err(|e| format!("Résolution du dossier cible: {e}"))?;
+        .map_err(|e| tf("archive_error_resolve_destination", &[("error", &e)]))?;
     let real_dest = dest_dir
         .canonicalize()
-        .map_err(|e| format!("Résolution du dossier d'extraction: {e}"))?;
+        .map_err(|e| tf("archive_error_resolve_destination", &[("error", &e)]))?;
 
     if !real_parent.starts_with(&real_dest) {
-        return Err(format!(
-            "entrée refusée (sort du dossier cible) : {}",
-            out_path.display()
+        return Err(tf(
+            "archive_refused_escape",
+            &[("entry", &out_path.display())],
         ));
     }
     Ok(())
@@ -345,10 +396,7 @@ pub(super) fn create_parent_within(dest_dir: &Path, out_path: &Path) -> Result<(
 /// to destroy it without a word.
 pub(super) fn ensure_absent(out_path: &Path) -> Result<(), String> {
     if std::fs::symlink_metadata(out_path).is_ok() {
-        return Err(format!(
-            "{} existe déjà — extraction annulée",
-            out_path.display()
-        ));
+        return Err(tf("archive_error_exists", &[("path", &out_path.display())]));
     }
     Ok(())
 }
@@ -360,44 +408,50 @@ pub(super) fn extract_zip_entry(
     dest_dir: &Path,
 ) -> Result<std::path::PathBuf, String> {
     use std::io::{Read, Write};
-    let file = std::fs::File::open(archive_path).map_err(|e| format!("Ouverture ZIP: {e}"))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("Lecture ZIP: {e}"))?;
+    let file = std::fs::File::open(archive_path)
+        .map_err(|e| tf("archive_error_open", &[("format", &"ZIP"), ("error", &e)]))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|e| tf("archive_error_read", &[("format", &"ZIP"), ("error", &e)]))?;
 
-    let mut entry = archive
-        .by_name(inner_path)
-        .map_err(|e| format!("Entrée ZIP '{}': {e}", inner_path))?;
+    let mut entry = archive.by_name(inner_path).map_err(|e| {
+        tf(
+            "archive_error_entry",
+            &[("format", &"ZIP"), ("name", &inner_path), ("error", &e)],
+        )
+    })?;
 
     // The zip crate's own guard: `None` means the name is not safely
     // relative. Checked in addition to `safe_join`, not instead of it.
     if entry.enclosed_name().is_none() {
-        return Err(format!("entrée ZIP refusée : {}", entry.name()));
+        return Err(tf("archive_refused_entry", &[("entry", &entry.name())]));
     }
     let out_path = safe_join(dest_dir, entry.name())?;
 
     if entry.is_dir() {
         create_parent_within(dest_dir, &out_path)?;
-        std::fs::create_dir_all(&out_path).map_err(|e| format!("Création dossier: {e}"))?;
+        std::fs::create_dir_all(&out_path)
+            .map_err(|e| tf("archive_error_create_folder", &[("error", &e)]))?;
         return Ok(out_path);
     }
 
     create_parent_within(dest_dir, &out_path)?;
     ensure_absent(&out_path)?;
 
-    let mut out_file =
-        std::fs::File::create(&out_path).map_err(|e| format!("Écriture fichier: {e}"))?;
+    let mut out_file = std::fs::File::create(&out_path)
+        .map_err(|e| tf("archive_error_write_file", &[("error", &e)]))?;
     // Streamed rather than read_to_end: an entry declaring a huge size no
     // longer has to fit in RAM before a single byte reaches the disk.
     let mut buffer = [0u8; 64 * 1024];
     loop {
         let read = entry
             .read(&mut buffer)
-            .map_err(|e| format!("Lecture entrée ZIP: {e}"))?;
+            .map_err(|e| tf("archive_error_read", &[("format", &"ZIP"), ("error", &e)]))?;
         if read == 0 {
             break;
         }
         out_file
             .write_all(&buffer[..read])
-            .map_err(|e| format!("Écriture fichier: {e}"))?;
+            .map_err(|e| tf("archive_error_write_file", &[("error", &e)]))?;
     }
 
     Ok(out_path)
@@ -410,16 +464,28 @@ pub(super) fn extract_tar_gz_entry(
     dest_dir: &Path,
 ) -> Result<std::path::PathBuf, String> {
     use std::io::BufReader;
-    let file = std::fs::File::open(archive_path).map_err(|e| format!("Ouverture tar.gz: {e}"))?;
+    let file = std::fs::File::open(archive_path).map_err(|e| {
+        tf(
+            "archive_error_open",
+            &[("format", &"tar.gz"), ("error", &e)],
+        )
+    })?;
     let gz = flate2::read::GzDecoder::new(BufReader::new(file));
     let mut archive = tar::Archive::new(gz);
 
     for entry in archive
         .entries()
-        .map_err(|e| format!("Lecture tar.gz: {e}"))?
+        .map_err(|e| {
+            tf(
+                "archive_error_read",
+                &[("format", &"tar.gz"), ("error", &e)],
+            )
+        })?
         .flatten()
     {
-        let path = entry.path().map_err(|e| format!("Lecture chemin: {e}"))?;
+        let path = entry
+            .path()
+            .map_err(|e| tf("archive_error_read_path", &[("error", &e)]))?;
         let path_str = path.to_string_lossy().to_string();
         if path_str.trim_end_matches('/') != inner_path.trim_end_matches('/') {
             continue;
@@ -431,8 +497,9 @@ pub(super) fn extract_tar_gz_entry(
         // extracted.
         let entry_type = entry.header().entry_type();
         if !entry_type.is_file() && !entry_type.is_dir() {
-            return Err(format!(
-                "entrée refusée (type {entry_type:?} non extrait) : {path_str}"
+            return Err(tf(
+                "archive_refused_type",
+                &[("kind", &format!("{entry_type:?}")), ("entry", &path_str)],
             ));
         }
 
@@ -440,22 +507,23 @@ pub(super) fn extract_tar_gz_entry(
         create_parent_within(dest_dir, &out_path)?;
 
         if entry_type.is_dir() {
-            std::fs::create_dir_all(&out_path).map_err(|e| format!("Création dossier: {e}"))?;
+            std::fs::create_dir_all(&out_path)
+                .map_err(|e| tf("archive_error_create_folder", &[("error", &e)]))?;
             return Ok(out_path);
         }
 
         ensure_absent(&out_path)?;
         let mut entry = entry;
-        entry
-            .unpack(&out_path)
-            .map_err(|e| format!("Extraction tar.gz: {e}"))?;
+        entry.unpack(&out_path).map_err(|e| {
+            tf(
+                "archive_error_extract",
+                &[("format", &"tar.gz"), ("error", &e)],
+            )
+        })?;
         return Ok(out_path);
     }
 
-    Err(format!(
-        "Entrée '{}' non trouvée dans l'archive",
-        inner_path
-    ))
+    Err(tf("archive_error_entry_missing", &[("name", &inner_path)]))
 }
 
 #[cfg(test)]
@@ -478,13 +546,19 @@ mod tests {
     #[test]
     fn zip_entry_with_backslash_traversal_is_rejected() {
         let error = safe_join(&dest(), r"..\..\..\Windows\System32\evil.dll").unwrap_err();
-        assert!(error.contains("remontée"), "message inattendu : {error}");
+        assert!(
+            error.contains("parent folder"),
+            "unexpected message: {error}"
+        );
     }
 
     #[test]
     fn entry_with_forward_slash_traversal_is_rejected() {
         let error = safe_join(&dest(), "../../evil.sh").unwrap_err();
-        assert!(error.contains("remontée"), "message inattendu : {error}");
+        assert!(
+            error.contains("parent folder"),
+            "unexpected message: {error}"
+        );
     }
 
     #[test]
@@ -495,7 +569,7 @@ mod tests {
     #[test]
     fn sevenz_entry_with_absolute_path_is_rejected() {
         let error = safe_join(&dest(), r"C:\Windows\System32\evil.dll").unwrap_err();
-        assert!(error.contains("disque"), "message inattendu : {error}");
+        assert!(error.contains("drive"), "unexpected message: {error}");
     }
 
     #[test]
@@ -551,7 +625,7 @@ mod tests {
             listed
                 .iter()
                 .any(|entry| entry.inner_path == "tree/sub/deep.txt"),
-            "entrées : {:?}",
+            "entries: {:?}",
             listed.iter().map(|e| &e.inner_path).collect::<Vec<_>>()
         );
     }
@@ -560,10 +634,10 @@ mod tests {
     fn extraction_refuses_to_overwrite_an_existing_file() {
         let root = tempfile::tempdir().unwrap();
         let occupied = root.path().join("keep.txt");
-        std::fs::write(&occupied, "précieux").unwrap();
+        std::fs::write(&occupied, "precious").unwrap();
 
         assert!(ensure_absent(&occupied).is_err());
-        assert_eq!(std::fs::read_to_string(&occupied).unwrap(), "précieux");
+        assert_eq!(std::fs::read_to_string(&occupied).unwrap(), "precious");
     }
 
     /// The bzip2 backend is pure Rust rather than the bundled C library, so
@@ -575,8 +649,8 @@ mod tests {
         use std::io::Write;
 
         let root = tempfile::tempdir().unwrap();
-        let archive_path = root.path().join("compressé.zip");
-        let contenu = "vérification du backend bzip2 en Rust pur\n".repeat(64);
+        let archive_path = root.path().join("compressed.zip");
+        let content = "checking the pure Rust bzip2 backend\n".repeat(64);
 
         let file = std::fs::File::create(&archive_path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
@@ -587,14 +661,14 @@ mod tests {
                     .compression_method(zip::CompressionMethod::Bzip2),
             )
             .unwrap();
-        writer.write_all(contenu.as_bytes()).unwrap();
+        writer.write_all(content.as_bytes()).unwrap();
         writer.finish().unwrap();
 
         let dest = root.path().join("sortie");
         std::fs::create_dir_all(&dest).unwrap();
         let extracted = extract_zip_entry(&archive_path, "note.txt", &dest).unwrap();
 
-        assert_eq!(std::fs::read_to_string(&extracted).unwrap(), contenu);
+        assert_eq!(std::fs::read_to_string(&extracted).unwrap(), content);
     }
 
     /// A symlink planted inside the destination must not become a way out.
@@ -611,6 +685,6 @@ mod tests {
         let out_path = dest_dir.join("escape").join("evil.txt");
         let error = create_parent_within(&dest_dir, &out_path).unwrap_err();
 
-        assert!(error.contains("sort du dossier cible"), "message : {error}");
+        assert!(error.contains("outside"), "message: {error}");
     }
 }

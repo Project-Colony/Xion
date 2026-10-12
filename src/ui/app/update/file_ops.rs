@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering;
 
 use iced::Task;
 
-use crate::filesystem::FileOperationKind;
+use crate::i18n::{t, tf};
 use crate::ui::UiMessage;
 
 use crate::ui::app::types::*;
@@ -102,13 +102,17 @@ impl XionApp {
             UiMessage::OperationProgressTick => {
                 if let Some(op) = &self.operation_progress {
                     let done = op.counter.load(Ordering::Relaxed).min(op.total);
-                    let label = match op.kind {
-                        FileOperationKind::Copy => "Copie",
-                        FileOperationKind::Move => "Déplacement",
-                        FileOperationKind::Delete => "Suppression",
-                        FileOperationKind::Rename => "Renommage",
-                    };
-                    self.last_action = Some(format!("{label} : {done}/{} éléments…", op.total));
+                    self.last_action = Some(crate::i18n::tf(
+                        "status_operation_progress",
+                        &[
+                            (
+                                "operation",
+                                &crate::ui::app::helpers::operation_label(op.kind),
+                            ),
+                            ("done", &done),
+                            ("total", &op.total),
+                        ],
+                    ));
                 }
             }
             UiMessage::NewFolder => {
@@ -120,14 +124,14 @@ impl XionApp {
                         .file_name()
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_default();
-                    self.last_action = Some(format!("Dossier créé : {name}"));
+                    self.last_action = Some(tf("folder_created", &[("name", &name)]));
                     self.undo_stack
                         .push(UndoAction::FolderCreated { path: path.clone() });
                     tasks.push(self.refresh_entries_in_place());
                     self.rename_dialog = Some(RenameDialog { path, input: name });
                 }
                 Err(error) => {
-                    self.last_action = Some(format!("Erreur création dossier : {error}"));
+                    self.last_action = Some(tf("error_create_folder", &[("error", &error)]));
                 }
             },
             UiMessage::NewFile => {
@@ -139,23 +143,23 @@ impl XionApp {
                         .file_name()
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_default();
-                    self.last_action = Some(format!("Fichier créé : {name}"));
+                    self.last_action = Some(tf("file_created", &[("name", &name)]));
                     self.undo_stack
                         .push(UndoAction::FileCreated { path: path.clone() });
                     tasks.push(self.refresh_entries_in_place());
                     self.rename_dialog = Some(RenameDialog { path, input: name });
                 }
                 Err(error) => {
-                    self.last_action = Some(format!("Erreur création fichier : {error}"));
+                    self.last_action = Some(tf("error_create_file", &[("error", &error)]));
                 }
             },
             UiMessage::TrashCompleted(result) => {
                 match result {
                     Ok(()) => {
-                        self.last_action = Some("Déplacé vers la corbeille".to_string());
+                        self.last_action = Some(t("trash_done").to_string());
                     }
                     Err(e) => {
-                        self.last_action = Some(format!("Erreur corbeille : {}", e));
+                        self.last_action = Some(tf("error_trash", &[("error", &e)]));
                     }
                 }
                 tasks.push(self.refresh_entries_in_place());
@@ -170,7 +174,7 @@ impl XionApp {
                         self.last_action = Some(msg);
                     }
                     Err(msg) => {
-                        self.last_action = Some(format!("Erreur annulation : {msg}"));
+                        self.last_action = Some(tf("error_undo", &[("error", &msg)]));
                     }
                 }
                 tasks.push(self.refresh_entries_in_place());
@@ -180,7 +184,7 @@ impl XionApp {
                 self.favorites.remove(&path);
                 self.state.config.user_favorites.retain(|p| p != &path);
                 self.config_manager.save(&self.state.config);
-                self.last_action = Some("Retiré des favoris".to_string());
+                self.last_action = Some(t("favorites_removed").to_string());
             }
             // ── #25: Terminal autocomplete ────────────────────────────────────
             UiMessage::SetLabel(path, label_opt) => {

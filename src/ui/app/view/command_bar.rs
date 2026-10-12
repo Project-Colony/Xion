@@ -1,12 +1,13 @@
 //! The search field and the loading badge.
 //!
-//! The command bar that used to live here — seven buttons on a permanent third
-//! row — is gone: its contents moved into the `⋯` menu, in
+//! The command bar that used to live here, seven buttons on a permanent third
+//! row, is gone: its contents moved into the `⋯` menu, in
 //! `render_overflow_menu`. Only what belongs on the bar itself remains.
 
 use iced::widget::{container, progress_bar, row, text_input};
 use iced::{Alignment, Background, Color, Element, Length, Theme, border};
 
+use crate::i18n::{t, tf};
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
@@ -14,11 +15,12 @@ use super::XionApp;
 use super::widgets::ViewCtx;
 use super::widgets::caption_text;
 use super::widgets::filled_style;
+use super::widgets::glyph_text;
 use super::widgets::surface_style;
 use super::widgets::{RADIUS, RADIUS_PILL};
 
 impl XionApp {
-    /// The search field and the loading badge, in that order — the caller lays
+    /// The search field and the loading badge, in that order, the caller lays
     /// them out.
     pub(super) fn render_command_bar(
         &self,
@@ -35,9 +37,9 @@ impl XionApp {
             .tabs
             .get(self.tab_manager.active)
             .map(|tab| tab.title.as_str())
-            .unwrap_or("Ce PC");
+            .unwrap_or(t("location_this_pc"));
         let search_input = text_input(
-            &format!("Rechercher dans : {}", active_tab_title),
+            &tf("search_placeholder", &[("location", &active_tab_title)]),
             &self.search.input,
         )
         .id(iced::widget::Id::new("search_input"))
@@ -58,7 +60,7 @@ impl XionApp {
             },
         );
         let search_bar = container(
-            row![caption_text(typography, icons::SEARCH), search_input]
+            row![glyph_text(typography, icons::SEARCH), search_input]
                 .spacing(spacing.xs)
                 .align_y(Alignment::Center),
         )
@@ -76,21 +78,26 @@ impl XionApp {
                     } else {
                         0.5
                     };
-                    let kind_label = match op.kind {
-                        crate::filesystem::FileOperationKind::Copy => "Copie",
-                        crate::filesystem::FileOperationKind::Move => "Déplacement",
-                        crate::filesystem::FileOperationKind::Delete => "Suppression",
-                        crate::filesystem::FileOperationKind::Rename => "Renommage",
-                    };
-                    (format!("{} : {}/{}", kind_label, done, op.total), r)
+                    let kind_label = crate::ui::app::helpers::operation_label(op.kind);
+                    (
+                        tf(
+                            "progress_operation",
+                            &[
+                                ("operation", &kind_label),
+                                ("done", &done),
+                                ("total", &op.total),
+                            ],
+                        ),
+                        r,
+                    )
                 } else if self.entries.total > 0 {
                     let loaded = self.entries.items.iter().filter(|e| e.is_some()).count();
                     (
-                        "Chargement…".to_string(),
+                        t("loading").to_string(),
                         loaded as f32 / self.entries.total as f32,
                     )
                 } else {
-                    ("Chargement…".to_string(), 0.5)
+                    (t("loading").to_string(), 0.5)
                 };
                 let content: Element<'_, UiMessage> = row![
                     caption_text(typography, progress_label),

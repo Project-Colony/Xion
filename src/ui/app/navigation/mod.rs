@@ -40,7 +40,7 @@ impl XionApp {
                     // With a filter active, Shift+click must join the two
                     // endpoints through the visible rows only. Walking the raw
                     // index range used to swallow every hidden entry in
-                    // between — 42 files selected where 3 were on screen.
+                    // between, 42 files selected where 3 were on screen.
                     Some(indices) => indices
                         .into_iter()
                         .filter(|index| (start..=end).contains(index))
@@ -109,13 +109,13 @@ impl XionApp {
 
 /// Case-insensitive `contains`, allocating nothing.
 ///
-/// `needle` must already be lowercase — callers lowercase the query once, not
+/// `needle` must already be lowercase: callers lowercase the query once, not
 /// once per entry.
 ///
 /// Two paths, and the split is measured rather than assumed
 /// (`name_filter_and_selection_scan` in `tests/benches.rs`):
 ///
-/// * Both sides ASCII — nearly every file name — takes a byte-wise scan. On
+/// * Both sides ASCII, nearly every file name, takes a byte-wise scan. On
 ///   50 000 entries that is about half the time of the previous
 ///   `to_lowercase().contains()`, with no allocation.
 /// * Anything else falls back to folding through `char::to_lowercase`, which is
@@ -199,7 +199,7 @@ mod tests {
         // Pinning the list is a refcount bump: both handles still address the
         // one allocation. This used to be a deep copy of every loaded entry.
         assert_eq!(std::sync::Arc::strong_count(&app.entries), 2);
-        let snapshot = app.selection_snapshot.as_ref().expect("instantané");
+        let snapshot = app.selection_snapshot.as_ref().expect("snapshot");
         assert!(std::ptr::eq(std::sync::Arc::as_ptr(snapshot), before));
     }
 
@@ -214,8 +214,8 @@ mod tests {
             .items
             .push(Some(entry("c.txt")));
 
-        let snapshot = app.selection_snapshot.as_ref().expect("instantané");
-        assert_eq!(snapshot.items.len(), 2, "l'instantané ne bouge pas");
+        let snapshot = app.selection_snapshot.as_ref().expect("snapshot");
+        assert_eq!(snapshot.items.len(), 2, "the snapshot does not move");
         assert_eq!(app.entries.items.len(), 3);
         assert_eq!(std::sync::Arc::strong_count(&app.entries), 1);
     }
@@ -224,11 +224,11 @@ mod tests {
     fn remembered_folder_sizes_stay_bounded() {
         use crate::ui::app::types::DirSize;
         let mut app = XionApp::new_for_test();
-        // Bien au-delà du plafond : la carte survit maintenant à la navigation,
-        // donc sans bornage elle retiendrait chaque dossier vu de la session.
+        // Well past the cap: the map now outlives navigation, so unbounded it
+        // would keep every folder seen during the session.
         for index in 0..5000 {
             app.remember_dir_size(
-                PathBuf::from(format!("/tmp/dossier-{index}")),
+                PathBuf::from(format!("/tmp/folder-{index}")),
                 DirSize {
                     bytes: index as u64,
                     truncated: false,
@@ -237,7 +237,7 @@ mod tests {
         }
         assert!(
             app.dir_sizes.len() <= 4096,
-            "carte non bornée : {}",
+            "unbounded map: {}",
             app.dir_sizes.len()
         );
     }
@@ -246,7 +246,7 @@ mod tests {
     fn remembering_the_same_folder_twice_replaces_it() {
         use crate::ui::app::types::DirSize;
         let mut app = XionApp::new_for_test();
-        let path = PathBuf::from("/tmp/dossier");
+        let path = PathBuf::from("/tmp/folder");
         for bytes in [10u64, 20, 30] {
             app.remember_dir_size(
                 path.clone(),
@@ -260,10 +260,10 @@ mod tests {
         assert_eq!(app.dir_sizes[&path].bytes, 30);
     }
 
-    /// Xion étant devenu gestionnaire par défaut, un dossier est ouvert depuis
-    /// le bureau encore et encore. Sans ce test, la barre d'onglets se
-    /// remplissait de doublons du même dossier — constaté deux fois pour
-    /// Téléchargements dans la configuration réelle.
+    /// Since Xion became the default file manager, a folder is opened from the
+    /// desktop over and over. Without this test, the tab strip filled with
+    /// duplicates of the same folder (observed twice for Téléchargements in a
+    /// real configuration).
     #[test]
     fn opening_a_folder_already_open_goes_to_its_tab() {
         let mut app = XionApp::new_for_test();
@@ -276,8 +276,8 @@ mod tests {
 
         let _ = app.open_in_new_tab(a.clone());
 
-        assert_eq!(app.tab_manager.count(), before, "aucun onglet ajouté");
-        assert_eq!(app.tab_manager.active_path(), Some(&a), "on y est allé");
+        assert_eq!(app.tab_manager.count(), before, "no tab added");
+        assert_eq!(app.tab_manager.active_path(), Some(&a), "went to it");
     }
 
     fn selected_names(app: &XionApp) -> Vec<String> {
@@ -294,8 +294,8 @@ mod tests {
     }
 
     /// Regression: with only the quick filter active, `select_all_entries` read
-    /// the raw buffer and selected the whole directory — 200 files where 3 were
-    /// on screen — and the next Delete removed them without a trash bin.
+    /// the raw buffer and selected the whole directory, 200 files where 3 were
+    /// on screen, and the next Delete removed them without a trash bin.
     #[test]
     fn quick_filter_select_all_ignores_hidden_entries() {
         let mut app = app_with(&["facture-01.pdf", "notes.txt", "facture-02.pdf", "photo.png"]);
@@ -357,7 +357,7 @@ mod tests {
                 "b.log".to_string(),
                 "c.log".to_string()
             ],
-            "la plage ne doit contenir que les lignes visibles"
+            "the range must only hold visible rows"
         );
     }
 
@@ -392,7 +392,7 @@ mod tests {
         assert_eq!(
             app.state.navigation.selection.focused,
             Some(PathBuf::from("/tmp/b.log")),
-            "la flèche bas doit sauter la ligne masquée"
+            "the down arrow must skip the hidden row"
         );
     }
 
@@ -442,7 +442,7 @@ mod tests {
                 haystack
                     .char_indices()
                     .any(|(offset, _)| starts_with_lowercased(&haystack[offset..], needle)),
-                "désaccord sur ({haystack:?}, {needle:?})"
+                "disagreement on ({haystack:?}, {needle:?})"
             );
         }
     }

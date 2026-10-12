@@ -1,11 +1,11 @@
 #!/usr/bin/env sh
-# Installe Xion pour l'utilisateur courant : binaire, icônes, entrée de bureau.
+# Install Xion for the current user: binary, icons, desktop entry.
 #
-# Rien n'est écrit hors de $HOME, donc aucun sudo. Passer --uninstall retire
-# exactement ce que cette installation a posé.
+# Nothing is written outside $HOME, so no sudo. Passing --uninstall removes
+# exactly what this installation put in place.
 #
-#   ./scripts/install.sh              installe (compile en release au passage)
-#   ./scripts/install.sh --uninstall  retire
+#   ./scripts/install.sh              install (builds in release on the way)
+#   ./scripts/install.sh --uninstall  remove
 
 set -eu
 
@@ -15,9 +15,9 @@ APP_DIR="$PREFIX/share/applications"
 ICON_DIR="$PREFIX/share/icons/hicolor"
 ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 
-# Les tailles où l'orbite deviendrait une bouillie de deux pixels reçoivent le
-# dessin simplifié : c'est ce que fait Adwaita, un dessin par taille plutôt
-# qu'une réduction mécanique du grand.
+# The sizes where the orbit would become a two-pixel smudge get the simplified
+# drawing: that is what Adwaita does, one drawing per size rather than a
+# mechanical reduction of the large one.
 SMALL_SIZES="16 22 24"
 LARGE_SIZES="32 48 64 128 256"
 
@@ -31,8 +31,8 @@ uninstall() {
 }
 
 refresh_caches() {
-    # Sans ça, l'entrée n'apparaît dans aucun menu avant la prochaine session,
-    # et « Ouvrir avec » ne propose pas Xion.
+    # Without this, the entry appears in no menu before the next session, and
+    # "Open with" does not offer Xion.
     if command -v update-desktop-database >/dev/null 2>&1; then
         update-desktop-database "$APP_DIR" 2>/dev/null || true
     fi

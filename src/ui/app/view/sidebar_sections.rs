@@ -4,8 +4,9 @@
 //! The three shared helpers live here too, since nothing else uses them.
 
 use std::borrow::Cow;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use colony_ui::widgets::selection_style;
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_space};
 use iced::widget::{button, column, container, mouse_area, progress_bar, row, scrollable};
@@ -21,9 +22,6 @@ use super::widgets::ViewCtx;
 use super::widgets::body_text;
 use super::widgets::caption_text;
 use super::widgets::filled_style;
-use super::widgets::hover_button_style;
-use super::widgets::raised_button_style;
-use super::widgets::selectable_button_style;
 use crate::ui::app::types::*;
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
@@ -32,16 +30,18 @@ use crate::ui::app::types::*;
 // `section_header` and two of `sidebar_button`. None of them touches `self`,
 // so they are plain functions.
 
-/// One clickable sidebar entry.
+/// One clickable sidebar entry, filled with the accent while `current` is the
+/// place it leads to.
 pub(super) fn sidebar_button<'a>(
     ctx: ViewCtx,
     icon: &'a str,
     label: impl Into<Cow<'a, str>>,
     target: Option<PathBuf>,
+    current: &Path,
 ) -> Element<'a, UiMessage> {
     let label: Cow<'a, str> = label.into();
     let ViewCtx {
-        colors,
+        colors: _,
         spacing,
         typography,
     } = ctx;
@@ -55,7 +55,7 @@ pub(super) fn sidebar_button<'a>(
         Some(path) => button(content)
             .padding([spacing.xs, spacing.sm])
             .width(Length::Fill)
-            .style(raised_button_style(colors, false))
+            .style(selection_style(path == current))
             .on_press(UiMessage::NavigateTo(path))
             .into(),
         None => container(content)
@@ -164,7 +164,7 @@ impl XionApp {
                     button(content)
                         .padding([spacing.xs, spacing.sm])
                         .width(Length::Fill)
-                        .style(selectable_button_style(colors, selected, false, RADIUS.md))
+                        .style(selection_style(selected))
                         .on_press(UiMessage::NavigateTo(path)),
                 )
                 .on_release(UiMessage::DropOnPath(drop_path));
@@ -223,6 +223,7 @@ impl XionApp {
             typography,
         } = ctx;
         let home_dir = self.cached_home_dir.clone();
+        let current = self.state.route.key();
 
         // Clickable accordion header: shows ▸/▾ chevron and toggles the section.
 
@@ -264,8 +265,13 @@ impl XionApp {
         if !sec_access {
             for (icon, label, path) in &user_folder_entries {
                 if path.is_some() {
-                    quick_access =
-                        quick_access.push(sidebar_button(ctx, icon, *label, path.clone()));
+                    quick_access = quick_access.push(sidebar_button(
+                        ctx,
+                        icon,
+                        *label,
+                        path.clone(),
+                        &current,
+                    ));
                 }
             }
         }
@@ -301,7 +307,13 @@ impl XionApp {
                         .on_press(UiMessage::RemoveFavorite(fav_path));
                     favorites_section = favorites_section.push(
                         row![
-                            sidebar_button(ctx, icons::FOLDER, label, Some(favorite.clone())),
+                            sidebar_button(
+                                ctx,
+                                icons::FOLDER,
+                                label,
+                                Some(favorite.clone()),
+                                &current
+                            ),
                             remove_btn,
                         ]
                         .align_y(Alignment::Center),
@@ -316,7 +328,7 @@ impl XionApp {
     /// Mounted drives and their usage bars.
     pub(super) fn sidebar_drives(&self, ctx: ViewCtx) -> Element<'_, UiMessage> {
         let ViewCtx {
-            colors,
+            colors: _,
             spacing,
             typography,
         } = ctx;
@@ -324,6 +336,7 @@ impl XionApp {
         // Clickable accordion header: shows ▸/▾ chevron and toggles the section.
 
         let sec_drives = self.sidebar_collapsed.contains("Lecteurs");
+        let current = self.state.route.key();
 
         // ── All drives ───────────────────────────────────────────────────
         let mut drive_section =
@@ -365,7 +378,7 @@ impl XionApp {
                         button(content)
                             .padding([spacing.xs, spacing.sm])
                             .width(Length::Fill)
-                            .style(raised_button_style(colors, false))
+                            .style(selection_style(mount_path == current))
                             .on_press(UiMessage::NavigateTo(mount_path)),
                     );
                 }
@@ -380,8 +393,13 @@ impl XionApp {
                     "archive" => icons::FILE_ARCHIVE,
                     _ => icons::NETWORK,
                 };
-                drive_section =
-                    drive_section.push(sidebar_button(ctx, icon, mount.label, Some(mount.path)));
+                drive_section = drive_section.push(sidebar_button(
+                    ctx,
+                    icon,
+                    mount.label,
+                    Some(mount.path),
+                    &current,
+                ));
             }
 
             drive_section = drive_section.push(sidebar_button(
@@ -389,12 +407,14 @@ impl XionApp {
                 icons::NETWORK,
                 "Réseau",
                 Some(PathBuf::from(NETWORK_ROUTE)),
+                &current,
             ));
             drive_section = drive_section.push(sidebar_button(
                 ctx,
                 icons::FILE,
                 "Récents",
                 Some(PathBuf::from(crate::ui::RECENT_ROUTE)),
+                &current,
             ));
             // #21: Trash in sidebar
             drive_section = drive_section.push(
@@ -408,11 +428,7 @@ impl XionApp {
                 )
                 .padding([spacing.xs, spacing.sm])
                 .width(Length::Fill)
-                .style(hover_button_style(
-                    colors,
-                    colors.text_primary,
-                    Some(RADIUS.md),
-                ))
+                .style(selection_style(false))
                 .on_press(UiMessage::NavigateToTrash),
             );
         } // end if !sec_drives

@@ -236,8 +236,12 @@ pub(super) fn hover_button_style(
     }
 }
 
-/// A row or tile that can be selected and focused: list rows, grid tiles, tree
-/// nodes. The focus ring is the selection outline drawn twice as thick.
+/// A row or tile that can be selected and focused: list rows and grid tiles.
+///
+/// Selection is the accent fill with text in `contrast_on(accent)`, and hover
+/// is `bg_card_hover`, so the two never look alike; a selected row keeps its
+/// fill under the pointer. The focus ring is drawn in the text colour, the
+/// one colour guaranteed to stand out on the accent.
 pub(super) fn selectable_button_style(
     colors: UiColors,
     selected: bool,
@@ -245,25 +249,31 @@ pub(super) fn selectable_button_style(
     radius: f32,
 ) -> impl Fn(&Theme, ButtonStatus) -> button::Style + Copy {
     move |_theme: &Theme, status: ButtonStatus| {
-        let mut style = button::Style {
-            text_color: colors.text_primary,
-            ..Default::default()
-        };
-
         if selected {
-            style.background = Some(Background::Color(colors.selection));
-            style.border = border::rounded(radius)
-                .color(colors.selection_border)
-                .width(if focused { 2.0 } else { 1.0 });
+            let on_accent = colony_ui::contrast_on(colors.accent);
+            return button::Style {
+                background: Some(Background::Color(colors.accent)),
+                text_color: on_accent,
+                border: border::rounded(radius).color(on_accent).width(if focused {
+                    2.0
+                } else {
+                    0.0
+                }),
+                ..Default::default()
+            };
         }
 
-        match status {
-            ButtonStatus::Hovered => style.background = Some(Background::Color(colors.hover)),
-            ButtonStatus::Pressed => style.background = Some(Background::Color(colors.pressed)),
-            ButtonStatus::Active | ButtonStatus::Disabled => {}
+        let background = match status {
+            ButtonStatus::Hovered => Some(Background::Color(colors.hover)),
+            ButtonStatus::Pressed => Some(Background::Color(colors.pressed)),
+            ButtonStatus::Active | ButtonStatus::Disabled => None,
+        };
+        button::Style {
+            background,
+            text_color: colors.text_primary,
+            border: border::rounded(radius),
+            ..Default::default()
         }
-
-        style
     }
 }
 
@@ -287,9 +297,7 @@ pub(super) fn toggle_button_style(
         // rather than a toggle.
         if active {
             style.background = Some(Background::Color(colors.selection));
-            style.border = border::rounded(RADIUS.md)
-                .color(colors.selection_border)
-                .width(1.0);
+            style.border = border::rounded(RADIUS.md).color(colors.accent).width(1.0);
         }
 
         if matches!(status, ButtonStatus::Hovered) {

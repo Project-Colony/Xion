@@ -29,16 +29,19 @@ pub enum FileLabel {
 }
 
 impl FileLabel {
-    pub fn color(&self) -> iced::Color {
-        match self {
-            FileLabel::Red => iced::Color::from_rgb(0.9, 0.2, 0.2),
-            FileLabel::Orange => iced::Color::from_rgb(0.9, 0.5, 0.1),
-            FileLabel::Yellow => iced::Color::from_rgb(0.9, 0.8, 0.1),
-            FileLabel::Green => iced::Color::from_rgb(0.2, 0.7, 0.3),
-            FileLabel::Blue => iced::Color::from_rgb(0.2, 0.5, 0.9),
-            FileLabel::Purple => iced::Color::from_rgb(0.6, 0.2, 0.8),
-            FileLabel::Gray => iced::Color::from_rgb(0.5, 0.5, 0.5),
-        }
+    /// The label's dot colour: one of Colony's shared accents, so the labels
+    /// match the accent picker, and the theme's muted text for grey.
+    pub fn color(self, colors: &UiColors) -> iced::Color {
+        let accent_key = match self {
+            FileLabel::Red => "red",
+            FileLabel::Orange => "orange",
+            FileLabel::Yellow => "yellow",
+            FileLabel::Green => "green",
+            FileLabel::Blue => "blue",
+            FileLabel::Purple => "violet",
+            FileLabel::Gray => return colors.text_muted,
+        };
+        colony_ui::accent_key_to_color(accent_key).unwrap_or(colors.accent)
     }
 }
 

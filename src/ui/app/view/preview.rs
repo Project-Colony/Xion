@@ -135,6 +135,9 @@ impl XionApp {
                                 let mut lines_col = column![].spacing(0);
                                 for line in lines {
                                     let mut line_row = row![].spacing(0);
+                                    // The one colour not taken from the palette:
+                                    // syntax highlighting comes from syntect's
+                                    // light or dark theme, picked to match it.
                                     for (rgba, span_text) in &line.spans {
                                         let r = (rgba >> 24) as u8;
                                         let g = (rgba >> 16) as u8;

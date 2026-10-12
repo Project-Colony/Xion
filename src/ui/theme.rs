@@ -3,6 +3,7 @@
 //! This module defines the visual design system including colors, spacing,
 //! and typography constants used throughout the application.
 
+use colony_ui::ColorExt;
 use iced::font::{Family, Style, Weight};
 use iced::{Color, Font};
 
@@ -167,7 +168,10 @@ pub mod icons {
 }
 
 /// Color palette for the UI.
-#[derive(Debug, Clone, Copy)]
+///
+/// Every field is derived from a Colony palette by [`UiColors::from_colony`];
+/// nothing here is a colour of its own.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct UiColors {
     /// Background color for chrome elements (toolbar, status bar).
     pub chrome_background: Color,
@@ -183,10 +187,8 @@ pub struct UiColors {
     pub text_primary: Color,
     /// Muted/secondary text color.
     pub text_muted: Color,
-    /// Background color for selected items.
+    /// Background for text selections and toggles that are on.
     pub selection: Color,
-    /// Border color for selected items.
-    pub selection_border: Color,
     /// Background color for hovered items.
     pub hover: Color,
     /// Background color for pressed items.
@@ -283,12 +285,7 @@ pub fn sync_colony_locale() {
 /// resolves to.
 pub fn resolves_dark(theme: &crate::core::ThemeChoice) -> bool {
     let (family, variant) = theme.keys();
-    luminance(colony_ui::resolve(family, variant).bg_primary) < 0.5
-}
-
-/// Perceived brightness, for deciding whether two colours read as different.
-fn luminance(color: Color) -> f32 {
-    0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b
+    !colony_ui::resolve(family, variant).bg_primary.is_light()
 }
 
 /// Nudges a colour away from `surface` until the two can be told apart.
@@ -305,7 +302,7 @@ fn separated_from(candidate: Color, surface: Color, towards: Color) -> Color {
     const MIN_SEPARATION: f32 = 0.06;
     const BLEND: f32 = 0.22;
 
-    if (luminance(candidate) - luminance(surface)).abs() >= MIN_SEPARATION {
+    if (candidate.luma() - surface.luma()).abs() >= MIN_SEPARATION {
         return candidate;
     }
 
@@ -343,7 +340,6 @@ impl UiColors {
             // fifty-seven: the selected row would vanish into the list
             // background there.
             selection: separated_from(palette.bg_selected, palette.bg_card, accent),
-            selection_border: accent,
             hover: palette.bg_card_hover,
             pressed: palette.bg_card_pressed,
             diff_removed: palette.error,
@@ -358,29 +354,12 @@ impl UiColors {
     }
 }
 
+/// The palette Colony falls back to, with its own accent: what a fresh
+/// configuration resolves to.
 impl Default for UiColors {
     fn default() -> Self {
-        Self {
-            chrome_background: Color::from_rgb8(247, 247, 250),
-            panel_background: Color::from_rgb8(255, 255, 255),
-            border: Color::from_rgb8(223, 226, 232),
-            sidebar_background: Color::from_rgb8(242, 244, 248),
-            accent: Color::from_rgb8(0, 120, 215),
-            text_primary: Color::from_rgb8(32, 34, 38),
-            text_muted: Color::from_rgb8(110, 114, 122),
-            selection: Color::from_rgb8(214, 230, 248),
-            selection_border: Color::from_rgb8(178, 206, 236),
-            hover: Color::from_rgb8(233, 239, 247),
-            pressed: Color::from_rgb8(220, 230, 244),
-            diff_removed: Color::from_rgb(0.9, 0.4, 0.4),
-            diff_added: Color::from_rgb(0.4, 0.9, 0.4),
-            git_staged: Color::from_rgb8(80, 200, 80),
-            git_conflict: Color::from_rgb8(220, 50, 50),
-            git_deleted: Color::from_rgb8(200, 80, 80),
-            address_directory: Color::from_rgb8(55, 125, 60),
-            address_file: Color::from_rgb8(186, 120, 40),
-            address_not_found: Color::from_rgb8(176, 72, 72),
-        }
+        let palette = colony_ui::FALLBACK_PALETTE;
+        Self::from_colony(palette, palette.accent_blue)
     }
 }
 
@@ -403,10 +382,10 @@ mod icon_tests {
 
     #[test]
     fn anything_too_long_or_non_ascii_falls_back_like_the_match_arm() {
-        assert_eq!(icon_for_extension("uneextensionbeaucouptroplongue"), FILE);
+        assert_eq!(icon_for_extension("anextensionthatisfartoolong"), FILE);
         assert_eq!(icon_for_extension("é"), FILE);
         assert_eq!(icon_for_extension(""), FILE);
-        assert_eq!(icon_for_extension("inconnue"), FILE);
+        assert_eq!(icon_for_extension("unknown"), FILE);
     }
 }
 
@@ -579,7 +558,8 @@ pub mod layout {
 
 #[cfg(test)]
 mod colony_palette_tests {
-    use super::{UiColors, luminance};
+    use super::UiColors;
+    use colony_ui::ColorExt;
 
     /// What Xion requires of every palette, checked across the whole catalogue.
     ///
@@ -598,7 +578,7 @@ mod colony_palette_tests {
                 let at = format!("{}/{}", family.key, variant.key);
                 checked += 1;
 
-                let apart = |a, b| (luminance(a) - luminance(b)).abs();
+                let apart = |a: iced::Color, b: iced::Color| (a.luma() - b.luma()).abs();
 
                 assert!(
                     apart(colors.border, colors.panel_background) >= MIN,
@@ -619,7 +599,7 @@ mod colony_palette_tests {
             }
         }
 
-        assert!(checked >= 50, "catalogue trop court : {checked} variantes");
+        assert!(checked >= 50, "catalogue too short: {checked} variants");
     }
 
     /// High contrast is a modifier, not a theme: it applies to any palette. That
@@ -632,8 +612,7 @@ mod colony_palette_tests {
         let boosted_palette = palette.with_high_contrast();
         let boosted = UiColors::from_colony(boosted_palette, boosted_palette.accent_blue);
 
-        let contrast =
-            |c: &UiColors| (luminance(c.text_primary) - luminance(c.panel_background)).abs();
+        let contrast = |c: &UiColors| (c.text_primary.luma() - c.panel_background.luma()).abs();
         assert!(
             contrast(&boosted) >= contrast(&plain),
             "high contrast must raise the contrast, not lower it"
@@ -647,9 +626,17 @@ mod colony_palette_tests {
         let palette = colony_ui::resolve("no-such-family", "made-up-variant");
         let colors = UiColors::from_colony(palette, palette.accent_blue);
         assert!(
-            (luminance(colors.text_primary) - luminance(colors.panel_background)).abs() >= 0.2,
+            (colors.text_primary.luma() - colors.panel_background.luma()).abs() >= 0.2,
             "the fallback must stay readable"
         );
+    }
+
+    /// The defaults are what a fresh configuration resolves to, not a palette
+    /// of their own: Colony's fallback with its own accent.
+    #[test]
+    fn the_default_colours_are_the_default_theme() {
+        let resolved = super::UiTokens::for_theme(&crate::core::ThemeChoice::default()).colors;
+        assert_eq!(UiColors::default(), resolved);
     }
 }
 

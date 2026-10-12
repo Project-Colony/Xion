@@ -91,7 +91,7 @@ impl XionApp {
                     // Feature F: File label dot
                     let label_dot: Option<Element<'_, UiMessage>> =
                         self.state.config.labels.get(&entry.path).map(|label| {
-                            let dot_color = label.color();
+                            let dot_color = label.color(&colors);
                             container(row![])
                                 .width(Length::Fixed(8.0))
                                 .height(Length::Fixed(8.0))
@@ -245,7 +245,7 @@ impl XionApp {
         entry: &'a FsEntry,
     ) -> Element<'a, UiMessage> {
         let ViewCtx {
-            colors: _,
+            colors,
             spacing,
             typography,
         } = cx.ui;
@@ -253,7 +253,7 @@ impl XionApp {
         let mut name_row = row![].spacing(spacing.xs).align_y(Alignment::Center);
         // Label dot in grid view
         if let Some(label) = self.state.config.labels.get(&entry.path) {
-            let dot_color = label.color();
+            let dot_color = label.color(&colors);
             name_row = name_row.push(
                 container(row![])
                     .width(Length::Fixed(6.0))

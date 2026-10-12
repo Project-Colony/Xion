@@ -241,19 +241,30 @@ impl XionApp {
                     .lines
                     .iter()
                     .map(|line| {
+                        // The theme's status colours, faded so the line
+                        // stays readable on top of them.
                         let (line_text, bg_color) = match line {
                             crate::ui::DiffLine::Same(s) => (format!("  {}", s), None),
                             crate::ui::DiffLine::Added(s) => (
                                 format!("+ {}", s),
-                                Some(Color::from_rgba(0.1, 0.6, 0.1, 0.3)),
+                                Some(Color {
+                                    a: 0.3,
+                                    ..colors.diff_added
+                                }),
                             ),
                             crate::ui::DiffLine::Removed(s) => (
                                 format!("- {}", s),
-                                Some(Color::from_rgba(0.7, 0.1, 0.1, 0.3)),
+                                Some(Color {
+                                    a: 0.3,
+                                    ..colors.diff_removed
+                                }),
                             ),
                             crate::ui::DiffLine::Header(s) => (
                                 format!("  {}", s),
-                                Some(Color::from_rgba(0.5, 0.5, 0.5, 0.2)),
+                                Some(Color {
+                                    a: 0.2,
+                                    ..colors.text_muted
+                                }),
                             ),
                         };
                         let t = caption_text(typography, line_text);

@@ -5,11 +5,11 @@
 //! and where to place it.
 
 use iced::widget::{column, container, mouse_area};
-use iced::{Color, Element, Length};
+use iced::{Element, Length};
 
 use crate::filesystem::FsEntryType;
 use crate::ui::theme::icons;
-use crate::ui::{ContextAction, UiMessage};
+use crate::ui::{ContextAction, FileLabel, UiMessage};
 
 use super::XionApp;
 use super::menu_items;
@@ -348,37 +348,37 @@ impl XionApp {
                 let sub = column![
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(220, 50, 50),
+                        FileLabel::Red.color(&colors),
                         "Rouge".into(),
                         ContextAction::SetLabelRed
                     ),
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(255, 165, 0),
+                        FileLabel::Orange.color(&colors),
                         "Orange".into(),
                         ContextAction::SetLabelOrange
                     ),
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(220, 200, 50),
+                        FileLabel::Yellow.color(&colors),
                         "Jaune".into(),
                         ContextAction::SetLabelYellow
                     ),
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(50, 180, 50),
+                        FileLabel::Green.color(&colors),
                         "Verte".into(),
                         ContextAction::SetLabelGreen
                     ),
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(50, 100, 220),
+                        FileLabel::Blue.color(&colors),
                         "Bleue".into(),
                         ContextAction::SetLabelBlue
                     ),
                     menu_items::label_dot(
                         ctx,
-                        Color::from_rgb8(150, 50, 200),
+                        FileLabel::Purple.color(&colors),
                         "Violette".into(),
                         ContextAction::SetLabelPurple
                     ),

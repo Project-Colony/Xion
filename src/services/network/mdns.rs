@@ -54,7 +54,7 @@ pub fn discover_mdns_services() -> Vec<NetworkResource> {
     let mdns = match ServiceDaemon::new() {
         Ok(d) => d,
         Err(e) => {
-            tracing::warn!("Réseau: impossible de démarrer mDNS daemon: {e}");
+            tracing::warn!("Network: cannot start the mDNS daemon: {e}");
             return Vec::new();
         }
     };
@@ -70,7 +70,7 @@ pub fn discover_mdns_services() -> Vec<NetworkResource> {
     for stype in &service_types {
         match mdns.browse(stype) {
             Ok(receiver) => receivers.push((stype.to_string(), receiver)),
-            Err(e) => tracing::debug!("Réseau: mDNS browse {stype} échoué: {e}"),
+            Err(e) => tracing::debug!("Network: mDNS browse {stype} failed: {e}"),
         }
     }
 
@@ -86,7 +86,7 @@ pub fn discover_mdns_services() -> Vec<NetworkResource> {
                 if let ServiceEvent::ServiceResolved(info) = event {
                     let host = info.get_hostname().trim_end_matches('.').to_string();
                     if !is_valid_mdns_hostname(&host) {
-                        tracing::debug!("Réseau: nom d'hôte mDNS rejeté");
+                        tracing::debug!("Network: mDNS host name rejected");
                         continue;
                     }
                     let port = info.get_port();
@@ -112,7 +112,10 @@ pub fn discover_mdns_services() -> Vec<NetworkResource> {
                     let label = if label.is_empty() { host } else { label };
                     // The provenance is part of the label: nothing here has been
                     // verified, anyone on the LAN can announce any name.
-                    let display = format!("{label} ({protocol}, mDNS non vérifié)");
+                    let display = crate::i18n::tf(
+                        "network_mdns_label",
+                        &[("label", &label), ("protocol", &protocol)],
+                    );
                     results.push(NetworkResource {
                         name: display,
                         path,
@@ -134,9 +137,9 @@ pub fn discover_mdns_services() -> Vec<NetworkResource> {
 
     // Shutdown daemon
     if let Err(e) = mdns.shutdown() {
-        tracing::debug!("Réseau: arrêt du daemon mDNS échoué: {e}");
+        tracing::debug!("Network: stopping the mDNS daemon failed: {e}");
     }
 
-    tracing::info!("Réseau: mDNS découverte {} services", results.len());
+    tracing::info!("Network: mDNS discovered {} services", results.len());
     results
 }

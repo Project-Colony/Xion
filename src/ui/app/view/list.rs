@@ -7,6 +7,7 @@
 use iced::widget::{column, container, mouse_area, row, scrollable, text_input};
 use iced::{Alignment, Element, Length};
 
+use crate::i18n::t;
 use crate::ui::{ScrollViewport, UiMessage};
 
 use super::XionApp;
@@ -42,7 +43,7 @@ impl XionApp {
             &self.state.config.column_widths,
         );
         let view_mode = self.state.config.view.mode;
-        let row_height = self.state.config.view.row_height;
+        let row_height = self.row_height();
         let cx = RowCtx {
             ui: ctx,
             view_mode,
@@ -67,7 +68,7 @@ impl XionApp {
         let list_header = self.render_list_header(ctx, list_header_visible);
 
         let rename_prompt = if let Some(dialog) = &self.rename_dialog {
-            let input = text_input("Nouveau nom…", &dialog.input)
+            let input = text_input(t("rename_placeholder"), &dialog.input)
                 .on_input(UiMessage::RenameInputChanged)
                 .on_submit(UiMessage::RenameSubmit)
                 .size(typography.body)
@@ -75,11 +76,11 @@ impl XionApp {
                 .padding([spacing.xs, spacing.md]);
             container(
                 row![
-                    body_text(typography, "Renommer :"),
+                    body_text(typography, t("rename_label")),
                     input,
-                    widgets::toolbar_button(ctx, "Valider".to_string())
+                    widgets::toolbar_button(ctx, t("action_confirm").to_string())
                         .on_press(UiMessage::RenameSubmit),
-                    widgets::toolbar_button(ctx, "Annuler".to_string())
+                    widgets::toolbar_button(ctx, t("action_cancel").to_string())
                         .on_press(UiMessage::RenameCancel)
                 ]
                 .spacing(spacing.sm)

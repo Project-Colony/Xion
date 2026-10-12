@@ -10,8 +10,7 @@ live under `Colony/Xion/` in the user configuration directory, and its look come
 from the shared Colony theme catalogue.
 
 > **Status:** in development. It builds and its tests pass on Linux and Windows
-> in CI, and `cargo deny` reports no open advisory. The interface is in French
-> only for now.
+> in CI, and `cargo deny` reports no open advisory.
 
 ## What it does
 
@@ -30,6 +29,11 @@ from the shared Colony theme catalogue.
 - An embedded terminal panel built on `iced_term` (`alacritty_terminal`).
 - Locations mounted by gvfs (SMB, SFTP, phones, Google Drive) appear in the
   sidebar.
+- An English and a French interface: Preferences > General > Language picks
+  one, or follows the session's language by default.
+- Every Colony theme and accent, two text sizes that multiply, high contrast, a
+  dyslexia-friendly font and reduced motion, all under Preferences, which the
+  **Xion** button in the top-left corner opens.
 - A versioned TOML configuration, reloaded on change, at
   `~/.config/Colony/Xion/config.toml` on Linux.
 
@@ -124,5 +128,6 @@ files you open. On Windows, `xion --register` adds context-menu entries under
 ## License
 
 Xion is licensed under the GNU General Public License v3.0 or later. See
-[LICENSE](LICENSE). The bundled JetBrains Mono Nerd Font files are under the SIL
-Open Font License 1.1 (`ui/Assets/Fonts/OFL.txt`).
+[LICENSE](LICENSE). Its fonts (JetBrains Mono Nerd Font, OpenDyslexic and Font
+Awesome 6 Free) come embedded in [colony-ui](https://crates.io/crates/colony-ui),
+which ships them with their licence texts.

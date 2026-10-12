@@ -12,6 +12,7 @@ use iced::Task;
 use crate::filesystem::{
     EntryFilter, ListOptions, LocalFileSystem, PageRequest, SortKey, SortOrder, WatchEvent,
 };
+use crate::i18n::{t, tf};
 use crate::services::{SearchIndexOptions, SearchQuery, SearchService};
 use crate::ui::theme::layout::TREE_MAX_DEPTH;
 use crate::ui::theme::timing::LOADING_INDICATOR_DELAY;
@@ -25,7 +26,7 @@ use super::types::{DirSize, PagedEntries, TabState, root_path_for, route_kind_fr
 ///
 /// A folder is not a number you can read off an inode: it has to be walked.
 /// Both limits below exist so that pointing at `/` does not start an unbounded
-/// traversal — but a result that hit one of them is a floor, and the UI is told
+/// traversal, but a result that hit one of them is a floor, and the UI is told
 /// so rather than showing a total that is quietly wrong.
 const MAX_DIR_SIZE_DEPTH: usize = 6;
 
@@ -97,7 +98,7 @@ impl XionApp {
         // `dir_sizes` deliberately survives: walking a folder costs real disk
         // I/O, and this ran on every navigation, so going into a folder and
         // back re-walked everything the user had just waited for. It is dropped
-        // only when something is known to have changed — see the `reset_query`
+        // only when something is known to have changed, see the `reset_query`
         // path below, which is the after-a-file-operation refresh.
         if !reset_query {
             self.dir_sizes.clear();
@@ -113,7 +114,7 @@ impl XionApp {
         Task::batch(vec![
             self.request_page(0),
             self.schedule_loading_indicator(self.loading_generation),
-            // No-op unless a query survived the navigation — a refresh keeps
+            // No-op unless a query survived the navigation, a refresh keeps
             // the query, and its match count has to be rebuilt with it.
             self.start_search_indexing(),
             self.load_git_status(),
@@ -166,21 +167,20 @@ impl XionApp {
         if let Some(path) = target
             && let Err(error) = self.file_watcher.watch(&path)
         {
-            // Un dossier qu'on n'a pas le droit de lire ne peut évidemment
-            // pas être surveillé, et l'utilisateur ne peut rien y faire :
-            // `/boot` est en `drwx------ root:root` sur la plupart des
-            // distributions. La liste affiche déjà l'échec de lecture ;
-            // répéter la même chose en bas de fenêtre n'apprend rien.
+            // A folder we may not read obviously cannot be watched, and the
+            // user can do nothing about it: `/boot` is `drwx------ root:root`
+            // on most distributions. The list already shows the read failure;
+            // repeating it at the bottom of the window teaches nothing.
             //
-            // Les autres échecs restent signalés — une limite d'inotify
-            // atteinte, elle, se corrige.
+            // Other failures are still reported: a reached inotify limit, for
+            // one, can be fixed.
             let refused = matches!(
                 &error,
                 crate::core::XionError::Io(io)
                     if io.kind() == std::io::ErrorKind::PermissionDenied
             );
             if !refused {
-                self.last_action = Some(format!("Surveillance impossible : {}", path.display()));
+                self.last_action = Some(tf("watch_failed", &[("path", &path.display())]));
             }
         }
     }
@@ -188,8 +188,8 @@ impl XionApp {
     /// Builds the search index for the current directory, if a query needs it.
     ///
     /// This used to run on every navigation, whether or not the user ever
-    /// searched. The index is a second copy of the directory — 12,4 Mo for
-    /// 50 000 entries, measured, more than the listing itself — and up to eight
+    /// searched. The index is a second copy of the directory, 12.4 MB for
+    /// 50 000 entries, measured, more than the listing itself, and up to eight
     /// of them are kept in the LRU cache, so simply walking through eight large
     /// folders cost a hundred megabytes for a count nobody had asked for.
     ///
@@ -277,7 +277,7 @@ impl XionApp {
             Ok(events) if !events.is_empty() => Some(events),
             Ok(_) => None,
             Err(error) => {
-                self.last_action = Some(format!("Observateur FS: {error}"));
+                self.last_action = Some(tf("watcher_error", &[("error", &error)]));
                 None
             }
         }
@@ -343,7 +343,7 @@ impl XionApp {
         let route_key = self.state.route.key();
         let route_kind = self.state.route.kind.clone();
         let generation = self.loading_generation;
-        // These clones are intentional — config structs are small and must be owned by the async task
+        // These clones are intentional: config structs are small and must be owned by the async task
         let list_config = self.state.config.list.clone();
         let respect_gitignore = self.state.config.respect_gitignore;
         let filesystem_config = self.state.config.filesystem.clone();
@@ -363,7 +363,7 @@ impl XionApp {
                             Ok(mut loader) => loader
                                 .load_page(&filesystem, &path, options, page_request)
                                 .map_err(|error| error.to_string()),
-                            Err(_) => Err("Le chargeur de dossiers est indisponible.".to_string()),
+                            Err(_) => Err(t("error_loader_unavailable").to_string()),
                         }
                     }
                     crate::ui::RouteKind::Network => {
@@ -431,8 +431,8 @@ impl XionApp {
     pub(super) fn open_in_new_tab(&mut self, path: PathBuf) -> Task<UiMessage> {
         // Already open: go to it. Xion is the default file manager now, so a
         // folder gets opened from the desktop over and over; without this, the
-        // tab strip filled with duplicates of the same directory — observed,
-        // twice for Téléchargements.
+        // tab strip filled with duplicates of the same directory (observed
+        // twice for Téléchargements).
         if let Some(index) = self
             .tab_manager
             .tabs
@@ -466,7 +466,7 @@ impl XionApp {
     }
 
     pub(super) fn close_tab(&mut self, index: usize) -> Task<UiMessage> {
-        // Tab 0 is intentionally protected — always keep at least one "home" tab open.
+        // Tab 0 is intentionally protected: always keep at least one "home" tab open.
         if self.tab_manager.count() <= 1 || index == 0 || index >= self.tab_manager.count() {
             return Task::none();
         }
@@ -529,12 +529,12 @@ impl XionApp {
                     let mut map: HashMap<PathBuf, GitFileStatus> = HashMap::new();
                     for entry in statuses.iter() {
                         let s = entry.status();
-                        // `path()` rend un `Result` depuis git2 0.21, là où il
-                        // rendait un `Option`. Un chemin non valide en UTF-8
-                        // fait donc sauter cette entrée seule, au lieu
-                        // d'interrompre la lecture de tout le dépôt comme le
-                        // faisait le `?` précédent — une entrée illisible ne
-                        // doit pas priver les autres de leur état Git.
+                        // `path()` returns a `Result` since git2 0.21, where it
+                        // used to return an `Option`. A path that is not valid
+                        // UTF-8 now skips this entry alone, instead of stopping
+                        // the read of the whole repository as the previous `?`
+                        // did: one unreadable entry must not deprive the others
+                        // of their Git status.
                         let Ok(rel) = entry.path() else {
                             continue;
                         };
@@ -573,8 +573,8 @@ impl XionApp {
     /// Records a folder's size, keeping the map bounded.
     ///
     /// Now that it survives navigation, an unbounded map would hold an entry
-    /// for every folder seen in a session. The cap is generous — the entries
-    /// are a path and sixteen bytes — and eviction is arbitrary rather than
+    /// for every folder seen in a session. The cap is generous, the entries
+    /// are a path and sixteen bytes, and eviction is arbitrary rather than
     /// least-recently-used, because at this size the difference is not worth a
     /// second data structure to maintain.
     pub(super) fn remember_dir_size(&mut self, path: PathBuf, size: DirSize) {
@@ -592,7 +592,7 @@ impl XionApp {
     pub(super) fn request_dir_sizes(&mut self) -> Task<UiMessage> {
         let mut tasks = Vec::new();
         // Only the rows on screen. Walking every loaded directory spawned one
-        // unbounded recursive walk per subfolder — a directory of 500 folders
+        // unbounded recursive walk per subfolder, a directory of 500 folders
         // launched 500 concurrent disk traversals nobody had asked for.
         let window = self.entry_virtual_window();
         let entries_snapshot: Vec<PathBuf> = (window.start..window.end)
@@ -612,7 +612,7 @@ impl XionApp {
                     // At most a few traversals at a time: each one saturates a
                     // blocking worker, and they would otherwise starve the
                     // thumbnail and preview tasks that the user is waiting on.
-                    // RAII — the permit is held until this future completes.
+                    // RAII: the permit is held until this future completes.
                     let _permit = DIR_SIZE_LIMIT.acquire().await;
                     let (bytes, truncated) = tokio::task::spawn_blocking(move || {
                         let mut total: u64 = 0;
@@ -635,10 +635,10 @@ impl XionApp {
                                 truncated = true;
                                 continue;
                             }
-                            // `file_type` vient de `readdir`, `metadata` est un
-                            // appel système par entrée. Tester le type d'abord
-                            // évite d'en payer un pour chaque sous-dossier, qui
-                            // ne contribue rien au total.
+                            // `file_type` comes from `readdir`, `metadata` is a
+                            // system call per entry. Testing the type first
+                            // avoids paying one for every subfolder, which adds
+                            // nothing to the total.
                             if !entry.file_type().is_file() {
                                 continue;
                             }
@@ -651,7 +651,7 @@ impl XionApp {
                     })
                     .await
                     .unwrap_or_else(|e| {
-                        tracing::warn!("Taille dossier: tâche paniquée: {e}");
+                        tracing::warn!("Folder size: task panicked: {e}");
                         (0, false)
                     });
                     (path, bytes, truncated)

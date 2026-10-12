@@ -22,7 +22,9 @@ constatés ».
 Windows :
 
 ```
+cli          -> --flag sub-commands and the start path argument
 core/        -> types partagés, configuration, erreurs
+i18n/        -> interface text: en.json (canonical) and fr.json, t() and tf()
 filesystem/  -> accès FS, métadonnées, caches, opérations, observateur
 services/    -> logique métier (historique, favoris, recherche, miniatures…)
 platform/    -> intégration OS, un backend par cible
@@ -100,8 +102,8 @@ niveau (`src/lib.rs`).
 - `ThumbnailService` et fonctions de génération (image, vidéo via ffmpeg,
   PDF via mutool/pdftoppm).
 - `NetworkDiscoveryService` : découverte SMB et mDNS
-  (`src/services/network/`, découpé en `wnet.rs`, `net_view.rs`, `mdns.rs`,
-  `credentials.rs` et `ftp.rs`).
+  (`src/services/network/`, découpé en `wnet.rs`, `net_view.rs` et
+  `mdns.rs`).
 - `gvfs` : les emplacements montés par gvfs — partages SMB, SFTP, téléphones,
   Google Drive — retrouvés sous `$XDG_RUNTIME_DIR/gvfs`, où `gvfsd-fuse` les
   expose comme des dossiers ordinaires. Aucune liaison GIO : `LocalFileSystem`
@@ -110,12 +112,27 @@ niveau (`src/lib.rs`).
 - `VirtualList` : fenêtre visible pour le rendu virtualisé.
 - `highlight` : coloration syntaxique via syntect.
 
+## i18n/
+
+Every user-visible string is a key in `src/i18n/en.json` and `fr.json`, read
+with `i18n::t(key)` or `i18n::tf(key, args)` for strings with `{placeholders}`.
+English is canonical; the tests fail when the two files have different keys,
+when a key is empty, when a key copies one of colony-ui's shared labels, or
+when a literal key used in `src/` exists in neither table. Lookups fall back to
+English, then to `colony_ui::i18n::t`, which owns the shared Preferences
+labels (themes, accents, standard categories). The active locale is
+colony-ui's: `i18n::apply(config.language)` sets it at startup and when the
+language changes, so Xion's strings and the shared widgets always agree.
+
 ## platform/
 
 **Responsabilité** : tout ce qui n'existe que sur une cible, derrière une API
 uniforme, pour que le reste du crate n'écrive pas de `#[cfg]` en ligne
 (`src/platform/mod.rs`). Le backend `unix` dégrade explicitement au lieu de
 ne rien faire silencieusement.
+`platform::gpu` picks the wgpu backend before the renderer starts, and
+`attach_parent_console` gives `--help` a console on Windows. `src/main.rs`
+only reads the arguments, starts logging and launches the window.
 
 ## terminal
 
@@ -137,14 +154,38 @@ section dédiée plus bas.
   `media.rs`, `paging.rs`, `permissions.rs`, `shell.rs`, `windowing.rs` — et en
   quatre sous-modules : `update/` (9 fichiers), `view/` (21), `operations/` (8)
   et `navigation/` (5).
-- Les couleurs ne sont plus écrites dans Xion. `UiTokens::for_theme`
-  (`src/ui/theme.rs`) résout un couple famille/variante dans le catalogue
-  partagé de `colony-ui` — 25 familles, 57 variantes, 8 accents — et
-  `UiColors::from_colony` en dérive les dix-neuf surfaces que Xion nomme. La
-  palette arrive en argument plutôt que par `active_palette()` : `for_theme`
-  tourne à chaque reconstruction de l'arbre de widgets, donc une lecture d'état
-  global coûterait un verrou par image. Couvert par `colony_palette_tests`
-  (`src/ui/theme.rs`), qui vérifie la lisibilité sur **tout** le catalogue.
+- Colours are not written in Xion. `UiTokens::for_preferences`
+  (`src/ui/theme.rs`) resolves the theme family and variant of the user's
+  `StandardPreferences` in colony-ui's shared catalogue (25 families, 57
+  variants, 8 accents), and `UiColors::from_colony` derives the nineteen
+  surfaces Xion names. The palette is resolved purely, as an argument rather
+  than through `active_palette()`, because it runs on every rebuild of the
+  widget tree. `colony_palette_tests` (`src/ui/theme.rs`) checks legibility
+  across the **whole** catalogue.
+- Text goes through `UiTypography` (`src/ui/theme.rs`): three roles, title
+  `sz(16)` Bold, body `sz(14)` and caption `sz(12)` Regular, built from
+  `colony_ui::Typography::current()`. The two size preferences therefore
+  multiply into every text, and the dyslexia font replaces the interface font
+  everywhere at once. Nerd Font glyphs and the terminal use `glyph_font`, which
+  stays JetBrains Mono. The fonts themselves are embedded by colony-ui
+  (`colony_ui::fonts::BYTES`, registered in `ui::app::run`); Xion ships no font
+  file.
+- The shared Appearance and Accessibility settings are colony-ui's
+  `StandardPreferences`, stored as `AppConfig::standard` and flattened into
+  `config.toml`. `apply()` puts them into effect at startup
+  (`src/ui/app/construction.rs`), and every `UiMessage::Preference(change)`
+  goes through `XionApp::apply_preference` (`src/ui/app/update/tools.rs`),
+  which records it, applies it, saves the file and, for a theme, raises the
+  "Theme applied." toast.
+- The preferences page (`src/ui/app/view/preferences.rs`) is colony-ui's
+  `preferences_page` with its category list: General, Appearance and
+  Accessibility from `PreferencesView`, then Xion's own Files and About. It is
+  opened and closed by the identity button at the top-left of the header
+  (`src/ui/app/view/header.rs`).
+- Motion: `XionApp::update` settles both panel slides when
+  `colony_ui::effects_enabled()` is false, and `subscription`
+  (`src/ui/app/windowing.rs`) then starts neither the slide ticks nor the
+  animated GIF tick, so a GIF shows its first frame.
 
 ## Flux de données
 
@@ -218,8 +259,8 @@ n'est pas tenue.
       interrogé `src/ui/app/state.rs`.
 - [x] Découper `view/mod.rs` et `update.rs` — `src/ui/app/view/` (21 fichiers)
       et `src/ui/app/update/` (9 fichiers).
-- [x] Thème issu du catalogue partagé `colony-ui` — `UiTokens::for_theme`,
-      `src/ui/theme.rs`.
+- [x] Theme, typography, fonts and preferences from colony-ui:
+      `UiTokens::for_preferences` and `UiTypography`, `src/ui/theme.rs`.
 - [ ] Invalidation fine des caches sur évènement : le watcher déclenche
       aujourd'hui un relistage complet du dossier, pas une mise à jour ciblée.
 - [ ] Sortir les appels `std::fs` de `src/ui/` vers `filesystem/`.

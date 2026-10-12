@@ -14,9 +14,9 @@ pub mod config;
 pub mod uri;
 pub use config::{
     AppConfig, AppConfigLoad, CacheConfig, ConfigManager, ConfigSource, ConfigWarning,
-    EntryFilterConfig, FilesystemConfig, KeyChord, KeyInput, KeyKind, ListConfig, NamedKey,
-    PagingConfig, Session, SessionStore, ShellConfig, ShortcutBindings, SortKeyConfig,
-    SortOrderConfig, TabPersistConfig, ThemeChoice, ViewColumn, ViewConfig, ViewMode,
+    EntryFilterConfig, FilesystemConfig, KeyChord, KeyInput, KeyKind, Language, ListConfig,
+    NamedKey, PagingConfig, Session, SessionStore, ShellConfig, ShortcutBindings, SortKeyConfig,
+    SortOrderConfig, TabPersistConfig, ViewColumn, ViewConfig, ViewMode, config_warnings_summary,
 };
 
 pub type AppResult<T> = Result<T, XionError>;
@@ -41,7 +41,11 @@ impl fmt::Display for XionError {
             Self::InvalidPath(path) => write!(formatter, "Invalid path: {}", path.display()),
             Self::NotFound(path) => write!(formatter, "Not found: {}", path.display()),
             Self::Watcher(error) => write!(formatter, "File watcher error: {error}"),
-            Self::Rejected(reason) => write!(formatter, "Opération refusée : {reason}"),
+            Self::Rejected(reason) => write!(
+                formatter,
+                "{}",
+                crate::i18n::tf("error_rejected", &[("reason", reason)])
+            ),
         }
     }
 }

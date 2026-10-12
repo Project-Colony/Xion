@@ -8,11 +8,12 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, mouse_area, row, tooltip};
 use iced::{Alignment, Background, Element, Length, Theme, border};
 
+use crate::i18n::t;
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
-use crate::ui::theme::layout::{TAB_STRIP_HEIGHT, TERMINAL_RESIZE_BAR_HEIGHT};
+use crate::ui::theme::layout::{TAB_STRIP_HEIGHT, TERMINAL_RESIZE_BAR_HEIGHT, scaled};
 
-/// L'espace laissé sous les onglets, entre eux et le bas de leur bande.
+/// The space left under the tabs, between them and the bottom of their strip.
 const TAB_BOTTOM_GAP: f32 = 4.0;
 
 use super::XionApp;
@@ -39,12 +40,12 @@ impl XionApp {
 
         let animated_height = self.pane_resize.terminal_height * term_progress;
 
-        // La grille de l'émulateur, ou le mot de Xion quand il n'y en a pas.
+        // The emulator's grid, or Xion's message when there is none.
         //
-        // `TerminalView` est un widget à part entière : il dessine les cellules,
-        // reçoit les frappes quand il a le focus et prévient le pseudo-terminal
-        // de sa taille. Il remplace le texte défilant et le champ de saisie —
-        // taper se fait maintenant dans le terminal, comme dans tout terminal.
+        // `TerminalView` is a full widget: it draws the cells, receives
+        // keystrokes when it has focus and tells the pseudo-terminal its size.
+        // It replaces the scrolling text and the input field: typing now
+        // happens in the terminal, as in any terminal.
         let output_area: Element<'_, UiMessage> = match self
             .terminal
             .active_ref()
@@ -54,20 +55,20 @@ impl XionApp {
                 container(iced_term::TerminalView::show(terminal).map(UiMessage::TerminalEvent))
                     .width(Length::Fill)
                     .height(Length::Fill)
-                    // Le texte a besoin d'air en haut. La jonction avec
-                    // l'onglet actif est déjà assurée par le fond du panneau,
-                    // continu sous les deux ; retirer ce rembourrage ne l'a pas
-                    // renforcée, ça a seulement collé la première ligne du shell
-                    // contre la barre d'onglets.
+                    // The text needs room at the top. The join with the active
+                    // tab is already made by the panel background, continuous
+                    // under both; removing this padding did not strengthen it,
+                    // it only pressed the shell's first line against the tab
+                    // strip.
                     .padding([spacing.xs, spacing.sm])
-                    // Surtout pas de `clip(true)` ici.
+                    // No `clip(true)` here, above all.
                     //
-                    // Le widget dessine sa grille dans un cache de canevas, et
-                    // le rognage d'iced la fait disparaître entièrement — écran
-                    // noir, aucune cellule. Constaté deux fois. Le débordement
-                    // d'une ligne sur la bordure basse est le moindre mal ; s'il
-                    // faut le corriger, ce sera en donnant au panneau une
-                    // hauteur multiple de la hauteur de cellule, pas en rognant.
+                    // The widget draws its grid into a canvas cache, and iced's
+                    // clipping makes it vanish entirely: a black screen, not a
+                    // single cell. Seen twice. A line overflowing onto the
+                    // bottom border is the lesser evil; if it needs fixing, give
+                    // the panel a height that is a multiple of the cell height
+                    // rather than clipping.
                     .into()
             }
             None => {
@@ -75,7 +76,7 @@ impl XionApp {
                     .terminal
                     .active_ref()
                     .and_then(|tab| tab.notice.clone())
-                    .unwrap_or_else(|| "Démarrage de l'interpréteur…".to_string());
+                    .unwrap_or_else(|| t("terminal_starting").to_string());
                 container(caption_text(typography, message).style(move |_: &Theme| {
                     iced::widget::text::Style {
                         color: Some(colors.text_muted),
@@ -88,16 +89,16 @@ impl XionApp {
             }
         };
 
-        // Les onglets, dessinés comme ceux de la fenêtre.
+        // The tabs, drawn like the window's.
         //
-        // Ils étaient plats, avec leur croix de fermeture posée *à côté* — même
-        // taille, même forme que l'onglet, donc un onglet et sa croix se
-        // lisaient comme deux onglets. C'est le défaut que la bande du haut
-        // avait déjà corrigé, et qu'il restait ici.
+        // They used to be flat, with their close cross placed *next to* them,
+        // same size and shape as the tab, so a tab and its cross read as two
+        // tabs. That is the flaw the top strip had already fixed, and it was
+        // still here.
         //
-        // Ce qui fait qu'une rangée de boutons devient une rangée d'onglets :
-        // l'actif touche le bas de la bande, arrondi en haut seulement, et sa
-        // couleur est celle de la zone qu'il ouvre.
+        // What turns a row of buttons into a row of tabs: the active one
+        // touches the bottom of the strip, is rounded at the top only, and its
+        // colour is that of the area it opens.
         let mut tab_bar = row![].spacing(0).align_y(Alignment::End);
         let closable = self.terminal.tabs.len() > 1;
 
@@ -128,13 +129,13 @@ impl XionApp {
 
             let tab_body = button(inner)
                 .padding([spacing.xs, spacing.md])
-                // Plus court que la bande, pour laisser un espace sous lui.
+                // Shorter than the strip, to leave a gap under it.
                 //
-                // Il la remplissait de haut en bas et touchait son bord
-                // inférieur : c'est ce contact qui raccorde un onglet à la zone
-                // qu'il ouvre. Le détacher est un choix assumé — ça aère, au
-                // prix de cette jonction.
-                .height(Length::Fixed(TAB_STRIP_HEIGHT - TAB_BOTTOM_GAP))
+                // It used to fill the strip top to bottom and touch its lower
+                // edge: that contact is what joins a tab to the area it opens.
+                // Detaching it is a deliberate choice: it breathes, at the cost
+                // of that join.
+                .height(Length::Fixed(scaled(TAB_STRIP_HEIGHT) - TAB_BOTTOM_GAP))
                 .style(move |_: &Theme, status: ButtonStatus| {
                     let mut style = iced::widget::button::Style {
                         text_color: if is_active {
@@ -169,7 +170,7 @@ impl XionApp {
         }
 
         tab_bar = tab_bar.push(
-            button(caption_text(typography, icons::NEW).color(colors.text_muted))
+            button(glyph_text(typography, icons::NEW).color(colors.text_muted))
                 .padding([spacing.xs, spacing.sm])
                 .style(widgets::hover_button_style(
                     colors,
@@ -181,11 +182,11 @@ impl XionApp {
 
         let muted_color = colors.text_muted;
 
-        // Les commandes passent à droite, séparées des onglets.
+        // The commands go to the right, apart from the tabs.
         //
-        // Le choix de l'interpréteur se trouvait au milieu des onglets, ce qui
-        // en faisait des onglets d'apparence sans en être : cliquer « bash » ne
-        // change pas de session, ça change le programme de la session courante.
+        // The shell picker used to sit among the tabs, which made it look like
+        // tabs without being any: clicking "bash" does not switch session, it
+        // changes the program of the current session.
         tab_bar = tab_bar.push(horizontal_space());
 
         let current_shell = &self.state.config.terminal_shell;
@@ -234,21 +235,21 @@ impl XionApp {
                         ..Default::default()
                     },
                 ),
-            // Cette infobulle était la seule à ne pas nommer sa police : elle
-            // s'affichait donc dans la police par défaut d'iced, pas dans celle
-            // des légendes comme toutes les autres.
-            container(caption_text(typography, "Interrompre (Ctrl-C)"))
+            // This tooltip was the only one not naming its font: it was shown
+            // in iced's default font, not in the caption font like all the
+            // others.
+            container(caption_text(typography, t("terminal_interrupt")))
                 .padding(spacing.xs)
                 .style(surface_style(colors, RADIUS.sm)),
             tooltip::Position::Top,
         ));
 
-        // Rembourrage en bas nul : l'onglet actif doit atteindre la grille qu'il
-        // ouvre. Douze pixels d'écart suffisaient à le faire flotter, et toute
-        // la rangée redevenait une rangée de boutons.
+        // No bottom padding: the active tab must reach the grid it opens. Twelve
+        // pixels of gap were enough to make it float, and the whole row became
+        // a row of buttons again.
         let tab_bar_element: Element<'_, UiMessage> = container(tab_bar)
             .width(Length::Fill)
-            .height(Length::Fixed(TAB_STRIP_HEIGHT))
+            .height(Length::Fixed(scaled(TAB_STRIP_HEIGHT)))
             .padding(iced::Padding {
                 top: 0.0,
                 right: spacing.sm,
@@ -257,16 +258,15 @@ impl XionApp {
             })
             .into();
 
-        // La poignée : tirer la bordure haute agrandit le panneau.
+        // The handle: dragging the top border makes the panel taller.
         //
-        // Onze lignes suffisaient à une commande et sa réponse, mais un
-        // programme plein écran s'y trouvait écrasé sans recours — et l'écran
-        // alterné n'a pas d'historique, donc défiler n'était pas une issue.
+        // Eleven lines were enough for a command and its answer, but a
+        // full-screen program was squashed with no way out, and the alternate
+        // screen has no scrollback, so scrolling was no escape.
         //
-        // Transparente au repos : elle vit *dans* la bande d'onglets et en
-        // partage donc l'aplat. Lui donner un fond propre insérait une troisième
-        // couleur entre le panneau et la bande, et c'est ce liseré qui faisait
-        // flotter la rangée.
+        // Transparent at rest: it lives *inside* the tab strip and so shares
+        // its fill. Giving it its own background inserted a third colour
+        // between the panel and the strip, and that edge made the row float.
         let resize_handle: Element<'_, UiMessage> = mouse_area(
             container(row![])
                 .width(Length::Fill)
@@ -284,9 +284,9 @@ impl XionApp {
         .interaction(iced::mouse::Interaction::ResizingVertically)
         .into();
 
-        // Les onglets seuls sous l'aplat, sans contour — le même style que
-        // l'en-tête de fenêtre, pour la même raison : une ligne tracée sous les
-        // onglets couperait la jonction qui les fait lire comme des onglets.
+        // The tabs alone on the fill, with no border: the same style as the
+        // window header, for the same reason: a line drawn under the tabs
+        // would cut the join that makes them read as tabs.
         let strip: Element<'_, UiMessage> = container(tab_bar_element)
             .width(Length::Fill)
             .style(widgets::tab_strip_style(colors, RADIUS.lg))
@@ -298,31 +298,30 @@ impl XionApp {
             .style(surface_style(colors, RADIUS.lg))
             .into();
 
-        // La poignée vit au-dessus du panneau, dans l'espace qui le sépare de la
-        // liste — pas dedans.
+        // The handle lives above the panel, in the space separating it from the
+        // list, not inside it.
         //
-        // À l'intérieur, elle laissait quatre pixels d'aplat au-dessus de
-        // l'onglet actif : celui-ci remplissait le bas de la bande sans en
-        // atteindre le haut, et flottait donc dans son propre noir. Ici la bande
-        // ne contient plus que les onglets, et l'onglet la remplit entièrement.
+        // Inside, it left four pixels of fill above the active tab: the tab
+        // filled the bottom of the strip without reaching the top, and so
+        // floated in its own black. Here the strip only holds the tabs, and the
+        // tab fills it entirely.
         Some(column![resize_handle, term_panel].spacing(0).into())
     }
 }
 
-/// Raccourcit un titre d'onglet trop long pour la bande.
+/// Shorten a tab title that is too long for the strip.
 ///
-/// Les titres viennent maintenant du programme lui-même — le shell y met son
-/// dossier courant, `claude` y met le sujet de la conversation. Rien ne borne
-/// leur longueur, et un seul onglet bavard chassait tous les autres hors de la
-/// bande.
+/// Titles now come from the program itself: the shell puts its current
+/// directory there, `claude` puts the conversation topic. Nothing bounds their
+/// length, and a single talkative tab pushed every other one out of the strip.
 fn shorten(title: &str) -> String {
     const MAX_CHARS: usize = 22;
     let characters: Vec<char> = title.chars().collect();
     if characters.len() <= MAX_CHARS {
         return title.to_string();
     }
-    // Couper sur les caractères et non les octets : un titre accentué se
-    // tronquait au milieu d'un point de code.
+    // Cut on characters, not bytes: an accented title was truncated in the
+    // middle of a code point.
     let kept: String = characters[..MAX_CHARS.saturating_sub(1)].iter().collect();
     format!("{kept}…")
 }
@@ -343,8 +342,8 @@ mod tests {
         assert_eq!(cut.chars().count(), 22);
     }
 
-    /// Le titre vient du programme, donc il peut être accentué : couper sur les
-    /// octets casserait un point de code en deux.
+    /// The title comes from the program, so it can carry accents: cutting on
+    /// bytes would split a code point in two.
     #[test]
     fn an_accented_title_survives_the_cut() {
         let cut = shorten("éééééééééééééééééééééééééééé");

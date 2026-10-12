@@ -16,7 +16,7 @@ impl VirtualList {
         // `scroll_offset` can describe a list that no longer exists.
         //
         // Unclamped, `start` then runs past `total_items`: no row is drawn,
-        // because the range is inverted — but `padding_top` is still
+        // because the range is inverted, but `padding_top` is still
         // `start × item_height`, and the empty space it invents justifies the
         // very offset that produced it. The result latches: a folder holding
         // one file scrolls for thousands of pixels of nothing.
@@ -79,19 +79,19 @@ mod scroll_clamp_tests {
         }
     }
 
-    /// Le bug signalé : un dossier d'une seule entrée dans lequel on peut
-    /// défiler sur des milliers de pixels de vide.
+    /// The reported bug: a folder with a single entry that can be scrolled
+    /// through thousands of pixels of nothing.
     ///
-    /// Le décalage survit au widget quand le contenu rétrécit sous lui. Sans
-    /// bornage, `start` dépasse `end`, donc aucune ligne n'est dessinée — mais
-    /// `padding_top` vaut toujours `start × hauteur`, et ce vide justifie à son
-    /// tour le décalage. La boucle se verrouille.
+    /// The offset outlives the widget when the content shrinks under it.
+    /// Unbounded, `start` passes `end`, so no row is drawn, but `padding_top`
+    /// still equals `start x height`, and that empty space in turn justifies
+    /// the offset. The loop locks itself.
     #[test]
     fn a_stale_offset_cannot_invent_empty_space() {
         let window = list().visible_range(5000.0, 1);
         assert_eq!(window.start, 0);
-        assert_eq!(window.end, 1, "l'unique entrée doit être dessinée");
-        assert_eq!(window.padding_top, 0.0, "pas de vide au-dessus");
+        assert_eq!(window.end, 1, "the only entry must be drawn");
+        assert_eq!(window.padding_top, 0.0, "no empty space above");
         assert_eq!(window.padding_bottom, 0.0);
     }
 
@@ -107,8 +107,8 @@ mod scroll_clamp_tests {
         }
     }
 
-    /// Le total des trois morceaux doit valoir la hauteur du contenu, sinon la
-    /// barre de défilement décrit une liste qui n'existe pas.
+    /// The three pieces must add up to the content height, otherwise the
+    /// scrollbar describes a list that does not exist.
     #[test]
     fn the_pieces_add_up_to_the_content_height() {
         for total in [1usize, 12, 90, 5000] {
@@ -123,7 +123,7 @@ mod scroll_clamp_tests {
         }
     }
 
-    /// Un défilement légitime dans une longue liste ne doit pas être bridé.
+    /// A legitimate scroll in a long list must not be held back.
     #[test]
     fn a_legitimate_offset_still_scrolls() {
         let w = list().visible_range(2800.0, 1000);

@@ -10,7 +10,7 @@ use super::{NetworkResource, NetworkStatus};
 
 /// Entries the first `WNetEnumResourceW` buffer can hold. The API packs the
 /// structs at the front and their strings at the back of the same block, so this
-/// is a starting point, not a hard limit — see [`enum_resources_step`].
+/// is a starting point, not a hard limit, see [`enum_resources_step`].
 #[cfg(windows)]
 pub(super) const INITIAL_ENUM_ENTRIES: usize = 256;
 
@@ -30,11 +30,11 @@ impl Drop for EnumHandle {
         use windows_sys::Win32::NetworkManagement::WNet::WNetCloseEnum;
 
         // SAFETY: `self.0` came from a successful `WNetOpenEnumW`, is not null,
-        // and this is the only place that closes it — the struct is not Copy and
+        // and this is the only place that closes it, the struct is not Copy and
         // Drop runs once.
         let ret = unsafe { WNetCloseEnum(self.0) };
         if ret != NO_ERROR {
-            tracing::debug!("Réseau: WNetCloseEnum échoué: code {ret}");
+            tracing::debug!("Network: WNetCloseEnum failed: code {ret}");
         }
     }
 }
@@ -108,13 +108,13 @@ pub(super) fn enum_resources_step(
                     .max(buffer.len().saturating_mul(2));
                 if needed <= buffer.len() || needed > MAX_ENUM_ENTRIES {
                     return EnumStep::Failed(format!(
-                        "WNetEnumResourceW demande un tampon de {byte_size} octets, au-delà de la limite"
+                        "WNetEnumResourceW asks for a {byte_size} byte buffer, past the limit"
                     ));
                 }
                 buffer.resize(needed, zeroed_netresource());
             }
             other => {
-                return EnumStep::Failed(format!("WNetEnumResourceW échoué: code {other}"));
+                return EnumStep::Failed(format!("WNetEnumResourceW failed: code {other}"));
             }
         }
     }
@@ -143,7 +143,7 @@ pub(super) fn discover_via_wnet() -> Result<Vec<NetworkResource>, String> {
         )
     };
     if ret != NO_ERROR {
-        return Err(format!("WNetOpenEnumW échoué: code {ret}"));
+        return Err(format!("WNetOpenEnumW failed: code {ret}"));
     }
     let handle = EnumHandle(handle);
 
@@ -164,7 +164,7 @@ pub(super) fn discover_via_wnet() -> Result<Vec<NetworkResource>, String> {
                 continue;
             }
 
-            // It could be a server or a share — check dwType
+            // It could be a server or a share: check dwType
             let display_name = remote_name.trim_start_matches('\\').to_string();
             let is_container = res.dwUsage & RESOURCEUSAGE_CONTAINER != 0;
 
@@ -221,7 +221,7 @@ pub(super) fn enumerate_shares_wnet(
         )
     };
     if ret != NO_ERROR {
-        return Err(format!("WNetOpenEnumW (shares) échoué: code {ret}"));
+        return Err(format!("WNetOpenEnumW (shares) failed: code {ret}"));
     }
     let handle = EnumHandle(handle);
 
@@ -232,7 +232,7 @@ pub(super) fn enumerate_shares_wnet(
             EnumStep::Entries(count) => count,
             EnumStep::Done => break,
             EnumStep::Failed(error) => {
-                tracing::debug!("Réseau: énumération des partages interrompue: {error}");
+                tracing::debug!("Network: share enumeration interrupted: {error}");
                 break;
             }
         };

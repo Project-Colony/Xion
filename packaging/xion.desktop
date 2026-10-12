@@ -6,22 +6,22 @@ GenericName=File Manager
 GenericName[fr]=Gestionnaire de fichiers
 Comment=Browse and manage your files
 Comment[fr]=Parcourir et gérer vos fichiers
-# %U et non %f : un lanceur transmet une URI. `resolve_start_path` la décode.
+# %U and not %f: a launcher passes a URI. `xion::cli::start_path` decodes it.
 Exec=xion %U
 Icon=xion
 Terminal=false
 StartupNotify=true
-# Doit correspondre à l'`application_id` déclaré dans `ui::app::run`, sinon la
-# fenêtre n'est pas rattachée à ce lanceur : pas d'icône groupée dans la barre
-# des tâches, pas de retour visuel au démarrage.
+# Must match the `application_id` declared in `ui::app::run`, otherwise the
+# window is not attached to this launcher: no grouped icon in the task bar, no
+# visual feedback at startup.
 StartupWMClass=xion
-# Une seule catégorie principale (`System`) : en cumuler deux fait apparaître
-# l'entrée deux fois dans certains menus. `FileTools` et `FileManager` sont des
-# catégories additionnelles, qui ont justement besoin d'une principale.
+# A single main category (`System`): stacking two makes the entry appear twice
+# in some menus. `FileTools` and `FileManager` are additional categories, which
+# precisely need a main one.
 Categories=System;FileTools;FileManager;
-# Ce qui rend Xion éligible comme gestionnaire de fichiers par défaut.
-# L'ancien alias `x-directory/normal` est délibérément absent : il est obsolète
-# et `desktop-file-validate` le signale.
+# What makes Xion eligible as the default file manager. The old
+# `x-directory/normal` alias is deliberately absent: it is obsolete and
+# `desktop-file-validate` flags it.
 MimeType=inode/directory;
 Keywords=files;folders;explorer;manager;browser;
 Keywords[fr]=fichiers;dossiers;explorateur;gestionnaire;navigateur;

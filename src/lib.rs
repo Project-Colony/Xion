@@ -10,6 +10,7 @@
 //! - **`filesystem`** - Filesystem abstraction, caching, and operations
 //! - **`services`** - Business logic (history, search, thumbnails, terminal)
 //! - **`platform`** - OS integration that exists on some targets only
+//! - **`i18n`** - Interface text in English and French
 //! - **`ui`** - Iced-based user interface
 //!
 //! ## Features
@@ -29,8 +30,10 @@
 //! // cargo run --release
 //! ```
 
+pub mod cli;
 pub mod core;
 pub mod filesystem;
+pub mod i18n;
 pub mod platform;
 pub mod services;
 pub mod ui;

@@ -200,7 +200,7 @@ thread_local! {
         const { RefCell::new(None) };
 }
 
-/// Locations mounted by gvfs — SMB shares, SFTP, phones, mounted archives.
+/// Locations mounted by gvfs, SMB shares, SFTP, phones, mounted archives.
 pub(super) fn gvfs_mounts() -> Vec<crate::services::gvfs::GvfsMount> {
     TimedSnapshot {
         cell: &GVFS_CACHE,
@@ -360,12 +360,12 @@ pub(super) struct PaneResizeState {
     pub(super) preview_width: f32,
     pub(super) preview_resizing: bool,
     pub(super) preview_resize_anchor: Option<(f32, f32)>,
-    /// Hauteur du panneau terminal, tirée par sa bordure haute.
+    /// Height of the terminal panel, dragged by its top border.
     ///
-    /// Elle valait 240 pixels en dur, soit onze lignes une fois la barre
-    /// d'onglets déduite. Assez pour une commande et sa réponse, beaucoup trop
-    /// peu pour un programme plein écran — l'interface de `claude` s'y trouvait
-    /// écrasée sans qu'on puisse rien y faire.
+    /// It used to be a hard-coded 240 pixels, eleven lines once the tab strip
+    /// was taken off. Enough for a command and its answer, far too little for a
+    /// full-screen program: the `claude` interface was squashed with nothing to
+    /// be done about it.
     pub(super) terminal_height: f32,
     pub(super) terminal_resizing: bool,
     pub(super) terminal_resize_anchor: Option<(f32, f32)>,
@@ -463,30 +463,29 @@ impl AddressValidationCache {
 
 // ── Terminal state ────────────────────────────────────────────────────────────
 
-/// Un onglet du panneau terminal.
+/// A tab of the terminal panel.
 ///
-/// L'émulation elle-même appartient à `iced_term`, adossé à
-/// `alacritty_terminal` : une vraie grille de cellules, avec positionnement du
-/// curseur en deux dimensions, écran alterné et frappes transmises telles
-/// quelles. Le modèle écrit ici ne savait rien de tout cela — il empilait des
-/// lignes — et c'est pourquoi tout programme plein écran s'y affichait en
-/// bouillie.
+/// Emulation itself belongs to `iced_term`, backed by `alacritty_terminal`: a
+/// real cell grid, with two-dimensional cursor positioning, the alternate
+/// screen and keystrokes passed through untouched. The model written here knew
+/// none of that (it stacked lines), which is why every full-screen program
+/// rendered as mush.
 #[derive(Default)]
 pub(super) struct TerminalTab {
     pub(super) title: String,
-    /// L'émulateur, présent tant que le panneau est ouvert sur cet onglet.
+    /// The emulator, present while the panel is open on this tab.
     pub(super) terminal: Option<iced_term::Terminal>,
     pub(super) cwd: Option<std::path::PathBuf>,
-    /// Ce que Xion a à dire lui-même — un échec de démarrage, par exemple.
+    /// What Xion has to say itself: a startup failure, for example.
     ///
-    /// Séparé de l'écran : la grille appartient au processus, et y injecter du
-    /// texte reviendrait à mentir sur ce que le programme a écrit.
+    /// Kept apart from the screen: the grid belongs to the process, and
+    /// injecting text into it would lie about what the program wrote.
     pub(super) notice: Option<String>,
 }
 
-// `iced_term::Terminal` n'est pas `Debug` — il porte un cache de rendu et le
-// canal du pseudo-terminal. Plutôt que de retirer `Debug` de tout `XionApp`,
-// l'onglet dit ce qui est observable de lui.
+// `iced_term::Terminal` is not `Debug`: it carries a render cache and the
+// pseudo-terminal channel. Rather than removing `Debug` from all of `XionApp`,
+// the tab reports what is observable about it.
 impl std::fmt::Debug for TerminalTab {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -500,7 +499,7 @@ impl std::fmt::Debug for TerminalTab {
 }
 
 impl TerminalTab {
-    /// Ce que Xion a à dire, quand il ne peut pas laisser le shell parler.
+    /// What Xion has to say, when it cannot let the shell speak.
     pub(super) fn push_notice(&mut self, notice: String) {
         self.notice = Some(notice);
     }
@@ -543,13 +542,12 @@ impl TerminalState {
         &mut self.tabs[self.active_tab]
     }
 
-    /// L'onglet actif, ou `None` s'il n'y en a aucun.
+    /// The active tab, or `None` when there is none.
     ///
-    /// Renvoyait auparavant une référence vers un `LazyLock<TerminalTab>`
-    /// statique pour éviter l'option. Un onglet portant désormais un émulateur —
-    /// donc un canal de pseudo-terminal — ne peut plus vivre dans un statique,
-    /// et l'appelant est mieux placé que ce module pour décider quoi afficher
-    /// quand il n'y a rien.
+    /// Used to return a reference to a static `LazyLock<TerminalTab>` to avoid
+    /// the option. Now that a tab carries an emulator, and so a pseudo-terminal
+    /// channel, it can no longer live in a static, and the caller is better
+    /// placed than this module to decide what to show when there is nothing.
     pub(super) fn active_ref(&self) -> Option<&TerminalTab> {
         let index = self.active_tab.min(self.tabs.len().checked_sub(1)?);
         self.tabs.get(index)
@@ -601,7 +599,7 @@ impl ArchiveType {
     ///
     /// This test used to exist in five places with four different answers. The
     /// context menu's copy looked only at the extension, so `archive.tar.gz`
-    /// (extension `gz`) was never recognised — its `.tar.gz` fallback sat
+    /// (extension `gz`) was never recognised, its `.tar.gz` fallback sat
     /// behind an `unwrap_or_else` that a `Some(false)` never reaches. And
     /// `detect_archive_type` answered `Zip` for anything it did not recognise,
     /// which is a guess, not an answer.
@@ -721,7 +719,7 @@ pub(super) struct PaneB {
 
 /// How many rows the second pane loads and draws.
 ///
-/// It has no virtual windowing, so the view drew only the first 200 entries —
+/// It has no virtual windowing, so the view drew only the first 200 entries,
 /// while the loader read the whole directory into memory, however large, and
 /// said nothing about the ones it then dropped on the floor.
 pub(super) const PANE_B_LIMIT: usize = 200;
@@ -859,16 +857,16 @@ pub(super) enum ContextSubmenu {
     Label,
 }
 
-/// Les émulateurs mis à la retraite, gardés en vie une passe de plus.
+/// Retired emulators, kept alive for one more pass.
 ///
-/// `iced_term` **panique** quand le canal d'un terminal se ferme alors que sa
-/// souscription vit encore : `terminal.rs` appelle `panic!` au lieu de terminer
-/// le flux. Or lâcher un `Terminal` ferme son canal, et iced ne retire sa
-/// souscription qu'après le retour de `update` — le flux avait donc le temps de
-/// voir la fermeture et d'emporter un fil de tokio avec lui.
+/// `iced_term` **panics** when a terminal's channel closes while its
+/// subscription is still alive: `terminal.rs` calls `panic!` instead of ending
+/// the stream. Dropping a `Terminal` closes its channel, and iced only removes
+/// its subscription after `update` returns, so the stream had time to see the
+/// close and take a tokio thread down with it.
 ///
-/// Les retirés attendent ici que la liste des souscriptions ait été recalculée
-/// sans eux, puis sont détruits au tour suivant, quand plus personne n'écoute.
+/// Retired emulators wait here until the subscription list has been recomputed
+/// without them, then are destroyed on the next round, when nobody listens.
 #[derive(Default)]
 pub(super) struct RetiredTerminals(pub(super) Vec<iced_term::Terminal>);
 
@@ -881,17 +879,24 @@ impl std::fmt::Debug for RetiredTerminals {
     }
 }
 
-/// L'état de la page de préférences pendant qu'elle est ouverte.
+/// The state of the preferences page while it is open.
 #[derive(Debug, Default)]
 pub(super) struct PreferencesState {
     pub(super) open: bool,
     pub(super) category: crate::ui::PreferencesCategory,
-    /// Les sections dépliées, par clé.
+    /// The expanded sections, by key.
     ///
-    /// La convention le veut ainsi — « expanded state is per-section and
-    /// remembered while the page is open » — et rien de plus : l'état meurt
-    /// avec la fenêtre, il n'a pas sa place dans le fichier de configuration.
-    pub(super) expanded: std::collections::HashSet<&'static str>,
+    /// The convention wants it that way ("expanded state is per-section and
+    /// remembered while the page is open") and no more: the state dies with
+    /// the window, it has no place in the configuration file.
+    pub(super) expanded: std::collections::HashSet<String>,
+    /// The id of the "Theme applied." toast on screen, if one is.
+    ///
+    /// Each theme change raises a new id, so the timer of an older toast
+    /// cannot hide a newer one.
+    pub(super) toast: Option<u64>,
+    /// The last toast id handed out.
+    pub(super) toast_counter: u64,
 }
 
 #[derive(Debug, Default)]
@@ -904,12 +909,12 @@ pub(super) struct MenuState {
     pub(super) context_submenu: Option<ContextSubmenu>,
     pub(super) history_open: bool,
     pub(super) history_position: Option<iced::Point>,
-    /// La page de préférences.
+    /// The preferences page.
     ///
-    /// Elle remplace la zone de contenu ; ce n'est pas une surcouche. C'était
-    /// une modale à sa première écriture, ce que la convention Colony désigne
-    /// nommément comme le contre-exemple : « it is not a modal, not a separate
-    /// window, not a popover ».
+    /// It replaces the content area; it is not an overlay. It was a modal in
+    /// its first version, which the Colony convention names explicitly as the
+    /// counter-example: "it is not a modal, not a separate window, not a
+    /// popover".
     pub(super) preferences: PreferencesState,
     /// The `⋯` menu at the end of the single header bar.
     ///
@@ -933,8 +938,8 @@ pub(super) struct DualPaneState {
 
 /// What a confirmation dialog will carry out if the user accepts.
 ///
-/// Only irreversible operations go through here. Anything recoverable — moving
-/// to the trash, for instance — must not ask, or the prompt becomes noise the
+/// Only irreversible operations go through here. Anything recoverable, moving
+/// to the trash, for instance, must not ask, or the prompt becomes noise the
 /// user clicks through.
 #[derive(Debug, Clone)]
 pub(super) enum ConfirmedAction {
@@ -955,7 +960,7 @@ mod archive_type_tests {
     use super::*;
 
     /// Regression: the context menu tested only the extension, so a `.tar.gz`
-    /// — whose extension is `gz` — was never recognised as an archive.
+    /// whose extension is `gz`, was never recognised as an archive.
     #[test]
     fn tar_gz_is_recognised() {
         assert_eq!(
@@ -1002,7 +1007,7 @@ mod archive_type_tests {
             assert_eq!(
                 ArchiveType::detect(Path::new(name)),
                 None,
-                "{name} ne devrait pas être vu comme une archive"
+                "{name} should not be seen as an archive"
             );
         }
     }

@@ -3,8 +3,13 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::i18n::t;
+
 /// No-op on Unix; kept so callers do not need `#[cfg]` around process spawns.
 pub const CREATE_NO_WINDOW: u32 = 0;
+
+/// Unix processes keep the console they were started from; nothing to do.
+pub fn attach_parent_console() {}
 
 /// On Unix there is no protected system directory to anchor to, and `PATH`
 /// does not include the current directory, so the plain name is correct.
@@ -32,10 +37,7 @@ pub fn shell_open(path: &Path) -> io::Result<()> {
 pub fn open_with(path: &Path) -> io::Result<()> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
-        format!(
-            "« Ouvrir avec » n'est pas disponible sur cette plateforme ({})",
-            path.display()
-        ),
+        crate::i18n::tf("open_with_unavailable", &[("path", &path.display())]),
     ))
 }
 
@@ -79,12 +81,15 @@ pub fn read_acl_text(path: &Path) -> io::Result<String> {
     };
 
     Ok(format!(
-        "{}:(propriétaire)({})\n{}:(groupe)({})\n{}:(autres)({})\n",
+        "{}:({})({})\n{}:({})({})\n{}:({})({})\n",
         path.display(),
+        t("acl_owner"),
         render(6),
         path.display(),
+        t("acl_group"),
         render(3),
         path.display(),
+        t("acl_others"),
         render(0),
     ))
 }
@@ -107,7 +112,7 @@ impl OpenService {
     ///
     /// Returns nothing and never fails: a caller that is about to exit has no
     /// use for an error, and the running instance decides what a bad path
-    /// means — the same decision it makes for a path typed in the address bar.
+    /// means, the same decision it makes for a path typed in the address bar.
     fn open(&self, path: String) {
         let _ = self.sender.send(PathBuf::from(path));
     }
@@ -129,7 +134,7 @@ pub fn claim(open: Option<&Path>) -> Claim {
         None => match forward(open) {
             // Somebody answered: this process has done its job.
             true => Claim::Secondary,
-            // The name is taken but nothing answered — a stale owner, or a
+            // The name is taken but nothing answered: a stale owner, or a
             // peer that is not us. Running a second window is a far better
             // outcome than exiting and opening nothing at all.
             false => Claim::Primary(Primary {
@@ -154,7 +159,7 @@ fn try_serve(sender: std::sync::mpsc::Sender<PathBuf>) -> Option<zbus::blocking:
     // `DoNotQueue`, and the reply checked, both matter. The builder's `.name()`
     // shortcut asks without it: a second launch was then *queued* behind the
     // running instance, the request reported success, and the process went on
-    // to open its own window — the exact duplicate this module exists to
+    // to open its own window, the exact duplicate this module exists to
     // prevent. Measured: two windows, two processes.
     let reply = connection
         .request_name_with_flags(SERVICE_NAME, zbus::fdo::RequestNameFlags::DoNotQueue.into())
@@ -162,7 +167,7 @@ fn try_serve(sender: std::sync::mpsc::Sender<PathBuf>) -> Option<zbus::blocking:
 
     match reply {
         zbus::fdo::RequestNameReply::PrimaryOwner => Some(connection),
-        // AlreadyOwner cannot happen — this connection was just created — and
+        // AlreadyOwner cannot happen, this connection was just created, and
         // InQueue is impossible with DoNotQueue. Both mean "not ours".
         _ => None,
     }

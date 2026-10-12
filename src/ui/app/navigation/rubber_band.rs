@@ -86,14 +86,14 @@ impl XionApp {
     }
 
     pub(in crate::ui::app) fn list_content_offset(&self, list_header_visible: bool) -> f32 {
-        let tokens = UiTokens::for_theme(&self.state.config.theme);
+        let tokens = UiTokens::for_preferences(&self.state.config.standard);
         let mut offset = tokens.spacing.md; // container top padding
         if self.rename_dialog.is_some() {
-            offset += self.state.config.view.row_height + tokens.spacing.xl;
+            offset += self.row_height() + tokens.spacing.xl;
         }
         if list_header_visible {
-            // Header has same structure as a data row — use row_height as height
-            offset += self.state.config.view.row_height;
+            // Header has same structure as a data row: use row_height as height
+            offset += self.row_height();
             offset += tokens.spacing.xl; // column spacing
         }
         offset
@@ -120,7 +120,7 @@ impl XionApp {
         let list_header_visible =
             self.list_header_visible(view_mode, display_entries, filtered_indices.as_ref());
         let list_content_offset = self.list_content_offset(list_header_visible);
-        let tokens = UiTokens::for_theme(&self.state.config.theme);
+        let tokens = UiTokens::for_preferences(&self.state.config.standard);
         let list_padding = tokens.spacing.md;
         let content_width = (bounds.width - list_padding * 2.0).max(1.0);
         let filter_slice = filtered_indices.as_deref();
@@ -129,7 +129,7 @@ impl XionApp {
         match view_mode {
             ViewMode::List => {
                 let window = self.list_virtual_window_for(total_entries);
-                let row_height = self.state.config.view.row_height;
+                let row_height = self.row_height();
                 for display_index in window.start..window.end {
                     let Some(actual_index) = entry_index_for(filter_slice, display_index) else {
                         continue;
@@ -153,7 +153,7 @@ impl XionApp {
             }
             ViewMode::Grid => {
                 let grid = self.grid_window_for(total_entries);
-                let tile_height = self.state.config.view.grid_row_height;
+                let tile_height = self.grid_row_height();
                 let columns = grid.columns.max(1);
                 let total_spacing = tokens.spacing.md * (columns.saturating_sub(1) as f32);
                 let tile_width = ((content_width - total_spacing) / columns as f32).max(1.0);

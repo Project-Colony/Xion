@@ -1,13 +1,7 @@
-mod credentials;
-#[cfg(feature = "ftp")]
-mod ftp;
 mod mdns;
 mod net_view;
 mod wnet;
 
-pub use credentials::*;
-#[cfg(feature = "ftp")]
-pub use ftp::*;
 pub use mdns::*;
 use net_view::*;
 #[cfg(windows)]
@@ -36,8 +30,8 @@ const MAX_MDNS_LABEL: usize = 48;
 
 /// Diagnostics of the last scan run through [`NetworkDiscoveryService::run_scan`].
 ///
-/// `run_scan` is an associated function — the UI hands it to `spawn_blocking` as
-/// a bare function pointer — so it has no `&self` to report through. Failures
+/// `run_scan` is an associated function, the UI hands it to `spawn_blocking` as
+/// a bare function pointer, so it has no `&self` to report through. Failures
 /// used to end up in the log while the caller received an empty `Vec`,
 /// indistinguishable from "there is nothing on this network". The scan parks its
 /// error here and [`NetworkDiscoveryService::last_error`] reads it back.
@@ -188,7 +182,7 @@ impl NetworkDiscoveryService {
         page.apply(entries)
     }
 
-    /// Runs the actual network discovery. Blocking — call via spawn_blocking.
+    /// Runs the actual network discovery. Blocking: call via spawn_blocking.
     ///
     /// Kept returning a bare `Vec` for the existing `spawn_blocking` call site;
     /// the diagnostics go to [`LAST_SCAN_ERROR`]. Prefer [`Self::run_scan_detailed`].
@@ -203,7 +197,7 @@ impl NetworkDiscoveryService {
     /// Tries native WinAPI first (WNetEnumResource), then falls back to `net view`,
     /// and always adds whatever mDNS announces.
     pub fn run_scan_detailed() -> ScanOutcome {
-        tracing::info!("Réseau: début du scan réseau");
+        tracing::info!("Network: scan started");
         let start = Instant::now();
         let mut errors: Vec<String> = Vec::new();
 
@@ -213,7 +207,7 @@ impl NetworkDiscoveryService {
             match discover_via_wnet() {
                 Ok(resources) if !resources.is_empty() => {
                     tracing::info!(
-                        "Réseau: scan WinAPI terminé en {:?}, {} ressources trouvées",
+                        "Network: WinAPI scan finished in {:?}, {} resources found",
                         start.elapsed(),
                         resources.len()
                     );
@@ -223,12 +217,10 @@ impl NetworkDiscoveryService {
                     };
                 }
                 Ok(_) => {
-                    tracing::debug!(
-                        "Réseau: WinAPI n'a trouvé aucune ressource, fallback sur net view"
-                    );
+                    tracing::debug!("Network: WinAPI found no resource, falling back to net view");
                 }
                 Err(e) => {
-                    tracing::warn!("Réseau: WinAPI échouée ({e}), fallback sur net view");
+                    tracing::warn!("Network: WinAPI failed ({e}), falling back to net view");
                     errors.push(format!("WinAPI: {e}"));
                 }
             }
@@ -238,14 +230,14 @@ impl NetworkDiscoveryService {
         let mut results = match discover_via_net_view() {
             Ok(found) => {
                 tracing::info!(
-                    "Réseau: scan net view terminé en {:?}, {} ressources trouvées",
+                    "Network: net view scan finished in {:?}, {} resources found",
                     start.elapsed(),
                     found.len()
                 );
                 found
             }
             Err(e) => {
-                tracing::warn!("Réseau: découverte SMB indisponible: {e}");
+                tracing::warn!("Network: SMB discovery unavailable: {e}");
                 errors.push(e);
                 Vec::new()
             }
@@ -254,7 +246,7 @@ impl NetworkDiscoveryService {
         // Also try mDNS discovery for additional services
         let mdns_results = discover_mdns_services();
         if !mdns_results.is_empty() {
-            tracing::info!("Réseau: {} services mDNS découverts", mdns_results.len());
+            tracing::info!("Network: {} mDNS services discovered", mdns_results.len());
             results.extend(mdns_results);
         }
 
@@ -385,8 +377,8 @@ The command completed successfully.
     #[test]
     fn smb_discovery_fails_explicitly_off_windows() {
         // It used to return an empty Vec, indistinguishable from "no shares".
-        let error = discover_via_net_view().expect_err("doit échouer hors Windows");
-        assert!(error.contains("Windows"), "message inattendu: {error}");
+        let error = discover_via_net_view().expect_err("must fail outside Windows");
+        assert!(error.contains("Windows"), "unexpected message: {error}");
     }
 
     #[test]
@@ -410,14 +402,6 @@ The command completed successfully.
 
         let long = "N".repeat(500);
         assert_eq!(sanitize_mdns_label(&long).chars().count(), MAX_MDNS_LABEL);
-    }
-
-    #[test]
-    fn secret_wide_is_scrubbed() {
-        let mut secret = SecretWide::new("mot-de-passe");
-        assert!(secret.buf.iter().any(|&c| c != 0));
-        secret.zeroize();
-        assert!(secret.buf.iter().all(|&c| c == 0));
     }
 
     #[test]
@@ -467,8 +451,8 @@ The command completed successfully.
     fn scan_error_reaches_last_error() {
         // `run_scan` has no `&self`, so its failures used to be unreportable.
         let svc = NetworkDiscoveryService::new();
-        record_scan_error(Some("panne de scan".to_string()));
-        assert_eq!(svc.last_error(), Some("panne de scan".to_string()));
+        record_scan_error(Some("scan failure".to_string()));
+        assert_eq!(svc.last_error(), Some("scan failure".to_string()));
         record_scan_error(None);
     }
 }

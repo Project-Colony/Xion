@@ -233,7 +233,7 @@ fn ensure_destination_absent(destination: &Path) -> Result<(), XionError> {
 /// Copying `/projects` into `/projects/build` used to work like this:
 /// `create_dir_all` made `/projects/build/projects` *before* `read_dir` listed
 /// `/projects`, so the listing returned the directory that had just been
-/// created and the recursion never terminated — it filled the disk at write
+/// created and the recursion never terminated, it filled the disk at write
 /// speed. Both paths are canonicalised first so symlinks, `..` segments and
 /// `\\?\` prefixes cannot be used to disguise the nesting.
 ///
@@ -250,19 +250,21 @@ fn guard_copy_target(source: &Path, destination: &Path) -> Result<(), XionError>
     let destination_real = fs::canonicalize(parent)?.join(name);
 
     if destination_real == source_real {
-        return Err(XionError::Rejected(format!(
-            "la source et la destination sont identiques : {}",
-            source_real.display()
+        return Err(XionError::Rejected(crate::i18n::tf(
+            "error_same_source_destination",
+            &[("path", &source_real.display())],
         )));
     }
 
     // `Path::starts_with` compares whole components, so `/a/bc` is correctly
     // NOT considered nested in `/a/b`.
     if destination_real.starts_with(&source_real) {
-        return Err(XionError::Rejected(format!(
-            "impossible de copier {} dans son propre sous-dossier {}",
-            source_real.display(),
-            destination_real.display()
+        return Err(XionError::Rejected(crate::i18n::tf(
+            "error_copy_into_itself",
+            &[
+                ("source", &source_real.display()),
+                ("destination", &destination_real.display()),
+            ],
         )));
     }
 
@@ -279,7 +281,7 @@ fn discard_partial(destination: &Path) {
     }
     if let Err(error) = delete_entry(destination) {
         tracing::warn!(
-            "Copie interrompue : nettoyage de {} impossible : {error}",
+            "Copy interrupted: cannot clean up {}: {error}",
             destination.display()
         );
     }
@@ -306,9 +308,9 @@ fn copy_tree_checked(source: &Path, destination: &Path) -> Result<(), XionError>
 
 fn copy_tree(source: &Path, destination: &Path, depth: u32) -> Result<(), XionError> {
     if depth > MAX_COPY_DEPTH {
-        return Err(XionError::Rejected(format!(
-            "profondeur maximale de {MAX_COPY_DEPTH} niveaux dépassée sous {}",
-            source.display()
+        return Err(XionError::Rejected(crate::i18n::tf(
+            "error_copy_too_deep",
+            &[("max", &MAX_COPY_DEPTH), ("path", &source.display())],
         )));
     }
 
@@ -398,8 +400,8 @@ fn move_entry(source: &Path, destination: &Path) -> Result<(), XionError> {
 
             if let Err(del_err) = delete_entry(&source) {
                 tracing::warn!(
-                    "Déplacement inter-volumes : suppression de la source impossible, \
-                     retrait de la copie : {del_err}"
+                    "Cross-volume move: cannot delete the source, removing the copy: \
+                     {del_err}"
                 );
                 discard_partial(&destination);
                 return Err(del_err);
@@ -459,13 +461,13 @@ mod tests {
         assert!(report.succeeded.is_empty());
         assert_eq!(report.failed.len(), 1);
         assert!(
-            report.failed[0].error.contains("sous-dossier"),
-            "message inattendu : {}",
+            report.failed[0].error.contains("subfolder"),
+            "unexpected message: {}",
             report.failed[0].error
         );
         assert!(
             !nested.join("projects").exists(),
-            "rien ne doit avoir été écrit dans la destination"
+            "nothing must have been written to the destination"
         );
     }
 
@@ -509,8 +511,8 @@ mod tests {
 
         assert_eq!(report.failed.len(), 1);
         assert!(
-            report.failed[0].error.contains("identiques"),
-            "message inattendu : {}",
+            report.failed[0].error.contains("the same"),
+            "unexpected message: {}",
             report.failed[0].error
         );
     }
@@ -532,7 +534,7 @@ mod tests {
         assert!(report.failed.is_empty(), "{:?}", report.failed);
         let copied_link = dest_dir.join("tree").join("link.txt");
         let meta = fs::symlink_metadata(&copied_link).unwrap();
-        assert!(meta.file_type().is_symlink(), "le lien doit rester un lien");
+        assert!(meta.file_type().is_symlink(), "the link must stay a link");
         assert_eq!(fs::read_link(&copied_link).unwrap(), Path::new("real.txt"));
     }
 

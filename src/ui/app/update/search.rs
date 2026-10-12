@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use iced::Task;
 
+use crate::i18n::{t, tf, tn};
 use crate::ui::UiMessage;
 
 use crate::ui::app::helpers::{self};
@@ -58,16 +59,15 @@ impl XionApp {
                             self.search.index = Some(index);
                             self.search.indexing = false;
                             self.update_search_index_matches();
-                            self.last_action = Some("Indexation terminée".to_string());
+                            self.last_action = Some(t("search_indexing_done").to_string());
                         }
                         Err(error) => {
                             self.search.index = None;
                             self.search.indexing = false;
                             self.search.matches = None;
-                            self.last_action = Some(format!(
-                                "Indexation impossible pour {} ({})",
-                                path.display(),
-                                error
+                            self.last_action = Some(tf(
+                                "search_indexing_failed",
+                                &[("path", &path.display()), ("error", &error)],
                             ));
                         }
                     }
@@ -222,13 +222,12 @@ impl XionApp {
                         },
                         UiMessage::FullTextSearchResults,
                     ));
-                    self.last_action = Some(format!("Recherche en cours : '{query_display}'…"));
+                    self.last_action = Some(tf("search_running", &[("query", &query_display)]));
                 }
             }
             UiMessage::FullTextSearchResults(results) => {
                 let count = results.len();
-                self.last_action =
-                    Some(format!("{count} résultat(s) de recherche dans le contenu"));
+                self.last_action = Some(tn("search_content_results", count, &[]));
                 // Reuse grep state for display
                 self.grep_state = Some(GrepState {
                     query: self.search.input.clone(),
@@ -244,24 +243,19 @@ impl XionApp {
                 if self.state.route.is_network() {
                     tasks.push(self.request_page(0));
                 }
-                self.last_action = Some(format!(
-                    "Scan réseau terminé — {} partage{} trouvé{}",
-                    count,
-                    if count > 1 { "s" } else { "" },
-                    if count > 1 { "s" } else { "" },
-                ));
+                self.last_action = Some(tn("network_scan_done", count, &[]));
             }
             // ── Feature N: Gitignore ──────────────────────────────────────────
             UiMessage::ToggleGitignore => {
                 self.state.config.respect_gitignore = !self.state.config.respect_gitignore;
                 self.last_action = Some(if self.state.config.respect_gitignore {
-                    ".gitignore activé".to_string()
+                    t("gitignore_on").to_string()
                 } else {
-                    ".gitignore désactivé".to_string()
+                    t("gitignore_off").to_string()
                 });
-                // La page de préférences affiche « enregistrées
-                // automatiquement » ; sans ceci le réglage revenait au
-                // démarrage suivant et la promesse était fausse.
+                // The preferences page says "saved automatically"; without this
+                // the setting came back at the next start and the promise was
+                // false.
                 self.config_manager.save(&self.state.config);
                 tasks.push(self.refresh_entries());
             }

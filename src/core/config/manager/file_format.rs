@@ -5,6 +5,7 @@
 
 use std::path::PathBuf;
 
+use colony_ui::preferences::StandardPreferences;
 use serde::{Deserialize, Serialize};
 
 // ── Private file format structs (V0 / V1) ────────────────────────────────────
@@ -43,18 +44,32 @@ pub(super) struct LegacySessionFile {
 #[derive(Debug, Deserialize, Serialize)]
 pub(super) struct AppConfigFileV1 {
     pub(super) version: Option<u32>,
+    /// colony-ui's Appearance and Accessibility settings, flat at the top of
+    /// the file under the names every Colony program writes: `selected_theme`,
+    /// `selected_variant`, `selected_accent`, `auto_accent`, `font_size`,
+    /// `animations`, `high_contrast`, `dyslexia_font`, `reduce_motion` and
+    /// `text_size_a11y`. A bad value falls back to its default on its own and
+    /// leaves the rest of the file alone.
+    #[serde(flatten)]
+    pub(super) standard: StandardPreferences,
+    // The keys below are only read, to migrate files written by earlier
+    // versions, and never written again.
+    /// Derived from the theme. Files older than the `theme` field only had
+    /// this boolean.
+    #[serde(skip_serializing)]
     pub(super) dark_mode: Option<bool>,
-    /// Ancien nom de thème : `Light`, `Nord`, `HighContrast`… Toujours lu, pour
-    /// migrer les fichiers écrits avant l'adoption du catalogue Colony. Plus
-    /// jamais écrit.
+    /// Theme name from before the Colony catalogue: `Light`, `Nord`,
+    /// `HighContrast`...
+    #[serde(skip_serializing)]
     pub(super) theme: Option<String>,
-    /// Clé de famille du catalogue Colony.
+    /// Family key, as written before `selected_theme`.
+    #[serde(skip_serializing)]
     pub(super) theme_family: Option<String>,
-    /// Clé de variante dans cette famille.
+    /// Variant key, as written before `selected_variant`.
+    #[serde(skip_serializing)]
     pub(super) theme_variant: Option<String>,
-    /// Rehaussement du contraste, applicable à n'importe quelle palette.
-    pub(super) high_contrast: Option<bool>,
-    /// Accent choisi ; absent signifie « celui du thème ».
+    /// Accent key, as written before `selected_accent`.
+    #[serde(skip_serializing)]
     pub(super) accent: Option<String>,
     pub(super) start_path: Option<PathBuf>,
     pub(super) list: Option<ListConfigFile>,
@@ -65,6 +80,8 @@ pub(super) struct AppConfigFileV1 {
     pub(super) shortcuts: Option<ShortcutBindingsFile>,
     pub(super) compact_mode: Option<bool>,
     pub(super) terminal_shell: Option<String>,
+    /// `auto`, `en` or `fr`.
+    pub(super) language: Option<String>,
     pub(super) respect_gitignore: Option<bool>,
     pub(super) labels: Option<std::collections::HashMap<String, String>>,
     pub(super) column_widths: Option<std::collections::HashMap<String, f32>>,

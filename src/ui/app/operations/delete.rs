@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use iced::Task;
 
 use crate::filesystem::{FileOperationKind, LocalFileOperations, OperationReport};
+use crate::i18n::{t, tf, tn};
 use crate::ui::UiMessage;
 
 use crate::ui::app::XionApp;
@@ -22,27 +23,28 @@ impl XionApp {
     pub(in crate::ui::app) fn request_permanent_delete(&mut self) -> Task<UiMessage> {
         let items = self.selected_paths();
         if items.is_empty() {
-            self.last_action = Some("Aucune sélection à supprimer".to_string());
+            self.last_action = Some(t("notice_nothing_to_delete").to_string());
             return Task::none();
         }
 
         let message = match items.as_slice() {
-            [only] => format!(
-                "Supprimer définitivement « {} » ?\nCet élément ne passera pas par la corbeille.",
-                only.file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| only.display().to_string())
+            [only] => tf(
+                "dialog_delete_single",
+                &[(
+                    "name",
+                    &only
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())
+                        .unwrap_or_else(|| only.display().to_string()),
+                )],
             ),
-            many => format!(
-                "Supprimer définitivement {} éléments ?\nIls ne passeront pas par la corbeille.",
-                many.len()
-            ),
+            many => tf("dialog_delete_many", &[("count", &many.len())]),
         };
 
         self.confirm_dialog = Some(ConfirmDialog {
-            title: "Suppression définitive".to_string(),
+            title: t("dialog_delete_title").to_string(),
             message,
-            confirm_label: "Supprimer".to_string(),
+            confirm_label: t("dialog_delete_confirm").to_string(),
             action: ConfirmedAction::DeletePermanently(items),
         });
         Task::none()
@@ -70,7 +72,7 @@ impl XionApp {
                 tokio::task::spawn_blocking(move || LocalFileOperations::new().delete_items(&items))
                     .await
                     .unwrap_or_else(|error| {
-                        tracing::error!("Tâche de suppression interrompue : {error}");
+                        tracing::error!("Delete task interrupted: {error}");
                         OperationReport::empty(FileOperationKind::Delete)
                     })
             },
@@ -81,7 +83,7 @@ impl XionApp {
     pub(in crate::ui::app) fn trash_selection(&mut self) -> Task<UiMessage> {
         let items = self.selected_paths();
         if items.is_empty() {
-            self.last_action = Some("Aucune sélection à déplacer".to_string());
+            self.last_action = Some(t("notice_nothing_to_trash").to_string());
             return Task::none();
         }
         self.clear_selection();
@@ -104,7 +106,7 @@ impl XionApp {
 
     pub(in crate::ui::app) fn execute_undo(&mut self) -> Task<UiMessage> {
         let Some(action) = self.undo_stack.pop() else {
-            self.last_action = Some("Rien à annuler".to_string());
+            self.last_action = Some(t("notice_nothing_to_undo").to_string());
             return Task::none();
         };
         match action {
@@ -116,15 +118,9 @@ impl XionApp {
                         let ops = LocalFileOperations::new();
                         let report = ops.delete_items(&paths);
                         if report.failed.is_empty() {
-                            Ok(format!(
-                                "Annulé : {} copie(s) supprimée(s)",
-                                report.succeeded.len()
-                            ))
+                            Ok(tn("undo_copies_deleted", report.succeeded.len(), &[]))
                         } else {
-                            Err(format!(
-                                "{} erreur(s) lors de l'annulation",
-                                report.failed.len()
-                            ))
+                            Err(tn("undo_errors", report.failed.len(), &[]))
                         }
                     },
                     UiMessage::UndoCompleted,
@@ -146,9 +142,9 @@ impl XionApp {
                             }
                         }
                         if err == 0 {
-                            Ok(format!("Annulé : {} déplacement(s)", ok))
+                            Ok(tn("undo_moves_reverted", ok, &[]))
                         } else {
-                            Err(format!("{err} erreur(s) lors de l'annulation ({ok} ok)"))
+                            Err(tn("undo_errors_partial", err, &[("succeeded", &ok)]))
                         }
                     },
                     UiMessage::UndoCompleted,
@@ -159,9 +155,9 @@ impl XionApp {
                     let ops = LocalFileOperations::new();
                     let report = ops.delete_items(&[path]);
                     if report.failed.is_empty() {
-                        Ok("Annulé : fichier supprimé".to_string())
+                        Ok(t("undo_file_deleted").to_string())
                     } else {
-                        Err("Erreur suppression fichier".to_string())
+                        Err(t("undo_file_delete_failed").to_string())
                     }
                 },
                 UiMessage::UndoCompleted,
@@ -171,9 +167,9 @@ impl XionApp {
                     let ops = LocalFileOperations::new();
                     let report = ops.delete_items(&[path]);
                     if report.failed.is_empty() {
-                        Ok("Annulé : dossier supprimé".to_string())
+                        Ok(t("undo_folder_deleted").to_string())
                     } else {
-                        Err("Erreur suppression dossier".to_string())
+                        Err(t("undo_folder_delete_failed").to_string())
                     }
                 },
                 UiMessage::UndoCompleted,
@@ -183,9 +179,9 @@ impl XionApp {
                     let ops = LocalFileOperations::new();
                     let report = ops.rename_item(&new_path, &old_path);
                     if report.failed.is_empty() {
-                        Ok(format!("Annulé : renommé en {}", old_path.display()))
+                        Ok(tf("undo_renamed_back", &[("name", &old_path.display())]))
                     } else {
-                        Err("Erreur annulation renommage".to_string())
+                        Err(t("undo_rename_failed").to_string())
                     }
                 },
                 UiMessage::UndoCompleted,
@@ -199,23 +195,22 @@ impl XionApp {
         let success = report.succeeded.len();
         let failure = report.failed.len();
         let base_message = match report.action {
-            FileOperationKind::Copy => format!("Copie : {} ok", success),
-            FileOperationKind::Move => format!("Déplacement : {} ok", success),
-            FileOperationKind::Rename => {
-                if success == 1 {
-                    report
-                        .succeeded
-                        .first()
-                        .map(|path| format!("Renommé : {}", path.display()))
-                        .unwrap_or_else(|| "Renommage terminé".to_string())
-                } else {
-                    format!("Renommage : {} ok", success)
-                }
-            }
-            FileOperationKind::Delete => format!("Suppression : {} ok", success),
+            FileOperationKind::Copy => tn("report_copied", success, &[]),
+            FileOperationKind::Move => tn("report_moved", success, &[]),
+            FileOperationKind::Rename => match report.succeeded.as_slice() {
+                [only] => tf("report_renamed_named", &[("name", &only.display())]),
+                _ => tn("report_renamed", success, &[]),
+            },
+            FileOperationKind::Delete => tn("report_deleted", success, &[]),
         };
         let full_message = if failure > 0 {
-            format!("{base_message} / {failure} erreur(s)")
+            tf(
+                "report_with_errors",
+                &[
+                    ("summary", &base_message),
+                    ("errors", &tn("report_errors", failure, &[])),
+                ],
+            )
         } else {
             base_message
         };

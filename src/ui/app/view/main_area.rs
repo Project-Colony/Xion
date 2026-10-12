@@ -8,6 +8,7 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, row, scrollable};
 use iced::{Alignment, Background, Element, Length, Theme};
 
+use crate::i18n::t;
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
@@ -18,6 +19,7 @@ use super::widgets::RADIUS;
 use super::widgets::body_text;
 use super::widgets::caption_text;
 use super::widgets::chrome_style;
+use super::widgets::icon_text;
 use super::widgets::surface_style;
 
 impl XionApp {
@@ -37,7 +39,7 @@ impl XionApp {
         let main_list_element: Element<'_, UiMessage> = if self.state.route.is_recent() {
             let recents = self.recents.list();
             let recent_rows: Vec<Element<'_, UiMessage>> = if recents.is_empty() {
-                vec![body_text(typography, "Aucun fichier récent").into()]
+                vec![body_text(typography, t("recent_none")).into()]
             } else {
                 recents
                     .iter()
@@ -66,7 +68,7 @@ impl XionApp {
                         let path = entry.path.clone();
                         button(
                             row![
-                                body_text(typography, icon),
+                                icon_text(typography, icon),
                                 column![
                                     body_text(typography, name),
                                     row![
@@ -108,9 +110,9 @@ impl XionApp {
             };
             let header = container(
                 row![
-                    body_text(typography, "Fichiers récents"),
+                    body_text(typography, t("recent_title")),
                     horizontal_space(),
-                    button(caption_text(typography, "Effacer"))
+                    button(caption_text(typography, t("action_clear")))
                         .on_press(UiMessage::ClearRecents)
                         .padding([spacing.xs, spacing.sm])
                         .style(
@@ -141,7 +143,7 @@ impl XionApp {
                 .archive_path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .unwrap_or("Archive")
+                .unwrap_or(t("archive_fallback_name"))
                 .to_string();
             let inner_str = if archive.inner_path.is_empty() {
                 "/".to_string()
@@ -179,7 +181,7 @@ impl XionApp {
                             .unwrap_or(icons::FILE)
                     };
                     let size_str = if entry.is_dir {
-                        "—".to_string()
+                        "-".to_string()
                     } else {
                         crate::ui::app::helpers::format_bytes(entry.size)
                     };
@@ -199,7 +201,7 @@ impl XionApp {
                     };
                     button(
                         row![
-                            body_text(typography, icon),
+                            icon_text(typography, icon),
                             body_text(typography, entry.name.clone()),
                             horizontal_space(),
                             caption_text(typography, size_str),
@@ -266,7 +268,7 @@ impl XionApp {
                 ))
                 .push(horizontal_space())
                 .push(
-                    button(body_text(typography, icons::CLOSE))
+                    button(icon_text(typography, icons::CLOSE))
                         .on_press(UiMessage::CloseArchiveBrowser)
                         .padding([spacing.xs, spacing.sm])
                         .style(

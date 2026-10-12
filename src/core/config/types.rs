@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use colony_ui::preferences::StandardPreferences;
 use serde::{Deserialize, Serialize};
 
 use super::shortcuts::ShortcutBindings;
@@ -70,66 +71,52 @@ impl ViewMode {
     }
 }
 
-// ── Theme / shell enums ───────────────────────────────────────────────────────
+// ── Language / shell enums ────────────────────────────────────────────────────
 
-/// Ce que l'utilisateur a choisi dans l'apparence.
-///
-/// Xion portait cinq palettes écrites à la main derrière un `enum`. Elles sont
-/// devenues une sélection dans le catalogue partagé de `colony-ui` — vingt-cinq
-/// familles, cinquante-sept variantes, huit accents — donc le choix ne peut
-/// plus être un ensemble fermé de cinq noms.
-///
-/// Les clés sont des chaînes et non un type fermé, à dessein : le socle ajoute
-/// des familles sans que Xion soit recompilé, et `colony_ui::resolve` retombe
-/// sur sa palette de repli pour tout couple inconnu — une famille retirée en
-/// amont dégrade au lieu d'empêcher le démarrage.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ThemeChoice {
-    /// Clé de famille du catalogue Colony : `gruvbox`, `nord`, `catppuccin`…
-    pub family: String,
-    /// Clé de variante dans cette famille : `dark`, `light`, `mocha`…
-    pub variant: String,
-    /// Rehausse le contraste. Colony en fait un modificateur applicable à
-    /// n'importe quelle palette, pas un thème à part.
-    pub high_contrast: bool,
-    /// Accent choisi par l'utilisateur ; `None` signifie « celui du thème ».
-    pub accent: Option<String>,
+/// The interface language the user picked.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Language {
+    /// The session's language: `LC_ALL`, `LC_MESSAGES` or `LANG` on Unix, the
+    /// display language on Windows. French when it is French, English
+    /// otherwise.
+    #[default]
+    Auto,
+    English,
+    French,
 }
 
-impl Default for ThemeChoice {
-    fn default() -> Self {
-        // La famille de repli du catalogue, pour que Xion démarre sur ce que
-        // l'écosystème considère comme son défaut plutôt que sur un goût local.
-        Self {
-            family: "gruvbox".to_string(),
-            variant: "dark".to_string(),
-            high_contrast: false,
-            accent: None,
+impl Language {
+    pub const ALL: [Self; 3] = [Self::Auto, Self::English, Self::French];
+
+    /// How the choice is written in `config.toml`.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::English => "en",
+            Self::French => "fr",
         }
     }
-}
 
-impl ThemeChoice {
-    /// Le couple que `colony_ui::resolve` attend.
-    pub fn keys(&self) -> (&str, &str) {
-        (&self.family, &self.variant)
+    /// The choice a `config.toml` value stands for; `None` when it is unknown.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|language| language.key() == key)
     }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub enum ShellConfig {
-    /// Le shell de connexion de l'utilisateur.
+    /// The user's login shell.
     ///
-    /// Une intention, pas un binaire : `$SHELL` sous Unix, `cmd` sous Windows.
-    /// C'est ce qui permet au même fichier de configuration de rester valide en
-    /// passant d'une machine à l'autre — la variante s'appelait `Cmd`, ce qui
-    /// désignait un exécutable Windows tout en lançant zsh sous Linux.
+    /// An intent, not a binary: `$SHELL` on Unix, `cmd` on Windows. That is
+    /// what lets the same configuration file stay valid from one machine to
+    /// another; the variant used to be called `Cmd`, which named a Windows
+    /// executable while starting zsh on Linux.
     #[default]
     System,
     PowerShell,
-    /// Bash : Git Bash sous Windows, le bash du système ailleurs.
+    /// Bash: Git Bash on Windows, the system bash elsewhere.
     Bash,
-    /// Un exécutable désigné par son chemin absolu.
+    /// An executable named by its absolute path.
     Custom(String),
 }
 
@@ -250,9 +237,14 @@ pub struct AppConfig {
     pub view: ViewConfig,
     pub paging: PagingConfig,
     pub shortcuts: ShortcutBindings,
+    /// Derived from the theme, never entered separately.
     pub dark_mode: bool,
-    pub theme: ThemeChoice,
+    /// Theme, accent, text sizes, high contrast, dyslexia font and motion: the
+    /// Appearance and Accessibility settings every Colony program shares,
+    /// stored flat at the top of `config.toml` under colony-ui's field names.
+    pub standard: StandardPreferences,
     pub terminal_shell: ShellConfig,
+    pub language: Language,
     pub respect_gitignore: bool,
     pub labels: std::collections::HashMap<PathBuf, crate::ui::FileLabel>,
     pub column_widths: std::collections::HashMap<String, f32>,
@@ -278,12 +270,13 @@ impl Default for AppConfig {
             view: ViewConfig::default(),
             paging: PagingConfig::default(),
             shortcuts: ShortcutBindings::default(),
-            // Dérivé du thème, jamais saisi à part : les deux ont divergé par
-            // le passé, et un surligneur de syntaxe clair a tourné sur une
-            // interface sombre jusqu'au changement de thème suivant.
-            dark_mode: crate::ui::theme::resolves_dark(&ThemeChoice::default()),
-            theme: ThemeChoice::default(),
+            // Derived from the theme, never entered separately: the two drifted
+            // apart in the past, and a light syntax highlighter ran on a dark
+            // interface until the next theme change.
+            dark_mode: crate::ui::theme::resolves_dark(&StandardPreferences::default()),
+            standard: StandardPreferences::default(),
             terminal_shell: ShellConfig::default(),
+            language: Language::default(),
             respect_gitignore: false,
             labels: std::collections::HashMap::new(),
             column_widths,
@@ -302,14 +295,47 @@ pub enum ConfigSource {
     Migrated(PathBuf),
 }
 
+/// A problem found while loading the configuration, shown to the user.
+///
+/// Kept as a locale key and its values rather than as text: the file is read
+/// before its own `language` setting is applied, so the message is only worded
+/// when it is displayed.
 #[derive(Debug, Clone)]
 pub struct ConfigWarning {
-    pub message: String,
+    key: &'static str,
+    args: Vec<(&'static str, String)>,
+}
+
+impl ConfigWarning {
+    pub fn new(key: &'static str, args: &[(&'static str, &dyn std::fmt::Display)]) -> Self {
+        Self {
+            key,
+            args: args
+                .iter()
+                .map(|(name, value)| (*name, value.to_string()))
+                .collect(),
+        }
+    }
+}
+
+/// Every warning of a load on one line, for the status bar.
+pub fn config_warnings_summary(warnings: &[ConfigWarning]) -> String {
+    let joined = warnings
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(" | ");
+    crate::i18n::tf("config_warnings", &[("warnings", &joined)])
 }
 
 impl std::fmt::Display for ConfigWarning {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.message)
+        let args: Vec<(&str, &dyn std::fmt::Display)> = self
+            .args
+            .iter()
+            .map(|(name, value)| (*name, value as &dyn std::fmt::Display))
+            .collect();
+        formatter.write_str(&crate::i18n::tf(self.key, &args))
     }
 }
 
@@ -322,26 +348,33 @@ pub struct AppConfigLoad {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, ThemeChoice};
+    use super::AppConfig;
 
-    /// Le défaut suit le repli du catalogue Colony plutôt qu'un goût local.
+    /// The default follows the Colony catalogue's fallback rather than a local
+    /// taste.
     #[test]
-    fn the_default_choice_is_the_ecosystem_fallback() {
-        let choice = ThemeChoice::default();
-        assert_eq!(choice.keys(), ("gruvbox", "dark"));
-        assert!(!choice.high_contrast);
-        assert_eq!(choice.accent, None, "« auto » veut dire l'accent du thème");
+    fn the_default_theme_is_the_ecosystem_fallback() {
+        let standard = AppConfig::default().standard;
+        assert_eq!(
+            (
+                standard.selected_theme.as_str(),
+                standard.selected_variant.as_str()
+            ),
+            colony_ui::preferences::DEFAULT_THEME
+        );
+        assert!(!standard.high_contrast);
+        assert_eq!(standard.selected_accent, None, "the theme's own accent");
     }
 
-    /// `dark_mode` est dérivé de la palette résolue, pas saisi à part : les
-    /// deux ont divergé par le passé, et un surligneur de syntaxe clair sur une
-    /// interface sombre a survécu jusqu'au changement de thème suivant.
+    /// `dark_mode` is derived from the resolved palette, not entered
+    /// separately: the two drifted apart in the past, and a light syntax
+    /// highlighter on a dark interface survived until the next theme change.
     #[test]
     fn default_config_keeps_dark_mode_and_theme_in_sync() {
         let config = AppConfig::default();
         assert_eq!(
             config.dark_mode,
-            crate::ui::theme::resolves_dark(&config.theme)
+            crate::ui::theme::resolves_dark(&config.standard)
         );
     }
 }

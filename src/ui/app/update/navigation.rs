@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use iced::Task;
 
 use crate::core::SortOrderConfig;
+use crate::i18n::{t, tf, tn};
 use crate::ui::UiMessage;
 
 use crate::ui::app::types::*;
@@ -52,16 +53,16 @@ impl XionApp {
                     .and_then(|primary| primary.try_recv())
                 {
                     // An empty path means "you are already running, come to the
-                    // front" — a launch with no argument at all.
+                    // front", a launch with no argument at all.
                     if path.as_os_str().is_empty() {
                         continue;
                     }
                     requested = Some(path);
                 }
                 if let Some(path) = requested {
-                    // Sans ça la fenêtre ouvre bien l'onglet mais reste
-                    // derrière celle où l'utilisateur vient de taper la
-                    // commande, et le dossier demandé n'apparaît jamais.
+                    // Without this the window does open the tab but stays
+                    // behind the one where the user just typed the command, and
+                    // the requested folder never shows up.
                     tasks.push(iced::window::latest().and_then(iced::window::gain_focus));
                     tasks.push(self.open_in_new_tab(path));
                 }
@@ -140,13 +141,11 @@ impl XionApp {
                     if is_network_path(&target) || target.is_dir() {
                         tasks.push(self.navigate_to(target));
                     } else if target.exists() {
-                        self.last_action = Some(format!(
-                            "Le chemin pointe vers un fichier : {}",
-                            target.display()
-                        ));
+                        self.last_action =
+                            Some(tf("address_is_file", &[("path", &target.display())]));
                     } else {
                         self.last_action =
-                            Some(format!("Chemin introuvable : {}", target.display()));
+                            Some(tf("address_missing", &[("path", &target.display())]));
                     }
                 }
             }
@@ -178,10 +177,17 @@ impl XionApp {
                     self.state.config.list.sort_key = sort_key;
                     self.state.config.list.sort_order = SortOrderConfig::Asc;
                 }
-                self.last_action = Some(format!(
-                    "Tri : {:?} ({:?})",
-                    self.state.config.list.sort_key, self.state.config.list.sort_order
-                ));
+                let key = match self.state.config.list.sort_key {
+                    crate::core::SortKeyConfig::Name => "column_name",
+                    crate::core::SortKeyConfig::Size => "column_size",
+                    crate::core::SortKeyConfig::Modified => "column_modified",
+                };
+                let order = match self.state.config.list.sort_order {
+                    SortOrderConfig::Asc => "sort_ascending",
+                    SortOrderConfig::Desc => "sort_descending",
+                };
+                self.last_action =
+                    Some(tf("sort_status", &[("key", &t(key)), ("order", &t(order))]));
                 // Saved here: it used to reach disk only through the config
                 // save every navigation made, which now writes the session.
                 self.config_manager.save(&self.state.config);
@@ -257,7 +263,7 @@ impl XionApp {
             }
             UiMessage::ClearRecents => {
                 self.recents.entries.clear();
-                self.last_action = Some("Historique récents effacé".to_string());
+                self.last_action = Some(t("recent_cleared").to_string());
             }
             // ── Feature H: Column Resizing ────────────────────────────────────
             UiMessage::BreadcrumbDropdown(path) => {
@@ -273,7 +279,7 @@ impl XionApp {
                             .map(|e| e.path())
                             .collect(),
                         Err(e) => {
-                            tracing::warn!("Breadcrumb dropdown: lecture {:?} échouée: {e}", path);
+                            tracing::warn!("Breadcrumb dropdown: reading {:?} failed: {e}", path);
                             Vec::new()
                         }
                     };
@@ -316,9 +322,9 @@ impl XionApp {
             }
             UiMessage::TrashListLoaded(items) => {
                 let count = items.len();
-                self.last_action = Some(format!("{count} élément(s) dans la corbeille"));
+                self.last_action = Some(tn("trash_items", count, &[]));
                 // Store trash items for display in sidebar
-                // We'll use the recents service pattern — display as a notification for now
+                // We'll use the recents service pattern: display as a notification for now
             }
             // ── #23: Full-text content search ────────────────────────────────
             UiMessage::TabDragStart(index) => {

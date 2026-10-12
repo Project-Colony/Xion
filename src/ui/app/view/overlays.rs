@@ -11,6 +11,7 @@ use iced::widget::{
 };
 use iced::{Alignment, Background, Color, Element, Length, Theme, border};
 
+use crate::i18n::{t, tf};
 use crate::ui::{UiColors, UiMessage, UiSpacing, UiTypography};
 
 use super::XionApp;
@@ -66,22 +67,25 @@ impl XionApp {
                 let size_str = dialog
                     .size_bytes
                     .map(super::super::helpers::format_bytes)
-                    .unwrap_or_else(|| "—".to_string());
+                    .unwrap_or_else(|| "-".to_string());
                 let hash_str = if dialog.computing_hash {
-                    "Calcul en cours...".to_string()
+                    t("properties_computing").to_string()
                 } else {
-                    dialog.sha256.clone().unwrap_or_else(|| "—".to_string())
+                    dialog.sha256.clone().unwrap_or_else(|| "-".to_string())
                 };
                 let title_str = if let Some(count) = dialog.selection_count {
-                    format!("Propriétés : {} éléments sélectionnés", count)
+                    tf("properties_title_many", &[("count", &count)])
                 } else {
-                    format!(
-                        "Propriétés : {}",
-                        dialog
-                            .path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("")
+                    tf(
+                        "properties_title",
+                        &[(
+                            "name",
+                            &dialog
+                                .path
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or(""),
+                        )],
                     )
                 };
 
@@ -98,7 +102,7 @@ impl XionApp {
 
                 let mut modal_content = column![
                     body_text(typography, title_str),
-                    field("Chemin", {
+                    field(t("properties_path"), {
                         let p = dialog.path.display().to_string();
                         let char_count = p.chars().count();
                         if char_count > 80 {
@@ -108,15 +112,18 @@ impl XionApp {
                             p
                         }
                     }),
-                    field("Taille", size_str),
-                    field("Créé", dialog.created.as_deref().unwrap_or("—").to_string()),
+                    field(t("properties_size"), size_str),
                     field(
-                        "Modifié",
-                        dialog.modified.as_deref().unwrap_or("—").to_string()
+                        t("properties_created"),
+                        dialog.created.as_deref().unwrap_or("-").to_string()
                     ),
                     field(
-                        "Lecture seule",
-                        if dialog.readonly { "Oui" } else { "Non" }.to_string()
+                        t("properties_modified"),
+                        dialog.modified.as_deref().unwrap_or("-").to_string()
+                    ),
+                    field(
+                        t("properties_read_only"),
+                        t(if dialog.readonly { "yes" } else { "no" }).to_string()
                     ),
                 ];
                 if dialog.selection_count.is_none() {
@@ -124,7 +131,7 @@ impl XionApp {
                 }
                 let modal_content = modal_content
                     .push(
-                        button(body_text(typography, "Fermer"))
+                        button(body_text(typography, t("action_close")))
                             .on_press(UiMessage::CloseProperties)
                             .padding([spacing.xs, spacing.sm]),
                     )
@@ -174,9 +181,9 @@ impl XionApp {
                 .collect();
 
             let mut modal_content = column![
-                body_text(typography, "Renommage multiple"),
+                body_text(typography, t("bulk_rename_title")),
                 row![
-                    caption_text(typography, "Chercher :"),
+                    caption_text(typography, t("bulk_rename_find")),
                     text_input("", &state.find)
                         .on_input(UiMessage::BulkRenameFindChanged)
                         .padding(spacing.xs)
@@ -185,7 +192,7 @@ impl XionApp {
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center),
                 row![
-                    caption_text(typography, "Remplacer :"),
+                    caption_text(typography, t("bulk_rename_replace")),
                     text_input("", &state.replace)
                         .on_input(UiMessage::BulkRenameReplaceChanged)
                         .padding(spacing.xs)
@@ -207,10 +214,10 @@ impl XionApp {
 
             modal_content = modal_content.push(
                 row![
-                    button(body_text(typography, "Appliquer"))
+                    button(body_text(typography, t("action_apply")))
                         .on_press(UiMessage::BulkRenameApply)
                         .padding([spacing.xs, spacing.sm]),
-                    button(body_text(typography, "Annuler"))
+                    button(body_text(typography, t("action_cancel")))
                         .on_press(UiMessage::BulkRenameCancel)
                         .padding([spacing.xs, spacing.sm]),
                 ]
@@ -233,7 +240,7 @@ impl XionApp {
         if let Some(diff) = &self.diff_view {
             if diff.loading {
                 let loading_content =
-                    column![caption_text(typography, "Chargement du diff…")].padding(spacing.lg);
+                    column![caption_text(typography, t("diff_loading"))].padding(spacing.lg);
 
                 modal_overlay(loading_content, UiMessage::CloseDiff, colors, None)
             } else {
@@ -241,19 +248,30 @@ impl XionApp {
                     .lines
                     .iter()
                     .map(|line| {
+                        // The theme's status colours, faded so the line
+                        // stays readable on top of them.
                         let (line_text, bg_color) = match line {
                             crate::ui::DiffLine::Same(s) => (format!("  {}", s), None),
                             crate::ui::DiffLine::Added(s) => (
                                 format!("+ {}", s),
-                                Some(Color::from_rgba(0.1, 0.6, 0.1, 0.3)),
+                                Some(Color {
+                                    a: 0.3,
+                                    ..colors.diff_added
+                                }),
                             ),
                             crate::ui::DiffLine::Removed(s) => (
                                 format!("- {}", s),
-                                Some(Color::from_rgba(0.7, 0.1, 0.1, 0.3)),
+                                Some(Color {
+                                    a: 0.3,
+                                    ..colors.diff_removed
+                                }),
                             ),
                             crate::ui::DiffLine::Header(s) => (
                                 format!("  {}", s),
-                                Some(Color::from_rgba(0.5, 0.5, 0.5, 0.2)),
+                                Some(Color {
+                                    a: 0.2,
+                                    ..colors.text_muted
+                                }),
                             ),
                         };
                         let t = caption_text(typography, line_text);
@@ -284,7 +302,10 @@ impl XionApp {
                     .to_string();
                 let modal_content = column![
                     row![
-                        body_text(typography, format!("Diff : {} ↔ {}", header_a, header_b)),
+                        body_text(
+                            typography,
+                            tf("diff_title", &[("left", &header_a), ("right", &header_b)])
+                        ),
                         horizontal_space(),
                         button(glyph_text(typography, "✕"))
                             .on_press(UiMessage::CloseDiff)
@@ -352,7 +373,7 @@ impl XionApp {
                 .to_string();
             let modal_content = column![
                 row![
-                    body_text(typography, format!("Hex : {}", filename)),
+                    body_text(typography, tf("hex_title", &[("name", &filename)])),
                     horizontal_space(),
                     button(glyph_text(typography, "✕"))
                         .on_press(UiMessage::CloseHexView)
@@ -390,7 +411,7 @@ impl XionApp {
                         .and_then(|n| n.to_str())
                         .unwrap_or_else(|| res.path.to_str().unwrap_or("?"));
                     let line_preview: String = res.line.chars().take(80).collect();
-                    let label = format!("{}:{} — {}", path_str, res.line_number, line_preview);
+                    let label = format!("{}:{} - {}", path_str, res.line_number, line_preview);
                     let parent = res
                         .path
                         .parent()
@@ -411,7 +432,7 @@ impl XionApp {
                 .collect();
             let modal_content = column![
                 row![
-                    body_text(typography, "Chercher dans les fichiers"),
+                    body_text(typography, t("grep_title")),
                     horizontal_space(),
                     button(glyph_text(typography, "✕"))
                         .on_press(UiMessage::CloseGrep)
@@ -420,14 +441,18 @@ impl XionApp {
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center),
                 row![
-                    text_input("Terme de recherche…", &gs.query)
+                    text_input(t("grep_placeholder"), &gs.query)
                         .on_input(UiMessage::GrepQueryChanged)
                         .on_submit(UiMessage::GrepSearch)
                         .padding(spacing.xs)
                         .width(Length::Fill),
                     button(caption_text(
                         typography,
-                        if gs.searching { "…" } else { "Chercher" }
+                        if gs.searching {
+                            "…"
+                        } else {
+                            t("grep_search")
+                        }
                     ))
                     .on_press(UiMessage::GrepSearch)
                     .padding([spacing.xs, spacing.sm]),
@@ -458,7 +483,11 @@ impl XionApp {
                 .entries
                 .iter()
                 .map(|entry| {
-                    let allow_str = if entry.allow { "Autoriser" } else { "Refuser" };
+                    let allow_str = t(if entry.allow {
+                        "permissions_allow"
+                    } else {
+                        "permissions_deny"
+                    });
                     let perms_str = entry.permissions.join(", ");
                     row![
                         caption_text(
@@ -482,13 +511,13 @@ impl XionApp {
                 .unwrap_or("")
                 .to_string();
             let content_elem: Element<'_, UiMessage> = if pv.loading {
-                caption_text(typography, "Chargement des permissions…").into()
+                caption_text(typography, t("permissions_loading")).into()
             } else if let Some(err) = &pv.error {
                 caption_text(typography, err.as_str())
                     .color(colors.diff_removed)
                     .into()
             } else if pv.entries.is_empty() {
-                caption_text(typography, "Aucune entrée ACL trouvée").into()
+                caption_text(typography, t("permissions_empty")).into()
             } else {
                 scrollable(column(perm_rows).spacing(2))
                     .height(Length::Fixed(300.0))
@@ -496,7 +525,7 @@ impl XionApp {
             };
             let modal_content = column![
                 row![
-                    body_text(typography, format!("Permissions : {}", filename)),
+                    body_text(typography, tf("permissions_title", &[("name", &filename)])),
                     horizontal_space(),
                     button(glyph_text(typography, "✕"))
                         .on_press(UiMessage::ClosePermissions)
@@ -550,7 +579,7 @@ impl XionApp {
                 },
             );
 
-        let cancel_button = button(body_text(typography, "Annuler"))
+        let cancel_button = button(body_text(typography, t("action_cancel")))
             .padding([spacing.xs, spacing.md])
             .on_press(UiMessage::ConfirmCancel);
 

@@ -42,10 +42,7 @@ pub(super) fn discover_via_net_view() -> Result<Vec<NetworkResource>, String> {
 /// shares. Fail loudly instead.
 #[cfg(not(windows))]
 pub(super) fn discover_via_net_view() -> Result<Vec<NetworkResource>, String> {
-    Err(
-        "Découverte SMB indisponible sur cette plateforme (net view est spécifique à Windows)"
-            .to_string(),
-    )
+    Err(crate::i18n::t("network_smb_unavailable").to_string())
 }
 
 /// Parse `net view` output to get a list of `\\COMPUTERNAME` entries.
@@ -54,12 +51,12 @@ pub(super) fn discover_computers_net_view() -> Result<Vec<String>, String> {
     let output = net_command()
         .args(["view", "/all"])
         .output()
-        .map_err(|e| format!("commande 'net view /all' échouée: {e}"))?;
+        .map_err(|e| format!("'net view /all' failed: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         tracing::warn!(
-            "Réseau: 'net view /all' code de sortie {:?}, stderr: {}",
+            "Network: 'net view /all' exit code {:?}, stderr: {}",
             output.status.code(),
             stderr.trim()
         );
@@ -122,7 +119,7 @@ pub(super) fn list_shares_net_view(computer: &str) -> Vec<String> {
     let output = match output {
         Ok(o) => o,
         Err(e) => {
-            tracing::warn!("Réseau: commande 'net view {computer}' échouée: {e}");
+            tracing::warn!("Network: command 'net view {computer}' failed: {e}");
             return vec![];
         }
     };
@@ -130,7 +127,7 @@ pub(super) fn list_shares_net_view(computer: &str) -> Vec<String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         tracing::debug!(
-            "Réseau: 'net view {computer}' code de sortie {:?}: {}",
+            "Network: 'net view {computer}' exit code {:?}: {}",
             output.status.code(),
             stderr.trim()
         );
@@ -154,8 +151,8 @@ pub(super) fn split_net_view_columns(line: &str) -> Vec<&str> {
 
 /// Best-effort rejection of non-disk shares.
 ///
-/// The previous code did the opposite — it *required* the literal "Disk" or
-/// "Disque" — so a German, Spanish or Japanese Windows yielded no share at all.
+/// The previous code did the opposite, it *required* the literal "Disk" or
+/// "Disque", so a German, Spanish or Japanese Windows yielded no share at all.
 /// Recognising the few printer/IPC labels we know and keeping everything else
 /// degrades the right way round: an unknown locale shows too much, not nothing.
 #[cfg(any(windows, test))]

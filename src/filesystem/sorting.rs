@@ -97,7 +97,7 @@ pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 /// Two types get sorted by exactly the same rules: `FsEntry`, and the lighter
 /// stub the local listing builds before it has read any metadata. The
 /// comparator existed twice, once for each, differing only in how it reached
-/// the size and the date — which is to say, in nothing that ordering is about.
+/// the size and the date, which is to say, in nothing that ordering is about.
 pub trait Sortable {
     fn entry_type(&self) -> FsEntryType;
     fn name(&self) -> &str;
@@ -124,15 +124,14 @@ impl Sortable for FsEntry {
 
 /// Orders two entries by the rules in `options`.
 pub fn compare<T: Sortable + ?Sized>(left: &T, right: &T, options: &ListOptions) -> Ordering {
-    // Les dossiers d'abord — mais seulement quand exactement l'un des deux en
-    // est un.
+    // Folders first, but only when exactly one of the two is a folder.
     //
-    // La condition portait sur `entry_type() != entry_type()`, donc elle se
-    // déclenchait aussi entre un fichier et un lien symbolique, où le `match`
-    // retombait sur `Equal` sans jamais regarder la clé de tri. La transitivité
-    // y passait : `a` == lien `b`, lien `b` == `c`, mais `a` < `c`. Rust le
-    // détecte et fait paniquer le tri — rencontré à l'ouverture d'un dossier
-    // contenant un lien à côté de fichiers ordinaires.
+    // The condition used to be `entry_type() != entry_type()`, so it also fired
+    // between a file and a symlink, where the `match` fell back to `Equal`
+    // without ever looking at the sort key. Transitivity broke: `a` == link
+    // `b`, link `b` == `c`, but `a` < `c`. Rust detects it and makes the sort
+    // panic, which happened when opening a folder holding a link next to
+    // regular files.
     if options.directories_first {
         let left_is_dir = left.entry_type() == FsEntryType::Directory;
         let right_is_dir = right.entry_type() == FsEntryType::Directory;
@@ -264,14 +263,14 @@ pub fn filter_and_sort(entries: Vec<FsEntry>, options: &ListOptions) -> Vec<FsEn
 
 #[cfg(test)]
 mod tests {
-    /// Reproduit la panique « comparison function does not correctly implement
-    /// a total order », rencontrée à l'ouverture d'un dossier contenant un lien
-    /// symbolique à côté de fichiers ordinaires.
+    /// Reproduces the "comparison function does not correctly implement a
+    /// total order" panic, met when opening a folder holding a symlink next to
+    /// regular files.
     ///
-    /// Avec « dossiers d'abord », le court-circuit se déclenchait dès que les
-    /// deux types différaient — donc aussi entre un fichier et un lien, où il
-    /// renvoyait `Equal` sans jamais regarder le nom. La transitivité y passe :
-    /// `a` == lien `b`, lien `b` == `c`, mais `a` < `c`.
+    /// With "folders first", the short-circuit fired as soon as the two types
+    /// differed, so also between a file and a link, where it returned `Equal`
+    /// without ever looking at the name. Transitivity breaks there: `a` == link
+    /// `b`, link `b` == `c`, but `a` < `c`.
     #[test]
     fn mixing_files_and_symlinks_keeps_a_total_order() {
         use crate::filesystem::FsMetadata;
@@ -292,13 +291,13 @@ mod tests {
         let b = make("b.txt", FsEntryType::Symlink);
         let c = make("c.txt", FsEntryType::File);
 
-        // Deux entrées qui ne sont pas des dossiers se départagent par leur clé
-        // de tri, quel que soit leur type.
+        // Two entries that are not folders are ordered by their sort key,
+        // whatever their type.
         assert_eq!(super::compare(&a, &b, &options), Ordering::Less);
         assert_eq!(super::compare(&b, &c, &options), Ordering::Less);
         assert_eq!(super::compare(&a, &c, &options), Ordering::Less);
 
-        // Et un vrai tri sur les quatre types ne doit pas paniquer.
+        // And a real sort over the four types must not panic.
         let mut entries: Vec<FsEntry> = Vec::new();
         for (index, entry_type) in [
             FsEntryType::File,
@@ -315,7 +314,7 @@ mod tests {
         }
         entries.sort_by(|left, right| super::compare(left, right, &options));
 
-        // Les dossiers restent groupés en tête.
+        // Folders stay grouped at the top.
         let first_non_dir = entries
             .iter()
             .position(|e| e.entry_type != FsEntryType::Directory)
@@ -324,20 +323,20 @@ mod tests {
             entries[first_non_dir..]
                 .iter()
                 .all(|e| e.entry_type != FsEntryType::Directory),
-            "un dossier s'est retrouvé après un non-dossier"
+            "a folder ended up after a non-folder"
         );
     }
 
-    /// Le comparateur existait en double, un par type. Rien ne garantissait
-    /// que les deux copies restent d'accord ; maintenant il n'y en a qu'un, et
-    /// ce test dit pourquoi c'était le bon choix.
+    /// The comparator existed twice, one per type. Nothing guaranteed the two
+    /// copies would keep agreeing; now there is only one, and this test says
+    /// why that was the right choice.
     #[test]
     fn both_shapes_of_entry_order_the_same_way() {
         use crate::filesystem::{FsMetadata, SortKey};
         use std::time::{Duration, SystemTime};
 
-        /// Un `Sortable` minimal, dans l'esprit du stub que le listage local
-        /// construit avant d'avoir lu la moindre métadonnée.
+        /// A minimal `Sortable`, in the spirit of the stub the local listing
+        /// builds before reading any metadata.
         struct Stub {
             name: String,
             entry_type: FsEntryType,
@@ -386,9 +385,9 @@ mod tests {
         };
 
         let cases = [
-            make("fichier2.txt", false, 300, 20),
-            make("fichier10.txt", false, 100, 30),
-            make("dossier", true, 200, 10),
+            make("file2.txt", false, 300, 20),
+            make("file10.txt", false, 100, 30),
+            make("folder", true, 200, 10),
             make("Archive.zip", false, 200, 10),
         ];
 
@@ -406,7 +405,7 @@ mod tests {
                             assert_eq!(
                                 super::compare(left_entry, right_entry, &options),
                                 super::compare(left_stub, right_stub, &options),
-                                "{} vs {} ({key:?}, {order:?}, dossiers d'abord={directories_first})",
+                                "{} vs {} ({key:?}, {order:?}, directories first={directories_first})",
                                 left_entry.name,
                                 right_entry.name,
                             );
@@ -517,7 +516,7 @@ mod tests {
                 assert_eq!(
                     natural_cmp(&left.to_string(), &right.to_string()),
                     left.to_lowercase().cmp(right.to_lowercase()),
-                    "désaccord sur {left:?} vs {right:?}"
+                    "disagreement on {left:?} vs {right:?}"
                 );
             }
         }

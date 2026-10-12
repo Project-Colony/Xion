@@ -30,6 +30,7 @@ use iced::widget::{
 };
 use iced::{Alignment, Background, Color, Element, Length, border, mouse};
 
+use crate::i18n::{t, tn};
 use crate::ui::UiMessage;
 use crate::ui::theme::UiTokens;
 use crate::ui::theme::layout::PREVIEW_RESIZE_BAR_WIDTH;
@@ -37,18 +38,18 @@ use crate::ui::theme::layout::PREVIEW_RESIZE_BAR_WIDTH;
 use super::XionApp;
 use widgets::ViewCtx;
 
-use widgets::HEADER_DROPDOWN_TOP;
 use widgets::body_text;
 use widgets::caption_text;
 use widgets::filled_style;
 use widgets::glyph_text;
+use widgets::header_dropdown_top;
 use widgets::hover_button_style;
 use widgets::surface_style;
 use widgets::{RADIUS, RADIUS_PILL};
 
 impl XionApp {
     pub(super) fn view(&self) -> Element<'_, UiMessage> {
-        let tokens = UiTokens::for_theme(&self.state.config.theme);
+        let tokens = UiTokens::for_preferences(&self.state.config.standard);
         let colors = tokens.colors;
         let spacing = tokens.spacing;
         let typography = tokens.typography;
@@ -80,7 +81,7 @@ impl XionApp {
         let mut list_col = if self.quick_filter_active {
             let filter_bar: Element<'_, UiMessage> = container(
                 row![
-                    caption_text(typography, "Filtrer :"),
+                    caption_text(typography, t("quick_filter_label")),
                     text_input("", &self.quick_filter)
                         .on_input(UiMessage::QuickFilterChanged)
                         .padding(spacing.xs)
@@ -148,7 +149,7 @@ impl XionApp {
             .interaction(mouse::Interaction::ResizingHorizontally)
             .into();
 
-            let preview_header = mouse_area(caption_text(typography, "Prévisualisation").style(
+            let preview_header = mouse_area(caption_text(typography, t("preview_title")).style(
                 move |_| iced::widget::text::Style {
                     color: Some(colors.text_muted),
                 },
@@ -168,11 +169,11 @@ impl XionApp {
 
         let body = body.height(Length::Fill).spacing(spacing.xs);
 
-        // Les préférences remplacent la zone de contenu — pas une surcouche.
-        // C'est la différence entre cette page et la modale qu'elle remplace :
-        // l'en-tête et la barre d'état restent, le reste cède la place. La
-        // barre latérale des fichiers part avec le corps, sans quoi deux
-        // colonnes de gauche se disputeraient le même rôle.
+        // The preferences replace the content area, not an overlay. That is the
+        // difference between this page and the modal it replaces: the header
+        // and the status bar stay, the rest makes way. The file sidebar goes
+        // with the body, otherwise two left columns would compete for the same
+        // role.
         let body: Element<'_, UiMessage> = match self.render_preferences_page(ctx) {
             Some(page) => page,
             None => body.into(),
@@ -203,15 +204,10 @@ impl XionApp {
             .zip(self.cursor_position)
             .map(|(drag_state, position)| {
                 let count = drag_state.items.len();
-                let action = if self.modifiers.control {
-                    "Copier"
+                let label = if self.modifiers.control {
+                    tn("drag_copy", count, &[])
                 } else {
-                    "Déplacer"
-                };
-                let label = if count == 1 {
-                    format!("{action} 1 élément")
-                } else {
-                    format!("{action} {count} éléments")
+                    tn("drag_move", count, &[])
                 };
                 let overlay = container(caption_text(typography, label))
                     .padding([spacing.xs, spacing.sm])
@@ -321,7 +317,7 @@ impl XionApp {
                     // Position below the header area
                     let menu_layer: Element<'_, UiMessage> = container(
                         column![
-                            vertical_space().height(Length::Fixed(HEADER_DROPDOWN_TOP)),
+                            vertical_space().height(Length::Fixed(header_dropdown_top())),
                             row![horizontal_space().width(Length::Fixed(120.0)), opaque(menu)]
                         ]
                         .spacing(0),
@@ -349,6 +345,27 @@ impl XionApp {
         // Last in the stack: a confirmation must sit above every other modal.
         let confirm_layer = self.render_confirm_layer(colors, spacing, typography);
 
+        // "Theme applied.", bottom left over the page, as Colony shows its
+        // notifications; clear of the status bar.
+        let toast_layer: Element<'_, UiMessage> = match self.menus.preferences.toast {
+            Some(id) => container(colony_ui::widgets::toast(
+                &typography.colony(),
+                t("theme_applied"),
+                UiMessage::DismissToast(id),
+            ))
+            .padding(iced::Padding {
+                bottom: spacing.xl * 3.0,
+                left: spacing.xl,
+                ..iced::Padding::ZERO
+            })
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Alignment::Start)
+            .align_y(Alignment::End)
+            .into(),
+            None => container(row![]).into(),
+        };
+
         stack![
             base,
             selection_layer,
@@ -363,6 +380,7 @@ impl XionApp {
             hex_layer,
             grep_layer,
             permissions_layer,
+            toast_layer,
             confirm_layer
         ]
         .into()

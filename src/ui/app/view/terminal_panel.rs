@@ -8,6 +8,7 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, mouse_area, row, tooltip};
 use iced::{Alignment, Background, Element, Length, Theme, border};
 
+use crate::i18n::t;
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 use crate::ui::theme::layout::{TAB_STRIP_HEIGHT, TERMINAL_RESIZE_BAR_HEIGHT};
@@ -75,7 +76,7 @@ impl XionApp {
                     .terminal
                     .active_ref()
                     .and_then(|tab| tab.notice.clone())
-                    .unwrap_or_else(|| "Démarrage de l'interpréteur…".to_string());
+                    .unwrap_or_else(|| t("terminal_starting").to_string());
                 container(caption_text(typography, message).style(move |_: &Theme| {
                     iced::widget::text::Style {
                         color: Some(colors.text_muted),
@@ -237,7 +238,7 @@ impl XionApp {
             // This tooltip was the only one not naming its font: it was shown
             // in iced's default font, not in the caption font like all the
             // others.
-            container(caption_text(typography, "Interrompre (Ctrl-C)"))
+            container(caption_text(typography, t("terminal_interrupt")))
                 .padding(spacing.xs)
                 .style(surface_style(colors, RADIUS.sm)),
             tooltip::Position::Top,

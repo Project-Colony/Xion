@@ -16,6 +16,7 @@ use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_s
 use iced::widget::{column, container, mouse_area, opaque, row, stack};
 use iced::{Element, Length};
 
+use crate::i18n::t;
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
@@ -56,8 +57,8 @@ impl XionApp {
 
         items = items.push(entry(
             icons::NEW,
-            "Nouveau dossier",
-            "Ctrl+Maj+N",
+            t("menu_new_folder"),
+            t("shortcut_new_folder"),
             UiMessage::NewFolder,
         ));
         items = items.push(menu_items::separator(ctx));
@@ -65,21 +66,21 @@ impl XionApp {
         for (icon, label, shortcut, message, enabled) in [
             (
                 icons::CUT,
-                "Couper",
+                t("menu_cut"),
                 "Ctrl+X",
                 UiMessage::ClipboardCut,
                 has_selection,
             ),
             (
                 icons::COPY,
-                "Copier",
+                t("menu_copy"),
                 "Ctrl+C",
                 UiMessage::ClipboardCopy,
                 has_selection,
             ),
             (
                 icons::PASTE,
-                "Coller",
+                t("menu_paste"),
                 "Ctrl+V",
                 UiMessage::ClipboardPaste,
                 has_clipboard,
@@ -95,19 +96,19 @@ impl XionApp {
         items = items.push(menu_items::separator(ctx));
 
         let theme_label = if self.state.config.dark_mode {
-            "Thème clair"
+            t("menu_light_theme")
         } else {
-            "Thème sombre"
+            t("menu_dark_theme")
         };
         let compact_label = if self.state.config.compact_mode {
-            "Densité normale"
+            t("menu_normal_density")
         } else {
-            "Densité compacte"
+            t("menu_compact_density")
         };
         let gitignore_label = if self.state.config.respect_gitignore {
-            "Ignorer .gitignore"
+            t("menu_ignore_gitignore")
         } else {
-            "Respecter .gitignore"
+            t("menu_respect_gitignore")
         };
 
         items = items.push(entry(
@@ -132,13 +133,13 @@ impl XionApp {
         items = items.push(menu_items::separator(ctx));
         items = items.push(entry(
             icons::SEARCH,
-            "Chercher dans le contenu",
-            "Ctrl+Maj+F",
+            t("menu_search_content"),
+            t("shortcut_search_content"),
             UiMessage::OpenGrep,
         ));
         items = items.push(entry(
             icons::REFRESH,
-            "Actualiser",
+            t("menu_refresh"),
             "F5",
             UiMessage::Refresh,
         ));

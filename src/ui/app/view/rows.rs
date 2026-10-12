@@ -11,6 +11,7 @@ use iced::{Alignment, Background, Element, Length, border};
 
 use crate::core::{ViewColumn, ViewMode};
 use crate::filesystem::{FsEntry, FsEntryType};
+use crate::i18n::t;
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
@@ -217,7 +218,7 @@ impl XionApp {
             let cell: Element<'_, UiMessage> = if index == 0 {
                 let content = row![
                     body_text(typography, icons::LOADING),
-                    body_text(typography, "Chargement…")
+                    body_text(typography, t("loading"))
                 ]
                 .spacing(spacing.sm)
                 .align_y(Alignment::Center);

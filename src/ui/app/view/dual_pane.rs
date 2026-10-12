@@ -8,6 +8,7 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, row, scrollable};
 use iced::{Alignment, Background, Element, Length, Theme};
 
+use crate::i18n::{t, tf};
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
@@ -95,7 +96,7 @@ impl XionApp {
         .style(chrome_style(colors, RADIUS.md));
 
         let pane_b_list: Element<'_, UiMessage> = if pane_b.is_loading {
-            container(caption_text(typography, "Chargement…"))
+            container(caption_text(typography, t("loading")))
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .into()
@@ -106,7 +107,7 @@ impl XionApp {
                 body = body.push(
                     container(caption_text(
                         typography,
-                        format!("… et {} autres", pane_b.truncated),
+                        tf("dual_pane_more", &[("count", &pane_b.truncated)]),
                     ))
                     .padding([spacing.xs, spacing.sm]),
                 );

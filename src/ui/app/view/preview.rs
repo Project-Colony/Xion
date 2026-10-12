@@ -9,6 +9,7 @@ use iced::widget::{column, container, image, row, scrollable};
 use iced::{Alignment, Color, Element, Length};
 
 use crate::filesystem::FsEntryType;
+use crate::i18n::{t, tf};
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
@@ -88,26 +89,25 @@ impl XionApp {
 
                 let metadata = column![
                     preview_row(
-                        "Type".to_string(),
+                        t("preview_type").to_string(),
                         entry_type_label(entry.entry_type).to_string()
                     ),
-                    preview_row("Taille".to_string(), format_entry_size(entry)),
+                    preview_row(t("properties_size").to_string(), format_entry_size(entry)),
                     preview_row(
-                        "Modifié".to_string(),
+                        t("properties_modified").to_string(),
                         format_modified(entry.metadata.modified),
                     ),
-                    preview_row("Créé".to_string(), format_modified(entry.metadata.created)),
                     preview_row(
-                        "Accès".to_string(),
+                        t("properties_created").to_string(),
+                        format_modified(entry.metadata.created)
+                    ),
+                    preview_row(
+                        t("preview_accessed").to_string(),
                         format_modified(entry.metadata.accessed)
                     ),
                     preview_row(
-                        "Lecture seule".to_string(),
-                        if entry.metadata.readonly {
-                            "Oui".to_string()
-                        } else {
-                            "Non".to_string()
-                        },
+                        t("properties_read_only").to_string(),
+                        t(if entry.metadata.readonly { "yes" } else { "no" }).to_string(),
                     ),
                 ]
                 .spacing(spacing.xs);
@@ -156,7 +156,7 @@ impl XionApp {
                             }
                         } else {
                             let label = if is_pdf {
-                                format!("(PDF - texte extrait)\n{}", content)
+                                tf("preview_pdf_text", &[("text", content)])
                             } else {
                                 content.clone()
                             };
@@ -208,7 +208,7 @@ impl XionApp {
                 .into()
             }
             None if self.state.navigation.selection.selected.is_empty() => column![
-                caption_text(typography, "Sélectionnez un élément").style(move |_| {
+                caption_text(typography, t("preview_select_item")).style(move |_| {
                     iced::widget::text::Style {
                         color: Some(colors.text_muted),
                     }
@@ -218,7 +218,7 @@ impl XionApp {
             .spacing(spacing.sm)
             .into(),
             None => column![
-                caption_text(typography, "Aperçu en cours de chargement…").style(move |_| {
+                caption_text(typography, t("preview_loading")).style(move |_| {
                     iced::widget::text::Style {
                         color: Some(colors.text_muted),
                     }

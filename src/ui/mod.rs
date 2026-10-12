@@ -139,8 +139,8 @@ impl Route {
     pub fn display_label(&self) -> String {
         match &self.kind {
             RouteKind::Local(path) => path.display().to_string(),
-            RouteKind::Network => "Réseau".to_string(),
-            RouteKind::Recent => "Récents".to_string(),
+            RouteKind::Network => crate::i18n::t("location_network").to_string(),
+            RouteKind::Recent => crate::i18n::t("location_recent").to_string(),
         }
     }
 

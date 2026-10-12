@@ -12,6 +12,7 @@ use iced::widget::space::{horizontal as horizontal_space, vertical as vertical_s
 use iced::widget::{button, column, container, mouse_area, progress_bar, row, scrollable};
 use iced::{Alignment, Element, Length, Theme, mouse};
 
+use crate::i18n::{t, tf};
 use crate::ui::theme::icons;
 use crate::ui::theme::layout::TREE_RESIZE_BAR_HEIGHT;
 use crate::ui::{NETWORK_ROUTE, ScrollViewport, UiMessage};
@@ -66,9 +67,12 @@ pub(super) fn sidebar_button<'a>(
 }
 
 /// A collapsible section header with its chevron.
+///
+/// `key` is both the section's identity in `sidebar_collapsed` and the i18n
+/// key of its title, so switching languages does not reopen every section.
 pub(super) fn section_header<'a>(
     ctx: ViewCtx,
-    label: &'static str,
+    key: &'static str,
     collapsed: bool,
 ) -> Element<'a, UiMessage> {
     let ViewCtx {
@@ -80,7 +84,7 @@ pub(super) fn section_header<'a>(
     button(
         row![
             caption_text(typography, chevron),
-            caption_text(typography, label).style(move |_| iced::widget::text::Style {
+            caption_text(typography, t(key)).style(move |_| iced::widget::text::Style {
                 color: Some(colors.text_muted)
             }),
         ]
@@ -94,7 +98,7 @@ pub(super) fn section_header<'a>(
             ..Default::default()
         },
     )
-    .on_press(UiMessage::ToggleSidebarSection(label))
+    .on_press(UiMessage::ToggleSidebarSection(key))
     .into()
 }
 
@@ -121,18 +125,19 @@ impl XionApp {
 
         // Clickable accordion header: shows ▸/▾ chevron and toggles the section.
 
-        let sec_tree = self.sidebar_collapsed.contains("Arborescence");
+        let sec_tree = self.sidebar_collapsed.contains("sidebar_tree");
 
         let tree_nodes = &self.cached_tree_nodes;
 
         let mut tree_section = column![].spacing(spacing.xs);
         if tree_nodes.is_empty() {
-            tree_section =
-                tree_section.push(caption_text(typography, "Arborescence indisponible").style(
-                    move |_| iced::widget::text::Style {
+            tree_section = tree_section.push(
+                caption_text(typography, t("sidebar_tree_unavailable")).style(move |_| {
+                    iced::widget::text::Style {
                         color: Some(colors.text_muted),
-                    },
-                ));
+                    }
+                }),
+            );
         } else {
             let window = self.tree_virtual_window(tree_nodes.len());
             if window.padding_top > 0.0 {
@@ -177,10 +182,10 @@ impl XionApp {
             }
         }
         let tree_panel = if sec_tree {
-            column![section_header(ctx, "Arborescence", true)].spacing(spacing.xs)
+            column![section_header(ctx, "sidebar_tree", true)].spacing(spacing.xs)
         } else {
             column![
-                section_header(ctx, "Arborescence", false),
+                section_header(ctx, "sidebar_tree", false),
                 scrollable(tree_section)
                     .height(Length::Fixed(self.pane_resize.tree_height))
                     .width(Length::Fill)
@@ -227,12 +232,12 @@ impl XionApp {
 
         // Clickable accordion header: shows ▸/▾ chevron and toggles the section.
 
-        let sec_access = self.sidebar_collapsed.contains("Accès rapide");
-        let sec_favorites = self.sidebar_collapsed.contains("Favoris");
+        let sec_access = self.sidebar_collapsed.contains("sidebar_quick_access");
+        let sec_favorites = self.sidebar_collapsed.contains("sidebar_favorites");
 
         // ── Quick Access with user folders ──────────────────────────────
         let mut quick_access =
-            column![section_header(ctx, "Accès rapide", sec_access)].spacing(spacing.xs);
+            column![section_header(ctx, "sidebar_quick_access", sec_access)].spacing(spacing.xs);
 
         // Add specific user folders with proper icons
         let user_folder_entries: Vec<(&str, &str, Option<PathBuf>)> = {
@@ -248,17 +253,29 @@ impl XionApp {
                     .cloned()
             };
             vec![
-                (icons::HOME, "Accueil", home_dir.clone()),
-                (icons::DESKTOP, "Bureau", find_favorite("Desktop")),
+                (icons::HOME, t("sidebar_home"), home_dir.clone()),
+                (
+                    icons::DESKTOP,
+                    t("sidebar_desktop"),
+                    find_favorite("Desktop"),
+                ),
                 (
                     icons::DOWNLOAD,
-                    "Téléchargements",
+                    t("sidebar_downloads"),
                     find_favorite("Downloads"),
                 ),
-                (icons::DOCUMENTS, "Documents", find_favorite("Documents")),
-                (icons::GALLERY, "Images", find_favorite("Pictures")),
-                (icons::MUSIC, "Musique", find_favorite("Music")),
-                (icons::VIDEO, "Vidéos", find_favorite("Videos")),
+                (
+                    icons::DOCUMENTS,
+                    t("sidebar_documents"),
+                    find_favorite("Documents"),
+                ),
+                (
+                    icons::GALLERY,
+                    t("sidebar_pictures"),
+                    find_favorite("Pictures"),
+                ),
+                (icons::MUSIC, t("sidebar_music"), find_favorite("Music")),
+                (icons::VIDEO, t("sidebar_videos"), find_favorite("Videos")),
             ]
         };
 
@@ -289,11 +306,11 @@ impl XionApp {
             .collect();
 
         let mut favorites_section =
-            column![section_header(ctx, "Favoris", sec_favorites)].spacing(spacing.xs);
+            column![section_header(ctx, "sidebar_favorites", sec_favorites)].spacing(spacing.xs);
         if !sec_favorites {
             if custom_favorites.is_empty() {
                 favorites_section =
-                    favorites_section.push(caption_text(typography, "Aucun favori"));
+                    favorites_section.push(caption_text(typography, t("sidebar_no_favorites")));
             } else {
                 for favorite in custom_favorites {
                     let label = format_sidebar_label(favorite);
@@ -335,19 +352,20 @@ impl XionApp {
 
         // Clickable accordion header: shows ▸/▾ chevron and toggles the section.
 
-        let sec_drives = self.sidebar_collapsed.contains("Lecteurs");
+        let sec_drives = self.sidebar_collapsed.contains("sidebar_drives");
         let current = self.state.route.key();
 
         // ── All drives ───────────────────────────────────────────────────
         let mut drive_section =
-            column![section_header(ctx, "Lecteurs", sec_drives)].spacing(spacing.xs);
+            column![section_header(ctx, "sidebar_drives", sec_drives)].spacing(spacing.xs);
         if !sec_drives {
             // Enumerating disks goes through sysinfo, which blocks for seconds on
             // an unreachable network drive. It used to run even when the section
             // was collapsed and its result thrown away.
             let drives = all_drives();
             if drives.is_empty() {
-                drive_section = drive_section.push(caption_text(typography, "Aucun lecteur"));
+                drive_section =
+                    drive_section.push(caption_text(typography, t("sidebar_no_drives")));
             } else {
                 for (mount, usage) in &drives {
                     let total_gb = format_gigabytes(usage.total);
@@ -368,7 +386,10 @@ impl XionApp {
                         progress_bar(0.0..=1.0, used_ratio).girth(Length::Fixed(6.0)),
                         caption_text(
                             typography,
-                            format!("{} Go libres sur {} Go", free_gb, total_gb)
+                            tf(
+                                "sidebar_drive_free",
+                                &[("free", &free_gb), ("total", &total_gb)]
+                            )
                         )
                     ]
                     .spacing(spacing.xs)
@@ -405,14 +426,14 @@ impl XionApp {
             drive_section = drive_section.push(sidebar_button(
                 ctx,
                 icons::NETWORK,
-                "Réseau",
+                t("location_network"),
                 Some(PathBuf::from(NETWORK_ROUTE)),
                 &current,
             ));
             drive_section = drive_section.push(sidebar_button(
                 ctx,
                 icons::FILE,
-                "Récents",
+                t("location_recent"),
                 Some(PathBuf::from(crate::ui::RECENT_ROUTE)),
                 &current,
             ));
@@ -421,7 +442,7 @@ impl XionApp {
                 button(
                     row![
                         body_text(typography, icons::DELETE),
-                        body_text(typography, "Corbeille"),
+                        body_text(typography, t("location_trash")),
                     ]
                     .spacing(spacing.xs)
                     .align_y(Alignment::Center),

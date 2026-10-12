@@ -9,6 +9,7 @@ use iced::{Alignment, Element, Length};
 
 use crate::core::ViewMode;
 use crate::filesystem::{FsEntry, FsEntryType};
+use crate::i18n::{t, tf, tn};
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
@@ -103,37 +104,22 @@ impl XionApp {
         }
         let entry_count_label = {
             let base = match (dir_count, file_count) {
-                (0, 0) => "aucun élément".to_string(),
-                (d, 0) => {
-                    if d == 1 {
-                        "1 dossier".to_string()
-                    } else {
-                        format!("{d} dossiers")
-                    }
-                }
-                (0, f) => {
-                    if f == 1 {
-                        "1 fichier".to_string()
-                    } else {
-                        format!("{f} fichiers")
-                    }
-                }
-                (d, f) => {
-                    let d_label = if d == 1 {
-                        "1 dossier".to_string()
-                    } else {
-                        format!("{d} dossiers")
-                    };
-                    let f_label = if f == 1 {
-                        "1 fichier".to_string()
-                    } else {
-                        format!("{f} fichiers")
-                    };
-                    format!("{d_label}, {f_label}")
-                }
+                (0, 0) => t("status_no_items").to_string(),
+                (d, 0) => tn("status_folders", d, &[]),
+                (0, f) => tn("status_files", f, &[]),
+                (d, f) => tf(
+                    "status_folders_and_files",
+                    &[
+                        ("folders", &tn("status_folders", d, &[])),
+                        ("files", &tn("status_files", f, &[])),
+                    ],
+                ),
             };
             if self.quick_filter_active && !self.quick_filter.is_empty() {
-                format!("{base} (filtre: \"{}\")", self.quick_filter)
+                tf(
+                    "status_filtered",
+                    &[("summary", &base), ("filter", &self.quick_filter)],
+                )
             } else {
                 base
             }
@@ -158,28 +144,35 @@ impl XionApp {
                     .next()
                     .and_then(|path| path.file_name())
                     .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "—".to_string());
-                format!("Sélection : {}{} — ", name, size_suffix)
+                    .unwrap_or_default();
+                tf(
+                    "status_selection_named",
+                    &[("name", &name), ("size", &size_suffix)],
+                )
             } else {
-                format!(
-                    "Sélection : {} fichiers{} — ",
+                tn(
+                    "status_selection",
                     selection.selected.len(),
-                    size_suffix
+                    &[("size", &size_suffix)],
                 )
             }
         };
 
         let index_status = if self.is_loading {
-            "Chargement…".to_string()
+            t("loading").to_string()
         } else if self.search.indexing {
-            "Indexation…".to_string()
+            t("status_indexing").to_string()
         } else if let Some(count) = self.search.matches {
-            format!("Résultats indexés : {count}")
+            tf("status_indexed_results", &[("count", &count)])
         } else {
             entry_count_label.clone()
         };
 
-        let status_text = format!("{}{}", selection_part, index_status);
+        let status_text = if selection_part.is_empty() {
+            index_status
+        } else {
+            format!("{selection_part} · {index_status}")
+        };
 
         let status_left = row![caption_text(typography, status_text)]
             .spacing(spacing.md)

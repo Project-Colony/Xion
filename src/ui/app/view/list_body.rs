@@ -8,6 +8,7 @@ use iced::widget::{button, column, container, mouse_area, row};
 use iced::{Alignment, Background, Element, Length, mouse};
 
 use crate::core::{SortOrderConfig, ViewMode};
+use crate::i18n::t;
 use crate::ui::UiMessage;
 
 use super::XionApp;
@@ -47,16 +48,16 @@ impl XionApp {
 
         let list_content = if let Some(message) = &self.error {
             column![
-                title_text(typography, "Impossible de charger le dossier"),
+                title_text(typography, t("list_load_failed")),
                 body_text(typography, message),
-                button(body_text(typography, "Réessayer"),).on_press(UiMessage::Refresh)
+                button(body_text(typography, t("action_retry"))).on_press(UiMessage::Refresh)
             ]
             .spacing(spacing.sm)
         } else if total_entries == 0 && !self.is_loading {
             if is_filtered {
-                column![body_text(typography, "Aucun résultat")]
+                column![body_text(typography, t("list_no_results"))]
             } else {
-                column![body_text(typography, "Dossier vide")]
+                column![body_text(typography, t("list_empty_folder"))]
             }
         } else if total_entries == 0 {
             column![]

@@ -54,6 +54,22 @@ pub fn tf(key: &str, args: &[(&str, &dyn Display)]) -> String {
     text
 }
 
+/// [`tf`] for a quantity: `{key}_one` or `{key}_other` depending on `count`,
+/// with `{count}` filled in along with `args`.
+///
+/// The two languages disagree on zero: French takes the singular ("0 dossier"),
+/// English the plural ("0 folders").
+pub fn tn(key: &str, count: usize, args: &[(&str, &dyn Display)]) -> String {
+    let singular = match colony_ui::i18n::locale() {
+        Locale::Fr => count <= 1,
+        Locale::En => count == 1,
+    };
+    let form = format!("{key}_{}", if singular { "one" } else { "other" });
+    let mut all: Vec<(&str, &dyn Display)> = vec![("count", &count)];
+    all.extend_from_slice(args);
+    tf(&form, &all)
+}
+
 /// Make `language` the active locale, for Xion and for the shared widgets.
 pub fn apply(language: Language) {
     colony_ui::i18n::set_locale(resolve(language));
@@ -159,6 +175,13 @@ mod tests {
                     missing.push(format!("{}: {key}", path.display()));
                 }
             }
+            for key in plural_keys(&source) {
+                for form in ["one", "other"] {
+                    if !table(Locale::En).contains_key(&format!("{key}_{form}")) {
+                        missing.push(format!("{}: {key}_{form}", path.display()));
+                    }
+                }
+            }
         }
         assert!(
             missing.is_empty(),
@@ -181,8 +204,17 @@ mod tests {
 
     /// The `"key"` in every `t("key")` and `tf("key", ...)` call.
     fn literal_keys(source: &str) -> Vec<&str> {
+        calls(source, &["t(\"", "tf(\""])
+    }
+
+    /// The `"key"` in every `tn("key", ...)` call, which reads two forms.
+    fn plural_keys(source: &str) -> Vec<&str> {
+        calls(source, &["tn(\""])
+    }
+
+    fn calls<'a>(source: &'a str, names: &[&str]) -> Vec<&'a str> {
         let mut found = Vec::new();
-        for call in ["t(\"", "tf(\""] {
+        for call in names {
             for (start, _) in source.match_indices(call) {
                 let preceded_by_identifier = source[..start]
                     .chars()
@@ -202,8 +234,9 @@ mod tests {
 
     #[test]
     fn the_scanner_finds_calls_and_skips_lookalikes() {
-        let source = r#"t("a_key"); i18n::tf("b_key", &[]); set("no"); format!("no")"#;
+        let source = r#"t("a_key"); i18n::tf("b_key", &[]); set("no"); tn("c_key", 2, &[])"#;
         assert_eq!(literal_keys(source), ["a_key", "b_key"]);
+        assert_eq!(plural_keys(source), ["c_key"]);
     }
 
     #[test]
@@ -212,6 +245,23 @@ mod tests {
         let text = tf("cli_unknown_option", &[("option", &"--nope")]);
         assert!(text.contains("--nope"), "{text}");
         assert!(!text.contains('{'), "{text}");
+    }
+
+    /// Every key read through `tn` has both of its forms, in both languages.
+    #[test]
+    fn plural_forms_come_in_pairs() {
+        for locale in [Locale::En, Locale::Fr] {
+            for key in table(locale).keys() {
+                let pair = if let Some(stem) = key.strip_suffix("_one") {
+                    format!("{stem}_other")
+                } else if let Some(stem) = key.strip_suffix("_other") {
+                    format!("{stem}_one")
+                } else {
+                    continue;
+                };
+                assert!(table(locale).contains_key(&pair), "{key} has no {pair}");
+            }
+        }
     }
 
     #[test]

@@ -478,13 +478,13 @@ mod tests {
     #[test]
     fn zip_entry_with_backslash_traversal_is_rejected() {
         let error = safe_join(&dest(), r"..\..\..\Windows\System32\evil.dll").unwrap_err();
-        assert!(error.contains("remontée"), "message inattendu : {error}");
+        assert!(error.contains("remontée"), "unexpected message: {error}");
     }
 
     #[test]
     fn entry_with_forward_slash_traversal_is_rejected() {
         let error = safe_join(&dest(), "../../evil.sh").unwrap_err();
-        assert!(error.contains("remontée"), "message inattendu : {error}");
+        assert!(error.contains("remontée"), "unexpected message: {error}");
     }
 
     #[test]
@@ -495,7 +495,7 @@ mod tests {
     #[test]
     fn sevenz_entry_with_absolute_path_is_rejected() {
         let error = safe_join(&dest(), r"C:\Windows\System32\evil.dll").unwrap_err();
-        assert!(error.contains("disque"), "message inattendu : {error}");
+        assert!(error.contains("disque"), "unexpected message: {error}");
     }
 
     #[test]
@@ -611,6 +611,6 @@ mod tests {
         let out_path = dest_dir.join("escape").join("evil.txt");
         let error = create_parent_within(&dest_dir, &out_path).unwrap_err();
 
-        assert!(error.contains("sort du dossier cible"), "message : {error}");
+        assert!(error.contains("sort du dossier cible"), "message: {error}");
     }
 }

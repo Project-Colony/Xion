@@ -30,6 +30,7 @@ use iced::widget::{
 };
 use iced::{Alignment, Background, Color, Element, Length, border, mouse};
 
+use crate::i18n::{t, tn};
 use crate::ui::UiMessage;
 use crate::ui::theme::UiTokens;
 use crate::ui::theme::layout::PREVIEW_RESIZE_BAR_WIDTH;
@@ -80,7 +81,7 @@ impl XionApp {
         let mut list_col = if self.quick_filter_active {
             let filter_bar: Element<'_, UiMessage> = container(
                 row![
-                    caption_text(typography, "Filtrer :"),
+                    caption_text(typography, t("quick_filter_label")),
                     text_input("", &self.quick_filter)
                         .on_input(UiMessage::QuickFilterChanged)
                         .padding(spacing.xs)
@@ -148,7 +149,7 @@ impl XionApp {
             .interaction(mouse::Interaction::ResizingHorizontally)
             .into();
 
-            let preview_header = mouse_area(caption_text(typography, "Prévisualisation").style(
+            let preview_header = mouse_area(caption_text(typography, t("preview_title")).style(
                 move |_| iced::widget::text::Style {
                     color: Some(colors.text_muted),
                 },
@@ -203,15 +204,10 @@ impl XionApp {
             .zip(self.cursor_position)
             .map(|(drag_state, position)| {
                 let count = drag_state.items.len();
-                let action = if self.modifiers.control {
-                    "Copier"
+                let label = if self.modifiers.control {
+                    tn("drag_copy", count, &[])
                 } else {
-                    "Déplacer"
-                };
-                let label = if count == 1 {
-                    format!("{action} 1 élément")
-                } else {
-                    format!("{action} {count} éléments")
+                    tn("drag_move", count, &[])
                 };
                 let overlay = container(caption_text(typography, label))
                     .padding([spacing.xs, spacing.sm])

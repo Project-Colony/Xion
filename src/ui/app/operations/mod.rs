@@ -127,7 +127,7 @@ mod tests {
         let _ = app.request_permanent_delete();
 
         let dialog = app.confirm_dialog.as_ref().expect("a dialog must open");
-        assert!(dialog.message.contains("définitivement"));
+        assert!(dialog.message.contains("permanently"));
         assert!(matches!(
             dialog.action,
             ConfirmedAction::DeletePermanently(ref items) if items.len() == 1
@@ -158,7 +158,7 @@ mod tests {
         assert!(app.confirm_dialog.is_none());
         assert_eq!(
             app.last_action.as_deref(),
-            Some("Aucune sélection à supprimer")
+            Some(crate::i18n::t("notice_nothing_to_delete"))
         );
     }
 }

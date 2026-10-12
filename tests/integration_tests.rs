@@ -1012,7 +1012,7 @@ mod deletion_flow {
 
         let _ = app.update_for_test(UiMessage::KeyboardCommand(KeyboardCommand::Delete));
 
-        assert!(victim.exists(), "Suppr ne doit rien effacer directement");
+        assert!(victim.exists(), "Delete must not erase anything directly");
         assert!(
             selection(&app).is_empty(),
             "the selection went to the trash"

@@ -14,6 +14,7 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, mouse_area, row};
 use iced::{Alignment, Background, Element, Length, Theme};
 
+use crate::i18n::t;
 use crate::ui::theme::icons;
 use crate::ui::theme::layout::TAB_STRIP_HEIGHT;
 use crate::ui::{KeyboardCommand, UiMessage};
@@ -46,14 +47,15 @@ impl XionApp {
         } else {
             toolbar_button(icons::BACK.to_string())
         };
-        let back_button = widgets::tip(ctx, back_button, "Précédent (Alt+←)", TipVariant::Nav);
+        let back_button = widgets::tip(ctx, back_button, t("header_back"), TipVariant::Nav);
 
         let forward_button = if self.history.can_forward() {
             toolbar_button(icons::FORWARD.to_string()).on_press(UiMessage::Forward)
         } else {
             toolbar_button(icons::FORWARD.to_string())
         };
-        let forward_button = widgets::tip(ctx, forward_button, "Suivant (Alt+→)", TipVariant::Nav);
+        let forward_button =
+            widgets::tip(ctx, forward_button, t("header_forward"), TipVariant::Nav);
 
         let has_parent = self
             .state
@@ -67,8 +69,7 @@ impl XionApp {
         } else {
             go_up_button
         };
-        let go_up_button =
-            widgets::tip(ctx, go_up_button, "Dossier parent (Alt+↑)", TipVariant::Nav);
+        let go_up_button = widgets::tip(ctx, go_up_button, t("header_parent"), TipVariant::Nav);
 
         // Refresh left the bar: it is one press of F5, it is in the `⋯` menu,
         // and it was the least-used of the four arrows.
@@ -81,7 +82,7 @@ impl XionApp {
             ctx,
             toolbar_button("\u{22ef}".to_string())
                 .on_press(UiMessage::ToggleOverflowMenu(!self.menus.overflow_open)),
-            "Plus d'actions",
+            t("header_more_actions"),
             TipVariant::Nav,
         );
 
@@ -174,9 +175,9 @@ impl XionApp {
             .on_press(UiMessage::TogglePreferences);
 
         let tip = if open {
-            "Fermer les préférences"
+            t("header_close_preferences")
         } else {
-            "Préférences"
+            t("settings_title")
         };
 
         container(widgets::tip(ctx, identity, tip, TipVariant::Nav))

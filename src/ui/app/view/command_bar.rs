@@ -7,6 +7,7 @@
 use iced::widget::{container, progress_bar, row, text_input};
 use iced::{Alignment, Background, Color, Element, Length, Theme, border};
 
+use crate::i18n::{t, tf};
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
@@ -35,9 +36,9 @@ impl XionApp {
             .tabs
             .get(self.tab_manager.active)
             .map(|tab| tab.title.as_str())
-            .unwrap_or("Ce PC");
+            .unwrap_or(t("location_this_pc"));
         let search_input = text_input(
-            &format!("Rechercher dans : {}", active_tab_title),
+            &tf("search_placeholder", &[("location", &active_tab_title)]),
             &self.search.input,
         )
         .id(iced::widget::Id::new("search_input"))
@@ -76,21 +77,26 @@ impl XionApp {
                     } else {
                         0.5
                     };
-                    let kind_label = match op.kind {
-                        crate::filesystem::FileOperationKind::Copy => "Copie",
-                        crate::filesystem::FileOperationKind::Move => "Déplacement",
-                        crate::filesystem::FileOperationKind::Delete => "Suppression",
-                        crate::filesystem::FileOperationKind::Rename => "Renommage",
-                    };
-                    (format!("{} : {}/{}", kind_label, done, op.total), r)
+                    let kind_label = crate::ui::app::helpers::operation_label(op.kind);
+                    (
+                        tf(
+                            "progress_operation",
+                            &[
+                                ("operation", &kind_label),
+                                ("done", &done),
+                                ("total", &op.total),
+                            ],
+                        ),
+                        r,
+                    )
                 } else if self.entries.total > 0 {
                     let loaded = self.entries.items.iter().filter(|e| e.is_some()).count();
                     (
-                        "Chargement…".to_string(),
+                        t("loading").to_string(),
                         loaded as f32 / self.entries.total as f32,
                     )
                 } else {
-                    ("Chargement…".to_string(), 0.5)
+                    (t("loading").to_string(), 0.5)
                 };
                 let content: Element<'_, UiMessage> = row![
                     caption_text(typography, progress_label),

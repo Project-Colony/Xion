@@ -8,6 +8,7 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, column, container, row, scrollable};
 use iced::{Alignment, Background, Element, Length, Theme};
 
+use crate::i18n::t;
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
 
@@ -37,7 +38,7 @@ impl XionApp {
         let main_list_element: Element<'_, UiMessage> = if self.state.route.is_recent() {
             let recents = self.recents.list();
             let recent_rows: Vec<Element<'_, UiMessage>> = if recents.is_empty() {
-                vec![body_text(typography, "Aucun fichier récent").into()]
+                vec![body_text(typography, t("recent_none")).into()]
             } else {
                 recents
                     .iter()
@@ -108,9 +109,9 @@ impl XionApp {
             };
             let header = container(
                 row![
-                    body_text(typography, "Fichiers récents"),
+                    body_text(typography, t("recent_title")),
                     horizontal_space(),
-                    button(caption_text(typography, "Effacer"))
+                    button(caption_text(typography, t("action_clear")))
                         .on_press(UiMessage::ClearRecents)
                         .padding([spacing.xs, spacing.sm])
                         .style(
@@ -141,7 +142,7 @@ impl XionApp {
                 .archive_path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .unwrap_or("Archive")
+                .unwrap_or(t("archive_fallback_name"))
                 .to_string();
             let inner_str = if archive.inner_path.is_empty() {
                 "/".to_string()

@@ -207,7 +207,7 @@ mod watcher_error_tests {
             paths: vec!["/boot".into()],
         };
         let rendered = watcher_error(error).to_string();
-        assert!(!rendered.contains("about"), "message : {rendered}");
-        assert!(!rendered.contains("/boot"), "message : {rendered}");
+        assert!(!rendered.contains("about"), "message: {rendered}");
+        assert!(!rendered.contains("/boot"), "message: {rendered}");
     }
 }

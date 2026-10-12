@@ -460,7 +460,7 @@ mod tests {
         assert_eq!(report.failed.len(), 1);
         assert!(
             report.failed[0].error.contains("sous-dossier"),
-            "message inattendu : {}",
+            "unexpected message: {}",
             report.failed[0].error
         );
         assert!(
@@ -510,7 +510,7 @@ mod tests {
         assert_eq!(report.failed.len(), 1);
         assert!(
             report.failed[0].error.contains("identiques"),
-            "message inattendu : {}",
+            "unexpected message: {}",
             report.failed[0].error
         );
     }

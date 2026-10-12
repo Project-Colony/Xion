@@ -378,7 +378,7 @@ The command completed successfully.
     fn smb_discovery_fails_explicitly_off_windows() {
         // It used to return an empty Vec, indistinguishable from "no shares".
         let error = discover_via_net_view().expect_err("must fail outside Windows");
-        assert!(error.contains("Windows"), "message inattendu: {error}");
+        assert!(error.contains("Windows"), "unexpected message: {error}");
     }
 
     #[test]

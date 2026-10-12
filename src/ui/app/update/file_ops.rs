@@ -8,7 +8,6 @@ use std::sync::atomic::Ordering;
 
 use iced::Task;
 
-use crate::filesystem::FileOperationKind;
 use crate::ui::UiMessage;
 
 use crate::ui::app::types::*;
@@ -102,13 +101,17 @@ impl XionApp {
             UiMessage::OperationProgressTick => {
                 if let Some(op) = &self.operation_progress {
                     let done = op.counter.load(Ordering::Relaxed).min(op.total);
-                    let label = match op.kind {
-                        FileOperationKind::Copy => "Copie",
-                        FileOperationKind::Move => "Déplacement",
-                        FileOperationKind::Delete => "Suppression",
-                        FileOperationKind::Rename => "Renommage",
-                    };
-                    self.last_action = Some(format!("{label} : {done}/{} éléments…", op.total));
+                    self.last_action = Some(crate::i18n::tf(
+                        "status_operation_progress",
+                        &[
+                            (
+                                "operation",
+                                &crate::ui::app::helpers::operation_label(op.kind),
+                            ),
+                            ("done", &done),
+                            ("total", &op.total),
+                        ],
+                    ));
                 }
             }
             UiMessage::NewFolder => {

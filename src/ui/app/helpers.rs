@@ -14,7 +14,10 @@ use crate::core::{
     EntryFilterConfig, KeyInput, KeyKind, NamedKey, ShortcutBindings, SortKeyConfig,
     SortOrderConfig, ViewColumn,
 };
-use crate::filesystem::{EntryFilter, FsEntry, FsEntryType, ListOptions, SortKey, SortOrder};
+use crate::filesystem::{
+    EntryFilter, FileOperationKind, FsEntry, FsEntryType, ListOptions, SortKey, SortOrder,
+};
+use crate::i18n::{t, tf};
 use crate::services::Thumbnail;
 use crate::ui::KeyboardCommand;
 use crate::ui::theme::layout::TREE_MAX_CHILDREN;
@@ -47,12 +50,23 @@ pub fn truncate_name(name: &str, max_chars: usize) -> std::borrow::Cow<'_, str> 
 }
 
 pub fn entry_type_label(entry_type: FsEntryType) -> &'static str {
-    match entry_type {
-        FsEntryType::Directory => "Dossier",
-        FsEntryType::File => "Fichier",
-        FsEntryType::Symlink => "Lien",
-        FsEntryType::Other => "Autre",
-    }
+    t(match entry_type {
+        FsEntryType::Directory => "entry_type_folder",
+        FsEntryType::File => "entry_type_file",
+        FsEntryType::Symlink => "entry_type_link",
+        FsEntryType::Other => "entry_type_other",
+    })
+}
+
+/// What a running file operation is doing, as the progress badge and the
+/// status bar name it.
+pub fn operation_label(kind: FileOperationKind) -> &'static str {
+    t(match kind {
+        FileOperationKind::Copy => "operation_copy",
+        FileOperationKind::Move => "operation_move",
+        FileOperationKind::Delete => "operation_delete",
+        FileOperationKind::Rename => "operation_rename",
+    })
 }
 
 pub fn format_entry_size(entry: &FsEntry) -> String {
@@ -63,7 +77,13 @@ pub fn format_entry_size(entry: &FsEntry) -> String {
 }
 
 pub fn format_bytes(bytes: u64) -> String {
-    let units = ["o", "Ko", "Mo", "Go", "To"];
+    let units = [
+        t("unit_bytes"),
+        t("unit_kilobytes"),
+        t("unit_megabytes"),
+        t("unit_gigabytes"),
+        t("unit_terabytes"),
+    ];
     let mut size = bytes as f64;
     let mut index = 0;
     while size >= 1024.0 && index < units.len() - 1 {
@@ -81,7 +101,7 @@ pub fn format_modified(modified: Option<std::time::SystemTime>) -> String {
     modified
         .map(|time| {
             let datetime: DateTime<Local> = time.into();
-            datetime.format("%d/%m/%Y %H:%M").to_string()
+            datetime.format(t("date_time_format")).to_string()
         })
         .unwrap_or_else(|| "—".to_string())
 }
@@ -629,29 +649,30 @@ mod tests {
         assert!(result.contains('\u{2026}'));
     }
 
+    // The unit tests read the default locale, English: none of them sets one.
     #[test]
     fn format_bytes_zero() {
-        assert_eq!(format_bytes(0), "0 o");
+        assert_eq!(format_bytes(0), "0 B");
     }
 
     #[test]
     fn format_bytes_small() {
-        assert_eq!(format_bytes(512), "512 o");
+        assert_eq!(format_bytes(512), "512 B");
     }
 
     #[test]
     fn format_bytes_kilobytes() {
-        assert_eq!(format_bytes(1024), "1.0 Ko");
+        assert_eq!(format_bytes(1024), "1.0 KB");
     }
 
     #[test]
     fn format_bytes_megabytes() {
-        assert_eq!(format_bytes(1_048_576), "1.0 Mo");
+        assert_eq!(format_bytes(1_048_576), "1.0 MB");
     }
 
     #[test]
     fn format_bytes_gigabytes() {
-        assert_eq!(format_bytes(1_073_741_824), "1.0 Go");
+        assert_eq!(format_bytes(1_073_741_824), "1.0 GB");
     }
 
     #[test]
@@ -662,7 +683,7 @@ mod tests {
     #[test]
     fn format_modified_some() {
         let result = format_modified(Some(std::time::SystemTime::now()));
-        assert!(result.contains('/'));
+        assert!(result.contains('-'));
         assert!(result.contains(':'));
     }
 
@@ -702,8 +723,8 @@ mod tests {
 
     #[test]
     fn entry_type_labels() {
-        assert_eq!(entry_type_label(FsEntryType::Directory), "Dossier");
-        assert_eq!(entry_type_label(FsEntryType::File), "Fichier");
+        assert_eq!(entry_type_label(FsEntryType::Directory), "Folder");
+        assert_eq!(entry_type_label(FsEntryType::File), "File");
     }
 
     #[test]
@@ -763,10 +784,12 @@ pub(super) fn read_file_capped(path: &std::path::Path, max_bytes: u64) -> Result
 
     let metadata = std::fs::metadata(path).map_err(|error| error.to_string())?;
     if metadata.len() > max_bytes {
-        return Err(format!(
-            "fichier trop volumineux ({}) — limite {}",
-            format_bytes(metadata.len()),
-            format_bytes(max_bytes)
+        return Err(tf(
+            "error_file_too_large",
+            &[
+                ("size", &format_bytes(metadata.len())),
+                ("limit", &format_bytes(max_bytes)),
+            ],
         ));
     }
 
@@ -873,7 +896,7 @@ mod capped_read_tests {
 
         let error = read_file_capped(&path, 1024).unwrap_err();
 
-        assert!(error.contains("trop volumineux"), "message : {error}");
+        assert!(error.contains("too large"), "message: {error}");
     }
 
     #[test]

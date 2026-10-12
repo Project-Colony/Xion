@@ -25,14 +25,19 @@ use super::types::{AppConfig, AppConfigLoad, ConfigSource, ConfigWarning, TabPer
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+/// A configuration file that cannot be used at all, worded like a warning.
 #[derive(Debug)]
-pub struct ConfigError {
-    message: String,
+pub struct ConfigError(ConfigWarning);
+
+impl ConfigError {
+    fn new(key: &'static str, args: &[(&'static str, &dyn fmt::Display)]) -> Self {
+        Self(ConfigWarning::new(key, args))
+    }
 }
 
 impl fmt::Display for ConfigError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}", self.message)
+        self.0.fmt(formatter)
     }
 }
 
@@ -129,30 +134,28 @@ impl ConfigManager {
     /// flattened by the next `save()`. Move it aside and try the backup copy,
     /// so a truncated or hand-broken file never costs the whole configuration.
     fn recover_unreadable_file(&self, error: ConfigError) -> AppConfigLoad {
-        let mut warnings = vec![ConfigWarning {
-            message: error.to_string(),
-        }];
+        let mut warnings = vec![error.0];
 
         let quarantine = sibling_path(&self.path, &format!(".corrupt-{}", unix_timestamp()));
         match fs::rename(&self.path, &quarantine) {
-            Ok(()) => warnings.push(ConfigWarning {
-                message: format!(
-                    "Config illisible mise de côté dans {}",
-                    quarantine.display()
-                ),
-            }),
-            Err(error) => warnings.push(ConfigWarning {
-                message: format!("Config illisible, mise de côté impossible: {error}"),
-            }),
+            Ok(()) => warnings.push(ConfigWarning::new(
+                "config_quarantined",
+                &[("path", &quarantine.display())],
+            )),
+            Err(error) => warnings.push(ConfigWarning::new(
+                "config_quarantine_failed",
+                &[("error", &error)],
+            )),
         }
 
         let backup = self.backup_path();
         if let Ok(mut restored) = load_from_path(&backup)
             && !matches!(restored.source, ConfigSource::Default)
         {
-            warnings.push(ConfigWarning {
-                message: format!("Configuration restaurée depuis {}", backup.display()),
-            });
+            warnings.push(ConfigWarning::new(
+                "config_restored",
+                &[("path", &backup.display())],
+            ));
             warnings.append(&mut restored.warnings);
             return AppConfigLoad {
                 config: restored.config,
@@ -465,9 +468,7 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
             });
         }
         Err(error) => {
-            return Err(ConfigError {
-                message: format!("Lecture config impossible: {error}"),
-            });
+            return Err(ConfigError::new("config_read_failed", &[("error", &error)]));
         }
     };
 
@@ -477,32 +478,25 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
         return Ok(AppConfigLoad {
             config: AppConfig::default(),
             source: ConfigSource::Default,
-            warnings: vec![ConfigWarning {
-                message: format!(
-                    "Config vide ({}), valeurs par défaut utilisées",
-                    path.display()
-                ),
-            }],
+            warnings: vec![ConfigWarning::new(
+                "config_empty",
+                &[("path", &path.display())],
+            )],
         });
     }
 
-    let header: VersionHeader = toml::from_str(&contents).map_err(|error| ConfigError {
-        message: format!("Header de config invalide: {error}"),
-    })?;
+    let header: VersionHeader = toml::from_str(&contents)
+        .map_err(|error| ConfigError::new("config_invalid_header", &[("error", &error)]))?;
     let version = header.version.unwrap_or(0);
 
     let mut warnings = Vec::new();
     if header.version.is_none() {
-        warnings.push(ConfigWarning {
-            message: "Clé 'version' absente: fichier relu au format V0, \
-                      les réglages plus récents seront réinitialisés"
-                .to_string(),
-        });
+        warnings.push(ConfigWarning::new("config_missing_version", &[]));
     }
     let config = match version {
         0 => {
-            let file: AppConfigFileV0 = toml::from_str(&contents).map_err(|error| ConfigError {
-                message: format!("Config V0 invalide: {error}"),
+            let file: AppConfigFileV0 = toml::from_str(&contents).map_err(|error| {
+                ConfigError::new("config_invalid", &[("version", &0), ("error", &error)])
             })?;
             let config = merge_from_v0(file, &mut warnings);
             return Ok(AppConfigLoad {
@@ -512,18 +506,19 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
             });
         }
         CURRENT_CONFIG_VERSION => {
-            let file: AppConfigFileV1 = toml::from_str(&contents).map_err(|error| ConfigError {
-                message: format!("Config V{CURRENT_CONFIG_VERSION} invalide: {error}"),
+            let file: AppConfigFileV1 = toml::from_str(&contents).map_err(|error| {
+                ConfigError::new(
+                    "config_invalid",
+                    &[("version", &CURRENT_CONFIG_VERSION), ("error", &error)],
+                )
             })?;
             merge_from_v1(file, &mut warnings)
         }
         other => {
-            return Err(ConfigError {
-                message: format!(
-                    "Version de config {other} non supportée (max: {CURRENT_CONFIG_VERSION}). \
-                     Mettez à jour Xion ou supprimez le fichier de config pour le recréer."
-                ),
-            });
+            return Err(ConfigError::new(
+                "config_unsupported_version",
+                &[("version", &other), ("max", &CURRENT_CONFIG_VERSION)],
+            ));
         }
     };
 
@@ -553,7 +548,7 @@ mod tests {
             loaded
                 .warnings
                 .iter()
-                .any(|warning| warning.message.contains("klingon")),
+                .any(|warning| warning.to_string().contains("klingon")),
             "{:?}",
             loaded.warnings
         );
@@ -962,7 +957,7 @@ mod tests {
             loaded
                 .warnings
                 .iter()
-                .any(|w| w.message.contains("version"))
+                .any(|w| w.to_string().contains("version"))
         );
     }
 
@@ -1017,7 +1012,7 @@ mod tests {
             loaded
                 .warnings
                 .iter()
-                .any(|w| w.message.contains("dark_mode"))
+                .any(|w| w.to_string().contains("dark_mode"))
         );
     }
 

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use iced::Task;
 
+use crate::i18n::t;
 use crate::ui::UiMessage;
 
 use super::XionApp;
@@ -190,7 +191,7 @@ impl XionApp {
             .cloned()
             .collect();
         if selected.is_empty() {
-            self.last_action = Some("Aucune sélection à compresser".to_string());
+            self.last_action = Some(t("notice_nothing_to_compress").to_string());
             return Task::none();
         }
         // Hash-set order is not stable across runs; sorting makes both the name
@@ -212,8 +213,7 @@ impl XionApp {
 
         let Some(out_path) = Self::available_archive_path(&output_dir, &stem, format.extension())
         else {
-            self.last_action =
-                Some("Impossible de trouver un nom d'archive disponible".to_string());
+            self.last_action = Some(t("error_no_free_archive_name").to_string());
             return Task::none();
         };
 

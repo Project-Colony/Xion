@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use iced::Task;
 
 use crate::filesystem::{FileOperationKind, LocalFileOperations, OperationReport};
+use crate::i18n::{t, tf};
 use crate::ui::UiMessage;
 
 use crate::ui::app::XionApp;
@@ -16,7 +17,7 @@ impl XionApp {
     pub(in crate::ui::app) fn open_rename_dialog(&mut self) -> Task<UiMessage> {
         let selection = &self.state.navigation.selection;
         if selection.selected.len() != 1 {
-            self.last_action = Some("Renommage : sélectionnez un seul élément".to_string());
+            self.last_action = Some(t("rename_select_single").to_string());
             return Task::none();
         }
         let path = selection
@@ -26,7 +27,7 @@ impl XionApp {
             .cloned()
             .or_else(|| self.state.route.local_path().cloned());
         let Some(path) = path else {
-            self.last_action = Some("Renommage indisponible en vue réseau".to_string());
+            self.last_action = Some(t("rename_unavailable_network").to_string());
             return Task::none();
         };
         let name = path
@@ -35,7 +36,7 @@ impl XionApp {
             .unwrap_or("")
             .to_string();
         if name.is_empty() {
-            self.last_action = Some("Renommage impossible".to_string());
+            self.last_action = Some(t("rename_impossible").to_string());
             return Task::none();
         }
         self.rename_dialog = Some(RenameDialog { path, input: name });
@@ -48,22 +49,22 @@ impl XionApp {
         };
         let trimmed = dialog.input.trim();
         if trimmed.is_empty() {
-            self.last_action = Some("Renommage : nom invalide".to_string());
+            self.last_action = Some(t("rename_invalid_name").to_string());
             self.rename_dialog = Some(dialog);
             return Task::none();
         }
         if let Err(reason) = super::validate_file_name(trimmed) {
-            self.last_action = Some(format!("Renommage : {reason}"));
+            self.last_action = Some(tf("rename_refused", &[("reason", &reason)]));
             self.rename_dialog = Some(dialog);
             return Task::none();
         }
         let Some(parent) = dialog.path.parent() else {
-            self.last_action = Some("Renommage impossible".to_string());
+            self.last_action = Some(t("rename_impossible").to_string());
             return Task::none();
         };
         let target = parent.join(trimmed);
         if target == dialog.path {
-            self.last_action = Some("Renommage : nom identique".to_string());
+            self.last_action = Some(t("rename_same_name").to_string());
             return Task::none();
         }
         let source = dialog.path.clone();

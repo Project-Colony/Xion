@@ -5,6 +5,7 @@
 
 use iced::Task;
 
+use crate::i18n::tf;
 use crate::ui::UiMessage;
 
 use crate::ui::app::types::*;
@@ -83,11 +84,15 @@ impl XionApp {
             }
             UiMessage::CompressCompleted(result) => match result {
                 Ok(path) => {
-                    self.last_action = Some(format!(
-                        "{} créé",
-                        path.file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("archive")
+                    self.last_action = Some(tf(
+                        "archive_created",
+                        &[(
+                            "name",
+                            &path
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("archive"),
+                        )],
                     ));
                     tasks.push(self.refresh_entries_in_place());
                 }

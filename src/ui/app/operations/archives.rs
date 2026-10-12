@@ -106,7 +106,7 @@ impl XionApp {
                             if found {
                                 Ok(out_path)
                             } else {
-                                Err("Fichier non trouvé dans l'archive".to_string())
+                                Err(crate::i18n::t("archive_file_not_found").to_string())
                             }
                         }
                         ArchiveType::TarGz => {

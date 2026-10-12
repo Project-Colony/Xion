@@ -12,6 +12,7 @@ use iced::Task;
 use crate::filesystem::{
     EntryFilter, ListOptions, LocalFileSystem, PageRequest, SortKey, SortOrder, WatchEvent,
 };
+use crate::i18n::{t, tf};
 use crate::services::{SearchIndexOptions, SearchQuery, SearchService};
 use crate::ui::theme::layout::TREE_MAX_DEPTH;
 use crate::ui::theme::timing::LOADING_INDICATOR_DELAY;
@@ -179,7 +180,7 @@ impl XionApp {
                     if io.kind() == std::io::ErrorKind::PermissionDenied
             );
             if !refused {
-                self.last_action = Some(format!("Surveillance impossible : {}", path.display()));
+                self.last_action = Some(tf("watch_failed", &[("path", &path.display())]));
             }
         }
     }
@@ -362,7 +363,7 @@ impl XionApp {
                             Ok(mut loader) => loader
                                 .load_page(&filesystem, &path, options, page_request)
                                 .map_err(|error| error.to_string()),
-                            Err(_) => Err("Le chargeur de dossiers est indisponible.".to_string()),
+                            Err(_) => Err(t("error_loader_unavailable").to_string()),
                         }
                     }
                     crate::ui::RouteKind::Network => {

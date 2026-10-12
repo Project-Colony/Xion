@@ -195,28 +195,28 @@ impl ColumnSpec {
         match column {
             ViewColumn::Name => Self {
                 column: ViewColumn::Name,
-                label: "Nom",
+                label: crate::i18n::t("column_name"),
                 width: Length::FillPortion(4),
                 align: Horizontal::Left,
                 sort_key: Some(SortKeyConfig::Name),
             },
             ViewColumn::Type => Self {
                 column: ViewColumn::Type,
-                label: "Type",
+                label: crate::i18n::t("column_type"),
                 width: Length::Fixed(120.0),
                 align: Horizontal::Left,
                 sort_key: None,
             },
             ViewColumn::Size => Self {
                 column: ViewColumn::Size,
-                label: "Taille",
+                label: crate::i18n::t("column_size"),
                 width: Length::Fixed(100.0),
                 align: Horizontal::Right,
                 sort_key: Some(SortKeyConfig::Size),
             },
             ViewColumn::Modified => Self {
                 column: ViewColumn::Modified,
-                label: "Modifié",
+                label: crate::i18n::t("column_modified"),
                 width: Length::Fixed(160.0),
                 align: Horizontal::Right,
                 sort_key: Some(SortKeyConfig::Modified),

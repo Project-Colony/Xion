@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use iced::Task;
 
 use crate::core::SortOrderConfig;
+use crate::i18n::{t, tf, tn};
 use crate::ui::UiMessage;
 
 use crate::ui::app::types::*;
@@ -140,13 +141,11 @@ impl XionApp {
                     if is_network_path(&target) || target.is_dir() {
                         tasks.push(self.navigate_to(target));
                     } else if target.exists() {
-                        self.last_action = Some(format!(
-                            "Le chemin pointe vers un fichier : {}",
-                            target.display()
-                        ));
+                        self.last_action =
+                            Some(tf("address_is_file", &[("path", &target.display())]));
                     } else {
                         self.last_action =
-                            Some(format!("Chemin introuvable : {}", target.display()));
+                            Some(tf("address_missing", &[("path", &target.display())]));
                     }
                 }
             }
@@ -257,7 +256,7 @@ impl XionApp {
             }
             UiMessage::ClearRecents => {
                 self.recents.entries.clear();
-                self.last_action = Some("Historique récents effacé".to_string());
+                self.last_action = Some(t("recent_cleared").to_string());
             }
             // ── Feature H: Column Resizing ────────────────────────────────────
             UiMessage::BreadcrumbDropdown(path) => {
@@ -316,7 +315,7 @@ impl XionApp {
             }
             UiMessage::TrashListLoaded(items) => {
                 let count = items.len();
-                self.last_action = Some(format!("{count} élément(s) dans la corbeille"));
+                self.last_action = Some(tn("trash_items", count, &[]));
                 // Store trash items for display in sidebar
                 // We'll use the recents service pattern: display as a notification for now
             }

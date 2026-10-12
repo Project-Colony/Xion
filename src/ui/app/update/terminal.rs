@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use iced::Task;
 
+use crate::i18n::{t, tf};
 use crate::ui::UiMessage;
 
 use crate::ui::app::types::*;
@@ -188,7 +189,7 @@ impl XionApp {
                     }
                     None => self
                         .terminal
-                        .push_notice("Aucun processus à interrompre.".to_string()),
+                        .push_notice(t("terminal_nothing_to_interrupt").to_string()),
                 }
             }
             UiMessage::SetShell(shell) => {
@@ -270,7 +271,7 @@ impl XionApp {
                 Ok(resolved) => resolved,
                 Err(error) => {
                     self.terminal
-                        .push_notice(format!("Interpréteur introuvable : {error}"));
+                        .push_notice(tf("terminal_shell_not_found", &[("error", &error)]));
                     return;
                 }
             };
@@ -339,7 +340,7 @@ impl XionApp {
             }
             Err(error) => self
                 .terminal
-                .push_notice(format!("Le terminal n'a pas démarré : {error}")),
+                .push_notice(tf("terminal_start_failed", &[("error", &error)])),
         }
     }
 }

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use iced::Task;
 
+use crate::i18n::{t, tf, tn};
 use crate::ui::UiMessage;
 
 use crate::ui::app::helpers::{self};
@@ -144,8 +145,7 @@ impl XionApp {
                         error: None,
                     });
                 } else {
-                    self.last_action =
-                        Some("Sélectionnez plusieurs fichiers pour renommer".to_string());
+                    self.last_action = Some(t("bulk_rename_select_several").to_string());
                 }
             }
             UiMessage::BulkRenameFindChanged(val) => {
@@ -176,11 +176,11 @@ impl XionApp {
                 self.bulk_rename = None;
                 match result {
                     Ok(n) => {
-                        self.last_action = Some(format!("{} fichiers renommés", n));
+                        self.last_action = Some(tn("bulk_rename_done", n, &[]));
                         tasks.push(self.refresh_entries_in_place());
                     }
                     Err(e) => {
-                        self.last_action = Some(format!("Erreur renommage : {}", e));
+                        self.last_action = Some(tf("error_rename", &[("error", &e)]));
                     }
                 }
             }
@@ -219,7 +219,7 @@ impl XionApp {
             // ── Feature A: Compress to ZIP ──────────────────────────────────
             UiMessage::OpenWith(path) => {
                 if let Err(error) = crate::platform::open_with(&path) {
-                    self.last_action = Some(format!("« Ouvrir avec » : {error}"));
+                    self.last_action = Some(tf("error_open_with", &[("error", &error)]));
                 }
             }
             // ── Feature C: File Diff ──────────────────────────────────────────
@@ -308,8 +308,7 @@ impl XionApp {
                         },
                     ));
                 } else {
-                    self.last_action =
-                        Some("Sélectionnez exactement 2 fichiers pour comparer".to_string());
+                    self.last_action = Some(t("compare_select_two").to_string());
                 }
             }
             UiMessage::DiffLoaded {
@@ -382,18 +381,14 @@ impl XionApp {
                                     let entries = permissions::parse_icacls_output(&text);
                                     Ok((path, entries))
                                 }
-                                Err(error) => Err((
-                                    path,
-                                    format!("Impossible de lire les permissions : {error}"),
-                                )),
+                                Err(error) => {
+                                    Err((path, tf("permissions_read_failed", &[("error", &error)])))
+                                }
                             }
                         })
                         .await
                         .unwrap_or_else(|_| {
-                            Err((
-                                path_fallback,
-                                "Erreur interne lors de la lecture des permissions".to_string(),
-                            ))
+                            Err((path_fallback, t("permissions_internal_error").to_string()))
                         })
                     },
                     |result| match result {
@@ -489,32 +484,38 @@ impl XionApp {
                 different,
                 common,
             } => {
-                self.last_action = Some(format!(
-                    "Comparaison : {} communs, {} différents, {} unique A, {} unique B",
-                    common,
-                    different.len(),
-                    only_a.len(),
-                    only_b.len()
+                self.last_action = Some(tf(
+                    "compare_summary",
+                    &[
+                        ("common", &common),
+                        ("different", &different.len()),
+                        ("only_a", &only_a.len()),
+                        ("only_b", &only_b.len()),
+                    ],
                 ));
                 // Build diff lines for display in diff viewer
                 let mut lines = Vec::new();
-                lines.push(crate::ui::DiffLine::Header(format!(
-                    "--- {} fichiers en commun ---",
-                    common
+                lines.push(crate::ui::DiffLine::Header(tn(
+                    "compare_common_files",
+                    common,
+                    &[],
                 )));
                 for name in &different {
-                    lines.push(crate::ui::DiffLine::Header(format!(
-                        "≠ {name} (taille différente)"
+                    lines.push(crate::ui::DiffLine::Header(tf(
+                        "compare_size_differs",
+                        &[("name", name)],
                     )));
                 }
                 for name in &only_a {
-                    lines.push(crate::ui::DiffLine::Removed(format!(
-                        "Seulement dans A: {name}"
+                    lines.push(crate::ui::DiffLine::Removed(tf(
+                        "compare_only_a",
+                        &[("name", name)],
                     )));
                 }
                 for name in &only_b {
-                    lines.push(crate::ui::DiffLine::Added(format!(
-                        "Seulement dans B: {name}"
+                    lines.push(crate::ui::DiffLine::Added(tf(
+                        "compare_only_b",
+                        &[("name", name)],
                     )));
                 }
                 let path_a = self.state.route.local_path().cloned().unwrap_or_default();
@@ -557,9 +558,9 @@ impl XionApp {
                     self.cached_highlighted_preview = None;
                     self.config_manager.save(&self.state.config);
                 } else {
-                    self.last_action = Some(format!(
-                        "« {} » n'a pas de variante claire ou sombre — choisissez dans le menu",
-                        choice.family
+                    self.last_action = Some(tf(
+                        "theme_no_light_dark_variant",
+                        &[("family", &choice.family)],
                     ));
                 }
             }

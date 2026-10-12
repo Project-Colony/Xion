@@ -3,6 +3,7 @@
 //! Moved verbatim out of the single 809-line `impl XionApp` block in `mod.rs`.
 
 use crate::filesystem::FsEntryType;
+use crate::i18n::t;
 use crate::services::{generate_preview, generate_thumbnail};
 use crate::ui::UiMessage;
 use iced::Task;
@@ -162,7 +163,7 @@ impl XionApp {
                             },
                             None => UiMessage::TextPreviewLoaded {
                                 path: err_path,
-                                content: "Impossible d'extraire le texte du PDF".to_string(),
+                                content: t("preview_pdf_failed").to_string(),
                                 encoding: None,
                             },
                         },
@@ -210,7 +211,7 @@ impl XionApp {
                                 tracing::warn!("Preview: reading file {:?} failed", path);
                                 UiMessage::TextPreviewLoaded {
                                     path,
-                                    content: "Impossible de lire le fichier".to_string(),
+                                    content: t("preview_read_failed").to_string(),
                                     encoding: None,
                                 }
                             }

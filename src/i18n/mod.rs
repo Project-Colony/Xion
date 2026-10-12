@@ -202,14 +202,18 @@ mod tests {
         files
     }
 
-    /// The `"key"` in every `t("key")` and `tf("key", ...)` call.
+    /// The literal key of every `t`, `tf`, `ConfigWarning::new` and
+    /// `ConfigError::new` call.
     fn literal_keys(source: &str) -> Vec<&str> {
-        calls(source, &["t(\"", "tf(\""])
+        calls(
+            source,
+            &["t(", "tf(", "ConfigWarning::new(", "ConfigError::new("],
+        )
     }
 
     /// The `"key"` in every `tn("key", ...)` call, which reads two forms.
     fn plural_keys(source: &str) -> Vec<&str> {
-        calls(source, &["tn(\""])
+        calls(source, &["tn("])
     }
 
     fn calls<'a>(source: &'a str, names: &[&str]) -> Vec<&'a str> {
@@ -223,8 +227,11 @@ mod tests {
                 if preceded_by_identifier {
                     continue;
                 }
-                let rest = &source[start + call.len()..];
-                if let Some(end) = rest.find('"') {
+                // A key may sit on the next line once rustfmt splits the call.
+                let rest = source[start + call.len()..].trim_start();
+                if let Some(rest) = rest.strip_prefix('"')
+                    && let Some(end) = rest.find('"')
+                {
                     found.push(&rest[..end]);
                 }
             }
@@ -234,8 +241,12 @@ mod tests {
 
     #[test]
     fn the_scanner_finds_calls_and_skips_lookalikes() {
-        let source = r#"t("a_key"); i18n::tf("b_key", &[]); set("no"); tn("c_key", 2, &[])"#;
-        assert_eq!(literal_keys(source), ["a_key", "b_key"]);
+        let source = r#"t("a_key"); i18n::tf("b_key", &[]); set("no"); tn("c_key", 2, &[])
+            ConfigWarning::new(
+                "d_key",
+                &[],
+            ); t(key)"#;
+        assert_eq!(literal_keys(source), ["a_key", "b_key", "d_key"]);
         assert_eq!(plural_keys(source), ["c_key"]);
     }
 

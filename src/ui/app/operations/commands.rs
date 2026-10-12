@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use iced::Task;
 
+use crate::i18n::{t, tf, tn};
 use crate::ui::{ContextAction, KeyboardCommand, SelectionKind, UiMessage};
 
 use crate::ui::app::XionApp;
@@ -186,35 +187,36 @@ impl XionApp {
         } else if selection.selected.is_empty() {
             "—".to_string()
         } else {
-            format!("{} éléments", selection.selected.len())
+            tn("items", selection.selected.len(), &[])
         };
 
-        self.last_action = Some(match action {
-            ContextAction::Open => format!("Ouverture : {}", selected_label),
-            ContextAction::Rename => format!("Renommer : {}", selected_label),
-            ContextAction::MoveToTrash => format!("Corbeille : {}", selected_label),
-            ContextAction::Delete => format!("Supprimer : {}", selected_label),
-            ContextAction::CopyPath => format!("Copier le chemin : {}", selected_label),
-            ContextAction::OpenProperties => format!("Propriétés : {}", selected_label),
-            ContextAction::OpenBulkRename => format!("Renommage multiple : {}", selected_label),
-            ContextAction::CompressToZip => format!("Compression ZIP : {}", selected_label),
-            ContextAction::CompressToTarGz => format!("Compression TAR.GZ : {}", selected_label),
-            ContextAction::CompressTo7z => format!("Compression 7Z : {}", selected_label),
-            ContextAction::OpenWith => format!("Ouvrir avec : {}", selected_label),
-            ContextAction::OpenDiff => format!("Comparaison : {}", selected_label),
-            ContextAction::OpenHexView => format!("Hex : {}", selected_label),
-            ContextAction::OpenPermissions => format!("Permissions : {}", selected_label),
+        let status_key = match action {
+            ContextAction::Open => "action_status_open",
+            ContextAction::Rename => "action_status_rename",
+            ContextAction::MoveToTrash => "action_status_trash",
+            ContextAction::Delete => "action_status_delete",
+            ContextAction::CopyPath => "action_status_copy_path",
+            ContextAction::OpenProperties => "action_status_properties",
+            ContextAction::OpenBulkRename => "action_status_bulk_rename",
+            ContextAction::CompressToZip => "action_status_compress_zip",
+            ContextAction::CompressToTarGz => "action_status_compress_tar_gz",
+            ContextAction::CompressTo7z => "action_status_compress_7z",
+            ContextAction::OpenWith => "action_status_open_with",
+            ContextAction::OpenDiff => "action_status_compare",
+            ContextAction::OpenHexView => "action_status_hex",
+            ContextAction::OpenPermissions => "action_status_permissions",
             ContextAction::SetLabelRed
             | ContextAction::SetLabelOrange
             | ContextAction::SetLabelYellow
             | ContextAction::SetLabelGreen
             | ContextAction::SetLabelBlue
             | ContextAction::SetLabelPurple
-            | ContextAction::RemoveLabel => format!("Étiquette : {}", selected_label),
-            ContextAction::NewFile => format!("Nouveau fichier : {}", selected_label),
-            ContextAction::NewFolder => "Nouveau dossier".to_string(),
-            ContextAction::AddToFavorites => format!("Ajouter aux favoris : {}", selected_label),
-        });
+            | ContextAction::RemoveLabel => "action_status_label",
+            ContextAction::NewFile => "action_status_new_file",
+            ContextAction::NewFolder => "action_status_new_folder",
+            ContextAction::AddToFavorites => "action_status_add_favorite",
+        };
+        self.last_action = Some(tf(status_key, &[("target", &selected_label)]));
 
         // Prevent opening a new modal if one is already open
         if self.has_open_modal() {
@@ -225,7 +227,7 @@ impl XionApp {
                 | ContextAction::OpenDiff
                 | ContextAction::OpenHexView
                 | ContextAction::OpenPermissions => {
-                    self.last_action = Some("Fermez le dialogue actuel d'abord".to_string());
+                    self.last_action = Some(t("notice_close_dialog_first").to_string());
                     return Task::none();
                 }
                 _ => {}
@@ -376,9 +378,9 @@ impl XionApp {
                     if self.favorites.add(path.clone()) {
                         self.state.config.user_favorites.push(path);
                         self.config_manager.save(&self.state.config);
-                        self.last_action = Some("Ajouté aux favoris".to_string());
+                        self.last_action = Some(t("favorites_added").to_string());
                     } else {
-                        self.last_action = Some("Déjà dans les favoris".to_string());
+                        self.last_action = Some(t("favorites_already").to_string());
                     }
                 }
                 Task::none()

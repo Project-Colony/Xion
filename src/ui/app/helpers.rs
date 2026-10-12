@@ -54,7 +54,7 @@ pub fn entry_type_label(entry_type: FsEntryType) -> &'static str {
         FsEntryType::Directory => "entry_type_folder",
         FsEntryType::File => "entry_type_file",
         FsEntryType::Symlink => "entry_type_link",
-        FsEntryType::Other => "entry_type_other",
+        FsEntryType::Other => "entry_type_special",
     })
 }
 

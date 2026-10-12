@@ -68,11 +68,10 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
                 // a modifier.
                 Some("HighContrast") => ("gruvbox", "dark", true),
                 Some(other) => {
-                    warnings.push(ConfigWarning {
-                        message: format!(
-                            "Thème inconnu '{other}', utilisation du thème par défaut"
-                        ),
-                    });
+                    warnings.push(ConfigWarning::new(
+                        "config_unknown_theme",
+                        &[("theme", &other)],
+                    ));
                     ("gruvbox", "dark", false)
                 }
             };
@@ -95,12 +94,10 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
     if let Some(dark_mode) = file.dark_mode
         && dark_mode != config.dark_mode
     {
-        warnings.push(ConfigWarning {
-            message: format!(
-                "dark_mode ({dark_mode}) incohérent avec le thème, recalculé à {}",
-                config.dark_mode
-            ),
-        });
+        warnings.push(ConfigWarning::new(
+            "config_dark_mode_mismatch",
+            &[("value", &dark_mode), ("derived", &config.dark_mode)],
+        ));
     }
     if let Some(start_path) = file.start_path {
         config.start_path = validated_path(start_path, &config.start_path, warnings);
@@ -253,9 +250,10 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
     if let Some(key) = file.language {
         match Language::from_key(&key) {
             Some(language) => config.language = language,
-            None => warnings.push(ConfigWarning {
-                message: crate::i18n::tf("config_unknown_language", &[("value", &key)]),
-            }),
+            None => warnings.push(ConfigWarning::new(
+                "config_unknown_language",
+                &[("value", &key)],
+            )),
         }
     }
     if let Some(respect_gitignore) = file.respect_gitignore {

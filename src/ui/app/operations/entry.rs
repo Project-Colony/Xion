@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use iced::Task;
 
 use crate::filesystem::FsEntryType;
+use crate::i18n::{t, tf};
 use crate::ui::UiMessage;
 
 use crate::ui::app::XionApp;
@@ -63,12 +64,12 @@ impl XionApp {
 
     pub(in crate::ui::app) fn create_new_folder(&mut self) -> Task<UiMessage> {
         let Some(current_dir) = self.state.route.local_path().cloned() else {
-            self.last_action = Some("Création impossible en vue réseau".to_string());
+            self.last_action = Some(t("notice_create_unavailable_network").to_string());
             return Task::none();
         };
+        let base_name = t("new_folder_name");
         Task::perform(
             async move {
-                let base_name = "Nouveau dossier";
                 let mut target = current_dir.join(base_name);
                 let mut counter = 1u32;
                 while target.exists() && counter < 1000 {
@@ -76,7 +77,7 @@ impl XionApp {
                     target = current_dir.join(format!("{base_name} ({counter})"));
                 }
                 if target.exists() {
-                    return Err("Impossible de trouver un nom disponible".to_string());
+                    return Err(t("error_no_free_name").to_string());
                 }
                 match std::fs::create_dir(&target) {
                     Ok(()) => Ok(target),
@@ -89,12 +90,12 @@ impl XionApp {
 
     pub(in crate::ui::app) fn create_new_file(&mut self) -> Task<UiMessage> {
         let Some(current_dir) = self.state.route.local_path().cloned() else {
-            self.last_action = Some("Création impossible en vue réseau".to_string());
+            self.last_action = Some(t("notice_create_unavailable_network").to_string());
             return Task::none();
         };
+        let base_name = t("new_file_name");
         Task::perform(
             async move {
-                let base_name = "Nouveau fichier";
                 let ext = ".txt";
                 let mut target = current_dir.join(format!("{base_name}{ext}"));
                 let mut counter = 1u32;
@@ -103,7 +104,7 @@ impl XionApp {
                     target = current_dir.join(format!("{base_name} ({counter}){ext}"));
                 }
                 if target.exists() {
-                    return Err("Impossible de trouver un nom disponible".to_string());
+                    return Err(t("error_no_free_name").to_string());
                 }
                 match std::fs::File::create(&target) {
                     Ok(_) => Ok(target),
@@ -177,7 +178,7 @@ impl XionApp {
             // For directories, mark hash as not applicable
             if let Some(dialog) = &mut self.properties_dialog {
                 dialog.computing_hash = false;
-                dialog.sha256 = Some("N/A (dossier)".to_string());
+                dialog.sha256 = Some(t("properties_hash_folder").to_string());
             }
             Task::none()
         }
@@ -278,14 +279,22 @@ impl XionApp {
     /// and ran an arbitrary command. Passing the path as one argument removes
     /// the shell from the picture entirely.
     pub(in crate::ui::app) fn shell_open(path: &std::path::Path) -> Result<(), String> {
-        crate::platform::shell_open(path)
-            .map_err(|error| format!("Ouverture impossible de {} : {error}", path.display()))
+        crate::platform::shell_open(path).map_err(|error| {
+            tf(
+                "error_open_failed",
+                &[("path", &path.display()), ("error", &error)],
+            )
+        })
     }
 
     /// Show a path in the OS file manager without running it.
     pub(in crate::ui::app) fn shell_reveal(path: &std::path::Path) -> Result<(), String> {
-        crate::platform::reveal_in_file_manager(path)
-            .map_err(|error| format!("Affichage impossible de {} : {error}", path.display()))
+        crate::platform::reveal_in_file_manager(path).map_err(|error| {
+            tf(
+                "error_reveal_failed",
+                &[("path", &path.display()), ("error", &error)],
+            )
+        })
     }
 }
 

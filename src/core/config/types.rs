@@ -334,14 +334,47 @@ pub enum ConfigSource {
     Migrated(PathBuf),
 }
 
+/// A problem found while loading the configuration, shown to the user.
+///
+/// Kept as a locale key and its values rather than as text: the file is read
+/// before its own `language` setting is applied, so the message is only worded
+/// when it is displayed.
 #[derive(Debug, Clone)]
 pub struct ConfigWarning {
-    pub message: String,
+    key: &'static str,
+    args: Vec<(&'static str, String)>,
+}
+
+impl ConfigWarning {
+    pub fn new(key: &'static str, args: &[(&'static str, &dyn std::fmt::Display)]) -> Self {
+        Self {
+            key,
+            args: args
+                .iter()
+                .map(|(name, value)| (*name, value.to_string()))
+                .collect(),
+        }
+    }
+}
+
+/// Every warning of a load on one line, for the status bar.
+pub fn config_warnings_summary(warnings: &[ConfigWarning]) -> String {
+    let joined = warnings
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(" | ");
+    crate::i18n::tf("config_warnings", &[("warnings", &joined)])
 }
 
 impl std::fmt::Display for ConfigWarning {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.message)
+        let args: Vec<(&str, &dyn std::fmt::Display)> = self
+            .args
+            .iter()
+            .map(|(name, value)| (*name, value as &dyn std::fmt::Display))
+            .collect();
+        formatter.write_str(&crate::i18n::tf(self.key, &args))
     }
 }
 

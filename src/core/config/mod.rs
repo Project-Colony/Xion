@@ -19,4 +19,5 @@ pub use types::{
     AppConfig, AppConfigLoad, CacheConfig, ConfigSource, ConfigWarning, EntryFilterConfig,
     FilesystemConfig, Language, ListConfig, PagingConfig, ShellConfig, SortKeyConfig,
     SortOrderConfig, TabPersistConfig, ThemeChoice, ViewColumn, ViewConfig, ViewMode,
+    config_warnings_summary,
 };

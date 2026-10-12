@@ -16,9 +16,10 @@ pub(super) fn validated_path(
     if path.is_dir() {
         return path;
     }
-    warnings.push(ConfigWarning {
-        message: format!("start_path invalide, fallback sur {}", fallback.display()),
-    });
+    warnings.push(ConfigWarning::new(
+        "config_invalid_start_path",
+        &[("fallback", &fallback.display())],
+    ));
     fallback.to_path_buf()
 }
 
@@ -30,9 +31,15 @@ pub(super) fn validated_thumbnail_size(
     if (MIN_THUMBNAIL_SIZE..=MAX_THUMBNAIL_SIZE).contains(&value) {
         return value;
     }
-    warnings.push(ConfigWarning {
-        message: format!("thumbnail_size hors limites ({MIN_THUMBNAIL_SIZE}-{MAX_THUMBNAIL_SIZE}), fallback sur {fallback}"),
-    });
+    warnings.push(ConfigWarning::new(
+        "config_out_of_range",
+        &[
+            ("field", &"thumbnail_size"),
+            ("min", &MIN_THUMBNAIL_SIZE),
+            ("max", &MAX_THUMBNAIL_SIZE),
+            ("fallback", &fallback),
+        ],
+    ));
     fallback
 }
 
@@ -45,9 +52,15 @@ pub(super) fn validated_cache_entries(
     if (MIN_CACHE_ENTRIES..=MAX_CACHE_ENTRIES).contains(&value) {
         return value;
     }
-    warnings.push(ConfigWarning {
-        message: format!("{label} hors limites ({MIN_CACHE_ENTRIES}-{MAX_CACHE_ENTRIES}), fallback sur {fallback}"),
-    });
+    warnings.push(ConfigWarning::new(
+        "config_out_of_range",
+        &[
+            ("field", &label),
+            ("min", &MIN_CACHE_ENTRIES),
+            ("max", &MAX_CACHE_ENTRIES),
+            ("fallback", &fallback),
+        ],
+    ));
     fallback
 }
 
@@ -60,9 +73,15 @@ pub(super) fn validated_cache_ttl(
     if (MIN_CACHE_TTL_SECONDS..=MAX_CACHE_TTL_SECONDS).contains(&value) {
         return value;
     }
-    warnings.push(ConfigWarning {
-        message: format!("{label} hors limites ({MIN_CACHE_TTL_SECONDS}-{MAX_CACHE_TTL_SECONDS}s), fallback sur {fallback}"),
-    });
+    warnings.push(ConfigWarning::new(
+        "config_out_of_range",
+        &[
+            ("field", &label),
+            ("min", &format!("{MIN_CACHE_TTL_SECONDS}s")),
+            ("max", &format!("{MAX_CACHE_TTL_SECONDS}s")),
+            ("fallback", &fallback),
+        ],
+    ));
     fallback
 }
 
@@ -74,9 +93,15 @@ pub(super) fn validated_metadata_batch_size(
     if (MIN_METADATA_BATCH_SIZE..=MAX_METADATA_BATCH_SIZE).contains(&value) {
         return value;
     }
-    warnings.push(ConfigWarning {
-        message: format!("filesystem.metadata_batch_size hors limites ({MIN_METADATA_BATCH_SIZE}-{MAX_METADATA_BATCH_SIZE}), fallback sur {fallback}"),
-    });
+    warnings.push(ConfigWarning::new(
+        "config_out_of_range",
+        &[
+            ("field", &"filesystem.metadata_batch_size"),
+            ("min", &MIN_METADATA_BATCH_SIZE),
+            ("max", &MAX_METADATA_BATCH_SIZE),
+            ("fallback", &fallback),
+        ],
+    ));
     fallback
 }
 
@@ -88,9 +113,15 @@ pub(super) fn validated_metadata_parallelism(
     if (MIN_METADATA_PARALLELISM..=MAX_METADATA_PARALLELISM).contains(&value) {
         return value;
     }
-    warnings.push(ConfigWarning {
-        message: format!("filesystem.metadata_parallelism hors limites ({MIN_METADATA_PARALLELISM}-{MAX_METADATA_PARALLELISM}), fallback sur {fallback}"),
-    });
+    warnings.push(ConfigWarning::new(
+        "config_out_of_range",
+        &[
+            ("field", &"filesystem.metadata_parallelism"),
+            ("min", &MIN_METADATA_PARALLELISM),
+            ("max", &MAX_METADATA_PARALLELISM),
+            ("fallback", &fallback),
+        ],
+    ));
     fallback
 }
 
@@ -102,11 +133,15 @@ pub(super) fn validated_page_size(
     if (MIN_PAGE_SIZE..=MAX_PAGE_SIZE).contains(&value) {
         return value;
     }
-    warnings.push(ConfigWarning {
-        message: format!(
-            "page_size hors limites ({MIN_PAGE_SIZE}-{MAX_PAGE_SIZE}), fallback sur {fallback}"
-        ),
-    });
+    warnings.push(ConfigWarning::new(
+        "config_out_of_range",
+        &[
+            ("field", &"page_size"),
+            ("min", &MIN_PAGE_SIZE),
+            ("max", &MAX_PAGE_SIZE),
+            ("fallback", &fallback),
+        ],
+    ));
     fallback
 }
 
@@ -118,11 +153,15 @@ pub(super) fn validated_row_height(
     if (MIN_ROW_HEIGHT..=MAX_ROW_HEIGHT).contains(&value) {
         return value;
     }
-    warnings.push(ConfigWarning {
-        message: format!(
-            "row_height hors limites ({MIN_ROW_HEIGHT}-{MAX_ROW_HEIGHT}), fallback sur {fallback}"
-        ),
-    });
+    warnings.push(ConfigWarning::new(
+        "config_out_of_range",
+        &[
+            ("field", &"row_height"),
+            ("min", &MIN_ROW_HEIGHT),
+            ("max", &MAX_ROW_HEIGHT),
+            ("fallback", &fallback),
+        ],
+    ));
     fallback
 }
 
@@ -134,9 +173,15 @@ pub(super) fn validated_grid_columns(
     if (MIN_GRID_COLUMNS..=MAX_GRID_COLUMNS).contains(&value) {
         return value;
     }
-    warnings.push(ConfigWarning {
-        message: format!("grid_columns hors limites ({MIN_GRID_COLUMNS}-{MAX_GRID_COLUMNS}), fallback sur {fallback}"),
-    });
+    warnings.push(ConfigWarning::new(
+        "config_out_of_range",
+        &[
+            ("field", &"grid_columns"),
+            ("min", &MIN_GRID_COLUMNS),
+            ("max", &MAX_GRID_COLUMNS),
+            ("fallback", &fallback),
+        ],
+    ));
     fallback
 }
 
@@ -148,9 +193,15 @@ pub(super) fn validated_grid_row_height(
     if (MIN_GRID_ROW_HEIGHT..=MAX_GRID_ROW_HEIGHT).contains(&value) {
         return value;
     }
-    warnings.push(ConfigWarning {
-        message: format!("grid_row_height hors limites ({MIN_GRID_ROW_HEIGHT}-{MAX_GRID_ROW_HEIGHT}), fallback sur {fallback}"),
-    });
+    warnings.push(ConfigWarning::new(
+        "config_out_of_range",
+        &[
+            ("field", &"grid_row_height"),
+            ("min", &MIN_GRID_ROW_HEIGHT),
+            ("max", &MAX_GRID_ROW_HEIGHT),
+            ("fallback", &fallback),
+        ],
+    ));
     fallback
 }
 
@@ -163,11 +214,15 @@ pub(super) fn validated_overscan(
     if (MIN_OVERSCAN..=MAX_OVERSCAN).contains(&value) {
         return value;
     }
-    warnings.push(ConfigWarning {
-        message: format!(
-            "overscan hors limites ({MIN_OVERSCAN}-{MAX_OVERSCAN}), fallback sur {fallback}"
-        ),
-    });
+    warnings.push(ConfigWarning::new(
+        "config_out_of_range",
+        &[
+            ("field", &"overscan"),
+            ("min", &MIN_OVERSCAN),
+            ("max", &MAX_OVERSCAN),
+            ("fallback", &fallback),
+        ],
+    ));
     fallback
 }
 
@@ -177,9 +232,7 @@ pub(super) fn validated_view_columns(
     warnings: &mut Vec<ConfigWarning>,
 ) -> Vec<ViewColumn> {
     if value.is_empty() {
-        warnings.push(ConfigWarning {
-            message: "view.columns vide, fallback sur la configuration par défaut".to_string(),
-        });
+        warnings.push(ConfigWarning::new("config_empty_columns", &[]));
         return fallback;
     }
     value

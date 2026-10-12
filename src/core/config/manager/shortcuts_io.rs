@@ -46,9 +46,10 @@ pub(super) fn parse_shortcut(
     match KeyChord::parse(&raw) {
         Ok(chord) => chord,
         Err(error) => {
-            warnings.push(ConfigWarning {
-                message: format!("{label} invalide ({error}), fallback sur valeur par défaut"),
-            });
+            warnings.push(ConfigWarning::new(
+                "config_invalid_shortcut",
+                &[("field", &label), ("error", &error)],
+            ));
             fallback
         }
     }

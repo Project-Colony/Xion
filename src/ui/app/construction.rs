@@ -81,6 +81,9 @@ impl XionApp {
         let config_manager = ConfigManager::new();
         let config_load = config_manager.load();
         let config = config_load.config;
+        // Before anything is worded, the load warnings included: they are
+        // rendered in the language the file itself asks for.
+        crate::i18n::apply(config.language);
         let session_store = SessionStore::new();
         let session = session_store.load(&config_manager);
 
@@ -241,22 +244,13 @@ impl XionApp {
             app.history.record(path);
         }
         if !config_load.warnings.is_empty() {
-            app.last_action = Some(format!(
-                "Config: {}",
-                config_load
-                    .warnings
-                    .iter()
-                    .map(|warning| warning.message.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" | ")
-            ));
+            app.last_action = Some(crate::core::config_warnings_summary(&config_load.warnings));
         }
         if let Some(error) = watcher_error {
-            app.last_action = Some(format!("Observateur FS indisponible: {error}"));
+            app.last_action = Some(crate::i18n::tf("watcher_unavailable", &[("error", &error)]));
         }
         // The shared widgets read global state; without this they render in
-        // the fallback palette and in English.
-        crate::i18n::apply(app.state.config.language);
+        // the fallback palette.
         crate::ui::theme::sync_colony_globals(&app.state.config.theme);
         app.sync_watcher();
         let task = app.refresh_entries();

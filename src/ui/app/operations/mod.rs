@@ -12,6 +12,7 @@ mod entry;
 mod rename;
 
 use super::XionApp;
+use crate::i18n::{t, tf};
 
 /// Validate a name typed into the rename dialog.
 ///
@@ -22,25 +23,25 @@ use super::XionApp;
 /// stays portable.
 pub(in crate::ui::app) fn validate_file_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
-        return Err("nom vide".to_string());
+        return Err(t("name_error_empty").to_string());
     }
     if name == "." || name == ".." {
-        return Err("« . » et « .. » ne sont pas des noms valides".to_string());
+        return Err(t("name_error_dots").to_string());
     }
     if name.contains(['/', '\\']) {
-        return Err("le nom ne doit pas contenir de séparateur de chemin".to_string());
+        return Err(t("name_error_separator").to_string());
     }
     if let Some(bad) = name
         .chars()
         .find(|c| matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
     {
-        return Err(format!("le caractère « {bad} » est interdit"));
+        return Err(tf("name_error_character", &[("character", &bad)]));
     }
     if name.chars().any(|c| (c as u32) < 0x20) {
-        return Err("le nom contient un caractère de contrôle".to_string());
+        return Err(t("name_error_control").to_string());
     }
     if name.ends_with(' ') || name.ends_with('.') {
-        return Err("le nom ne doit pas se terminer par un point ou une espace".to_string());
+        return Err(t("name_error_trailing").to_string());
     }
     Ok(())
 }

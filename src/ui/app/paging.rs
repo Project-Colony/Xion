@@ -4,6 +4,7 @@
 
 use super::types::*;
 use crate::core::ViewMode;
+use crate::i18n::tf;
 use crate::services::{VirtualList, VirtualWindow};
 use crate::ui::UiMessage;
 use crate::ui::theme::layout::TREE_ROW_HEIGHT;
@@ -31,10 +32,12 @@ impl XionApp {
             .min(total_pages);
 
         if allowed_pages < total_pages {
-            self.last_action = Some(format!(
-                "Recherche limitée aux {} premiers éléments sur {}",
-                allowed_pages * self.entries.page_size,
-                self.entries.total
+            self.last_action = Some(tf(
+                "search_limited",
+                &[
+                    ("shown", &(allowed_pages * self.entries.page_size)),
+                    ("total", &self.entries.total),
+                ],
             ));
         }
 

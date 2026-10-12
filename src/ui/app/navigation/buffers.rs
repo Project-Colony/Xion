@@ -95,16 +95,9 @@ impl XionApp {
         }
 
         if !load.warnings.is_empty() {
-            self.last_action = Some(format!(
-                "Config: {}",
-                load.warnings
-                    .iter()
-                    .map(|warning| warning.message.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" | ")
-            ));
+            self.last_action = Some(crate::core::config_warnings_summary(&load.warnings));
         } else {
-            self.last_action = Some("Config rechargée".to_string());
+            self.last_action = Some(crate::i18n::t("config_reloaded").to_string());
         }
 
         self.state.config = new_config;

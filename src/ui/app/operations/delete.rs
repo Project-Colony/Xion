@@ -29,7 +29,7 @@ impl XionApp {
 
         let message = match items.as_slice() {
             [only] => tf(
-                "dialog_delete_one",
+                "dialog_delete_single",
                 &[(
                     "name",
                     &only

@@ -112,7 +112,7 @@ impl XionApp {
                 const MAX_TERMINAL_TABS: usize = 10;
                 if self.terminal.tabs.len() >= MAX_TERMINAL_TABS {
                     self.last_action =
-                        Some(format!("Maximum {MAX_TERMINAL_TABS} onglets terminal"));
+                        Some(tf("terminal_max_tabs", &[("max", &MAX_TERMINAL_TABS)]));
                     return Ok(Flow::Stop(Task::none()));
                 }
                 let count = self.terminal.tabs.len() + 1;

@@ -59,7 +59,8 @@ impl KeyChord {
             }
         }
 
-        let key_token = key_token.ok_or_else(|| "Touche manquante".to_string())?;
+        let key_token =
+            key_token.ok_or_else(|| crate::i18n::t("shortcut_missing_key").to_string())?;
         let key = match key_token.to_lowercase().as_str() {
             "arrowup" => KeyKind::Named(NamedKey::ArrowUp),
             "arrowdown" => KeyKind::Named(NamedKey::ArrowDown),
@@ -79,7 +80,7 @@ impl KeyChord {
                 if other.chars().count() == 1 {
                     KeyKind::Character(other.to_string())
                 } else {
-                    return Err(format!("Touche inconnue: {other}"));
+                    return Err(crate::i18n::tf("shortcut_unknown_key", &[("key", &other)]));
                 }
             }
         };

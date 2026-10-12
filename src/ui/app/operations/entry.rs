@@ -33,7 +33,7 @@ impl XionApp {
             if entry.entry_type == FsEntryType::Directory {
                 if self.state.route.is_network() {
                     self.last_action =
-                        Some(format!("Connexion au partage : {}", entry.path.display()));
+                        Some(tf("network_connecting", &[("path", &entry.path.display())]));
                     return Task::none();
                 }
                 return self.navigate_to(entry.path.clone());

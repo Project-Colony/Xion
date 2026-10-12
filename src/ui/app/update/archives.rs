@@ -28,7 +28,7 @@ impl XionApp {
                 entries,
             } => {
                 let Some(archive_type) = ArchiveType::detect(&archive_path) else {
-                    self.last_action = Some("Format d'archive non reconnu".to_string());
+                    self.last_action = Some(crate::i18n::t("archive_unknown_format").to_string());
                     return Ok(Flow::Continue);
                 };
                 self.archive_browser = Some(ArchiveBrowserState {
@@ -60,7 +60,8 @@ impl XionApp {
                         // from the archive, so auto-running it handed an
                         // attacker execution for the price of one "Extract"
                         // click. Reveal it and let the user decide.
-                        self.last_action = Some(format!("Extrait : {}", path.display()));
+                        self.last_action =
+                            Some(tf("archive_extracted", &[("path", &path.display())]));
                         if let Err(error) = Self::shell_reveal(&path) {
                             tracing::warn!("{error}");
                         }
@@ -68,7 +69,7 @@ impl XionApp {
                         tasks.push(self.refresh_entries_in_place());
                     }
                     Err(e) => {
-                        self.last_action = Some(format!("Erreur extraction : {}", e));
+                        self.last_action = Some(tf("error_extract", &[("error", &e)]));
                     }
                 }
             }
@@ -97,7 +98,7 @@ impl XionApp {
                     tasks.push(self.refresh_entries_in_place());
                 }
                 Err(e) => {
-                    self.last_action = Some(format!("Erreur compression : {}", e));
+                    self.last_action = Some(tf("error_compress", &[("error", &e)]));
                 }
             },
             // ── Feature B: Open With ─────────────────────────────────────────

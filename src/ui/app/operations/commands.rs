@@ -162,7 +162,7 @@ impl XionApp {
                 if let Some(path) = self.state.config.user_favorites.get(index).cloned() {
                     self.navigate_to(path)
                 } else {
-                    self.last_action = Some(format!("Aucun favori #{}", index + 1));
+                    self.last_action = Some(tf("favorites_none_at", &[("number", &(index + 1))]));
                     Task::none()
                 }
             }

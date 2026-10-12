@@ -405,7 +405,7 @@ mod tests {
                             assert_eq!(
                                 super::compare(left_entry, right_entry, &options),
                                 super::compare(left_stub, right_stub, &options),
-                                "{} vs {} ({key:?}, {order:?}, dossiers d'abord={directories_first})",
+                                "{} vs {} ({key:?}, {order:?}, directories first={directories_first})",
                                 left_entry.name,
                                 right_entry.name,
                             );

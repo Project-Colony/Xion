@@ -73,7 +73,7 @@ impl XionApp {
             async move {
                 tokio::task::spawn_blocking(move || -> Result<PathBuf, String> {
                     let Some(kind) = ArchiveType::detect(&archive) else {
-                        return Err("Format d'archive non reconnu".to_string());
+                        return Err(crate::i18n::t("archive_unknown_format").to_string());
                     };
 
                     match kind {

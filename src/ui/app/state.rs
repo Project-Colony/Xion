@@ -277,7 +277,7 @@ impl XionApp {
             Ok(events) if !events.is_empty() => Some(events),
             Ok(_) => None,
             Err(error) => {
-                self.last_action = Some(format!("Observateur FS: {error}"));
+                self.last_action = Some(tf("watcher_error", &[("error", &error)]));
                 None
             }
         }

@@ -220,7 +220,7 @@ impl XionApp {
         // Never feed the archive to itself.
         selected.retain(|source| source != &out_path);
 
-        self.last_action = Some("Compression en cours...".to_string());
+        self.last_action = Some(t("archive_compressing").to_string());
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || match format {

@@ -177,10 +177,17 @@ impl XionApp {
                     self.state.config.list.sort_key = sort_key;
                     self.state.config.list.sort_order = SortOrderConfig::Asc;
                 }
-                self.last_action = Some(format!(
-                    "Tri : {:?} ({:?})",
-                    self.state.config.list.sort_key, self.state.config.list.sort_order
-                ));
+                let key = match self.state.config.list.sort_key {
+                    crate::core::SortKeyConfig::Name => "column_name",
+                    crate::core::SortKeyConfig::Size => "column_size",
+                    crate::core::SortKeyConfig::Modified => "column_modified",
+                };
+                let order = match self.state.config.list.sort_order {
+                    SortOrderConfig::Asc => "sort_ascending",
+                    SortOrderConfig::Desc => "sort_descending",
+                };
+                self.last_action =
+                    Some(tf("sort_status", &[("key", &t(key)), ("order", &t(order))]));
                 // Saved here: it used to reach disk only through the config
                 // save every navigation made, which now writes the session.
                 self.config_manager.save(&self.state.config);

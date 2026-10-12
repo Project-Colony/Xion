@@ -3,6 +3,8 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::i18n::t;
+
 /// No-op on Unix; kept so callers do not need `#[cfg]` around process spawns.
 pub const CREATE_NO_WINDOW: u32 = 0;
 
@@ -35,10 +37,7 @@ pub fn shell_open(path: &Path) -> io::Result<()> {
 pub fn open_with(path: &Path) -> io::Result<()> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
-        format!(
-            "« Ouvrir avec » n'est pas disponible sur cette plateforme ({})",
-            path.display()
-        ),
+        crate::i18n::tf("open_with_unavailable", &[("path", &path.display())]),
     ))
 }
 
@@ -82,12 +81,15 @@ pub fn read_acl_text(path: &Path) -> io::Result<String> {
     };
 
     Ok(format!(
-        "{}:(propriétaire)({})\n{}:(groupe)({})\n{}:(autres)({})\n",
+        "{}:({})({})\n{}:({})({})\n{}:({})({})\n",
         path.display(),
+        t("acl_owner"),
         render(6),
         path.display(),
+        t("acl_group"),
         render(3),
         path.display(),
+        t("acl_others"),
         render(0),
     ))
 }

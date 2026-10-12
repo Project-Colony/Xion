@@ -16,13 +16,14 @@
 use std::path::{Path, PathBuf};
 
 use crate::core::uri::percent_decode;
+use crate::i18n::{t, tf};
 
 /// One mounted gvfs location.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GvfsMount {
     /// Where it lives on disk, and what to hand the filesystem layer.
     pub path: PathBuf,
-    /// What to show the user: `"media sur nas"`, `"bob@example.com"`.
+    /// What to show the user: `"media on nas"`, `"bob@example.com"`.
     pub label: String,
     /// The gvfs backend: `smb-share`, `sftp`, `mtp`, `google-drive`…
     pub scheme: String,
@@ -154,22 +155,25 @@ impl MountSpec {
         match self.scheme.as_str() {
             // A Windows share: the share name is what people call it.
             "smb-share" => match (self.get("share"), self.get("server")) {
-                (Some(share), Some(server)) => format!("{share} sur {server}"),
+                (Some(share), Some(server)) => tf(
+                    "mount_share_on_server",
+                    &[("share", &share), ("server", &server)],
+                ),
                 (Some(share), None) => share.to_string(),
-                _ => "Partage Windows".to_string(),
+                _ => t("mount_windows_share").to_string(),
             },
             "smb-browse" => match self.get("server") {
-                Some(server) => format!("Réseau {server}"),
-                None => "Réseau Windows".to_string(),
+                Some(server) => tf("mount_network_of", &[("server", &server)]),
+                None => t("mount_windows_network").to_string(),
             },
             "sftp" | "ssh" | "ftp" | "ftps" => {
                 if user.is_empty() {
-                    self.non_empty(host, "Serveur distant")
+                    self.non_empty(host, t("mount_remote_server"))
                 } else {
                     format!("{user}@{host}")
                 }
             }
-            "dav" | "davs" | "http" | "https" => self.non_empty(host, "Emplacement web"),
+            "dav" | "davs" | "http" | "https" => self.non_empty(host, t("mount_web_location")),
             "google-drive" => {
                 if user.is_empty() {
                     self.non_empty(host, "Google Drive")
@@ -177,19 +181,22 @@ impl MountSpec {
                     format!("{user} (Google Drive)")
                 }
             }
-            "mtp" | "gphoto2" => "Appareil connecté".to_string(),
-            "afp-volume" => self.get("volume").unwrap_or("Volume AFP").to_string(),
-            "cdda" => "Disque audio".to_string(),
-            "trash" => "Corbeille".to_string(),
-            "recent" => "Récents".to_string(),
-            "computer" => "Ordinateur".to_string(),
+            "mtp" | "gphoto2" => t("mount_device").to_string(),
+            "afp-volume" => self
+                .get("volume")
+                .unwrap_or(t("mount_afp_volume"))
+                .to_string(),
+            "cdda" => t("mount_audio_disc").to_string(),
+            "trash" => t("location_trash").to_string(),
+            "recent" => t("location_recent").to_string(),
+            "computer" => t("mount_computer").to_string(),
             // An archive mounted as a folder: the file name is the only useful
             // part of a doubly-encoded `file://` URI.
             "archive" => Path::new(&percent_decode(host))
                 .file_name()
                 .and_then(|name| name.to_str())
                 .map(str::to_string)
-                .unwrap_or_else(|| "Archive".to_string()),
+                .unwrap_or_else(|| t("archive_fallback_name").to_string()),
             _ => self.non_empty(host, &self.scheme),
         }
     }
@@ -213,10 +220,7 @@ mod tests {
 
     #[test]
     fn a_windows_share_reads_like_one() {
-        assert_eq!(
-            label_of("smb-share:server=nas,share=media"),
-            "media sur nas"
-        );
+        assert_eq!(label_of("smb-share:server=nas,share=media"), "media on nas");
     }
 
     #[test]
@@ -252,22 +256,19 @@ mod tests {
     fn a_phone_is_a_phone() {
         assert_eq!(
             label_of("mtp:host=%5Busb%3A001%2C005%5D"),
-            "Appareil connecté"
+            "Connected device"
         );
     }
 
     /// An unknown scheme must not display a line of percent signs.
     #[test]
     fn an_unknown_scheme_falls_back_to_its_host() {
-        assert_eq!(
-            label_of("quelquechose:host=machine.locale"),
-            "machine.locale"
-        );
+        assert_eq!(label_of("something:host=machine.local"), "machine.local");
     }
 
     #[test]
     fn an_unknown_scheme_without_a_host_falls_back_to_the_scheme() {
-        assert_eq!(label_of("quelquechose:autre=valeur"), "quelquechose");
+        assert_eq!(label_of("something:other=value"), "something");
     }
 
     #[test]

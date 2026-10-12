@@ -215,14 +215,14 @@ fn validated_custom_shell(path: &str) -> std::io::Result<String> {
     if !candidate.is_absolute() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            format!("terminal_shell doit être un chemin absolu : {path}"),
+            crate::i18n::tf("shell_not_absolute", &[("path", &path)]),
         ));
     }
     let resolved = candidate.canonicalize()?;
     if !resolved.is_file() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            format!("terminal_shell introuvable : {path}"),
+            crate::i18n::tf("shell_missing", &[("path", &path)]),
         ));
     }
     Ok(resolved.to_string_lossy().into_owned())

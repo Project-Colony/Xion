@@ -42,10 +42,7 @@ pub(super) fn discover_via_net_view() -> Result<Vec<NetworkResource>, String> {
 /// shares. Fail loudly instead.
 #[cfg(not(windows))]
 pub(super) fn discover_via_net_view() -> Result<Vec<NetworkResource>, String> {
-    Err(
-        "Découverte SMB indisponible sur cette plateforme (net view est spécifique à Windows)"
-            .to_string(),
-    )
+    Err(crate::i18n::t("network_smb_unavailable").to_string())
 }
 
 /// Parse `net view` output to get a list of `\\COMPUTERNAME` entries.
@@ -54,7 +51,7 @@ pub(super) fn discover_computers_net_view() -> Result<Vec<String>, String> {
     let output = net_command()
         .args(["view", "/all"])
         .output()
-        .map_err(|e| format!("commande 'net view /all' échouée: {e}"))?;
+        .map_err(|e| format!("'net view /all' failed: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

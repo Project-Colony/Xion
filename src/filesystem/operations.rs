@@ -250,19 +250,21 @@ fn guard_copy_target(source: &Path, destination: &Path) -> Result<(), XionError>
     let destination_real = fs::canonicalize(parent)?.join(name);
 
     if destination_real == source_real {
-        return Err(XionError::Rejected(format!(
-            "la source et la destination sont identiques : {}",
-            source_real.display()
+        return Err(XionError::Rejected(crate::i18n::tf(
+            "error_same_source_destination",
+            &[("path", &source_real.display())],
         )));
     }
 
     // `Path::starts_with` compares whole components, so `/a/bc` is correctly
     // NOT considered nested in `/a/b`.
     if destination_real.starts_with(&source_real) {
-        return Err(XionError::Rejected(format!(
-            "impossible de copier {} dans son propre sous-dossier {}",
-            source_real.display(),
-            destination_real.display()
+        return Err(XionError::Rejected(crate::i18n::tf(
+            "error_copy_into_itself",
+            &[
+                ("source", &source_real.display()),
+                ("destination", &destination_real.display()),
+            ],
         )));
     }
 
@@ -279,7 +281,7 @@ fn discard_partial(destination: &Path) {
     }
     if let Err(error) = delete_entry(destination) {
         tracing::warn!(
-            "Copie interrompue : nettoyage de {} impossible : {error}",
+            "Copy interrupted: cannot clean up {}: {error}",
             destination.display()
         );
     }
@@ -306,9 +308,9 @@ fn copy_tree_checked(source: &Path, destination: &Path) -> Result<(), XionError>
 
 fn copy_tree(source: &Path, destination: &Path, depth: u32) -> Result<(), XionError> {
     if depth > MAX_COPY_DEPTH {
-        return Err(XionError::Rejected(format!(
-            "profondeur maximale de {MAX_COPY_DEPTH} niveaux dépassée sous {}",
-            source.display()
+        return Err(XionError::Rejected(crate::i18n::tf(
+            "error_copy_too_deep",
+            &[("max", &MAX_COPY_DEPTH), ("path", &source.display())],
         )));
     }
 
@@ -459,7 +461,7 @@ mod tests {
         assert!(report.succeeded.is_empty());
         assert_eq!(report.failed.len(), 1);
         assert!(
-            report.failed[0].error.contains("sous-dossier"),
+            report.failed[0].error.contains("subfolder"),
             "unexpected message: {}",
             report.failed[0].error
         );
@@ -509,7 +511,7 @@ mod tests {
 
         assert_eq!(report.failed.len(), 1);
         assert!(
-            report.failed[0].error.contains("identiques"),
+            report.failed[0].error.contains("the same"),
             "unexpected message: {}",
             report.failed[0].error
         );

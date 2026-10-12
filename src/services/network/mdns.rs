@@ -112,7 +112,10 @@ pub fn discover_mdns_services() -> Vec<NetworkResource> {
                     let label = if label.is_empty() { host } else { label };
                     // The provenance is part of the label: nothing here has been
                     // verified, anyone on the LAN can announce any name.
-                    let display = format!("{label} ({protocol}, mDNS non vérifié)");
+                    let display = crate::i18n::tf(
+                        "network_mdns_label",
+                        &[("label", &label), ("protocol", &protocol)],
+                    );
                     results.push(NetworkResource {
                         name: display,
                         path,

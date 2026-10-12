@@ -71,7 +71,7 @@ pub fn shell_open(path: &Path) -> io::Result<()> {
         Ok(())
     } else {
         Err(io::Error::other(format!(
-            "ShellExecuteW a échoué (code {}) pour {}",
+            "ShellExecuteW failed (code {}) for {}",
             result as isize,
             path.display()
         )))
@@ -100,7 +100,7 @@ pub fn open_with(path: &Path) -> io::Result<()> {
         Ok(())
     } else {
         Err(io::Error::other(format!(
-            "SHOpenWithDialog a échoué (HRESULT {result:#x})"
+            "SHOpenWithDialog failed (HRESULT {result:#x})"
         )))
     }
 }

@@ -42,7 +42,11 @@ impl fmt::Display for XionError {
             Self::InvalidPath(path) => write!(formatter, "Invalid path: {}", path.display()),
             Self::NotFound(path) => write!(formatter, "Not found: {}", path.display()),
             Self::Watcher(error) => write!(formatter, "File watcher error: {error}"),
-            Self::Rejected(reason) => write!(formatter, "Opération refusée : {reason}"),
+            Self::Rejected(reason) => write!(
+                formatter,
+                "{}",
+                crate::i18n::tf("error_rejected", &[("reason", reason)])
+            ),
         }
     }
 }

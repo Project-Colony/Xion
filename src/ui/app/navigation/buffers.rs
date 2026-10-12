@@ -94,6 +94,11 @@ impl XionApp {
             self.state.route.kind = RouteKind::Local(new_config.start_path.clone());
         }
 
+        // Language, theme, text sizes, fonts and motion are read from global
+        // state: a hand-edited file only shows once they are put into effect.
+        crate::i18n::apply(new_config.language);
+        new_config.standard.apply();
+
         if !load.warnings.is_empty() {
             self.last_action = Some(crate::core::config_warnings_summary(&load.warnings));
         } else {

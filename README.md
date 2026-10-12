@@ -10,8 +10,7 @@ live under `Colony/Xion/` in the user configuration directory, and its look come
 from the shared Colony theme catalogue.
 
 > **Status:** in development. It builds and its tests pass on Linux and Windows
-> in CI, and `cargo deny` reports no open advisory. The interface is in French
-> only for now.
+> in CI, and `cargo deny` reports no open advisory.
 
 ## What it does
 
@@ -30,6 +29,8 @@ from the shared Colony theme catalogue.
 - An embedded terminal panel built on `iced_term` (`alacritty_terminal`).
 - Locations mounted by gvfs (SMB, SFTP, phones, Google Drive) appear in the
   sidebar.
+- An English and a French interface: Preferences > General > Language picks
+  one, or follows the session's language by default.
 - A versioned TOML configuration, reloaded on change, at
   `~/.config/Colony/Xion/config.toml` on Linux.
 

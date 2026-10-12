@@ -17,6 +17,8 @@ use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{button, column, container, row, scrollable};
 use iced::{Alignment, Background, Element, Length, Theme};
 
+use crate::core::Language;
+use crate::i18n::t;
 use crate::ui::theme::icons;
 use crate::ui::{PreferencesCategory, UiMessage};
 
@@ -55,6 +57,15 @@ impl PreferencesCategory {
             Self::Files => "Ce que la liste affiche, et dans quel ordre.",
             Self::About => "Version, licence et provenance des composants.",
         }
+    }
+}
+
+/// How a language is named in the picker.
+fn language_label_key(language: Language) -> &'static str {
+    match language {
+        Language::Auto => "preferences_language_auto",
+        Language::English => "preferences_language_en",
+        Language::French => "preferences_language_fr",
     }
 }
 
@@ -245,7 +256,28 @@ impl XionApp {
         ]
         .spacing(spacing.sm);
 
+        let typo = ctx.typography.colony();
+        let languages =
+            Language::ALL.map(|language| (language, t(language_label_key(language)).to_string()));
+        let language = colony_ui::widgets::setting_row(
+            &typo,
+            t("preferences_language"),
+            t("preferences_language_desc"),
+            colony_ui::widgets::dropdown(
+                &typo,
+                languages,
+                &config.language,
+                UiMessage::SetLanguage,
+            ),
+        );
+
         column![
+            self.section(
+                ctx,
+                "general.language",
+                t("preferences_section_language"),
+                language
+            ),
             self.section(ctx, "general.startup", "Démarrage", startup.into()),
             self.section(ctx, "general.terminal", "Terminal", terminal.into()),
         ]

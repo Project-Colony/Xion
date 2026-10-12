@@ -388,6 +388,7 @@ mod config_integration {
             },
             compact_mode: true,
             respect_gitignore: true,
+            language: xion::core::Language::French,
             list: ListConfig {
                 show_hidden: true,
                 sort_key: SortKeyConfig::Size,

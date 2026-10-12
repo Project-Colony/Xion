@@ -363,7 +363,7 @@ pub fn run(
     // with `let _ =`, so a failed start still reported success to whatever
     // launched Xion.
     if let Err(error) = &result {
-        eprintln!("Xion s'est arrêté sur une erreur : {error}");
+        eprintln!("{}", crate::i18n::tf("error_stopped", &[("error", error)]));
         std::process::exit(1);
     }
     std::process::exit(0);

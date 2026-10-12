@@ -4,8 +4,8 @@
 //! is the only writer.
 
 use crate::core::config::types::{
-    AppConfig, ConfigWarning, EntryFilterConfig, ShellConfig, SortKeyConfig, SortOrderConfig,
-    ViewColumn, ViewMode,
+    AppConfig, ConfigWarning, EntryFilterConfig, Language, ShellConfig, SortKeyConfig,
+    SortOrderConfig, ViewColumn, ViewMode,
 };
 
 use super::*;
@@ -250,6 +250,14 @@ pub(super) fn merge_from_v1(file: AppConfigFileV1, warnings: &mut Vec<ConfigWarn
             other => ShellConfig::Custom(other.to_string()),
         };
     }
+    if let Some(key) = file.language {
+        match Language::from_key(&key) {
+            Some(language) => config.language = language,
+            None => warnings.push(ConfigWarning {
+                message: crate::i18n::tf("config_unknown_language", &[("value", &key)]),
+            }),
+        }
+    }
     if let Some(respect_gitignore) = file.respect_gitignore {
         config.respect_gitignore = respect_gitignore;
     }
@@ -359,6 +367,7 @@ pub(super) fn config_to_file(config: &AppConfig) -> AppConfigFileV1 {
             ShellConfig::Bash => "Bash".to_string(),
             ShellConfig::Custom(s) => s.clone(),
         }),
+        language: Some(config.language.key().to_string()),
         respect_gitignore: Some(config.respect_gitignore),
         labels: if config.labels.is_empty() {
             None

@@ -537,7 +537,27 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::config::types::{ListConfig, SortKeyConfig, ThemeChoice};
+    use crate::core::config::types::{Language, ListConfig, SortKeyConfig, ThemeChoice};
+
+    /// A language this version does not know (a typo, a newer file) keeps the
+    /// session's language and says so, instead of failing the whole load.
+    #[test]
+    fn an_unknown_language_falls_back_with_a_warning() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let manager = manager_in(dir.path());
+        fs::write(manager.path(), "version = 1\nlanguage = \"klingon\"\n").unwrap();
+
+        let loaded = manager.load();
+        assert_eq!(loaded.config.language, Language::Auto);
+        assert!(
+            loaded
+                .warnings
+                .iter()
+                .any(|warning| warning.message.contains("klingon")),
+            "{:?}",
+            loaded.warnings
+        );
+    }
 
     /// Every test writes through `with_path`, never through `new()`: the
     /// default path is the developer's real `config.toml`.

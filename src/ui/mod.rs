@@ -469,6 +469,8 @@ pub enum UiMessage {
     SetAccent(&'static str),
     /// Raise the contrast, on any palette.
     ToggleHighContrast,
+    /// Choose the interface language.
+    SetLanguage(crate::core::Language),
     ColumnResizeStart(&'static str),
     ColumnResizeEnd,
     ColumnResized(&'static str, f32),

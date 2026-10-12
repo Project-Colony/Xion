@@ -1,0 +1,21 @@
+{
+  "cli_registry_failed": "Échec de l'opération sur le registre : {error}",
+  "cli_registry_windows_only": "L'intégration au menu contextuel n'est disponible que sous Windows.",
+  "cli_register_help": "Ajoute Xion au menu contextuel Windows",
+  "cli_see_help": "Utilisez `xion --help` pour la liste des options.",
+  "cli_unknown_option": "Option inconnue : {option}",
+  "cli_unregister_help": "Retire Xion du menu contextuel Windows",
+  "cli_usage": "Utilisation : xion [CHEMIN]",
+  "config_unknown_language": "Langue inconnue « {value} », celle de la session est utilisée",
+  "error_stopped": "Xion s'est arrêté sur une erreur : {error}",
+  "preferences_language": "Langue de l'interface",
+  "preferences_language_auto": "Automatique",
+  "preferences_language_desc": "Automatique suit la langue de votre session.",
+  "preferences_language_en": "English",
+  "preferences_language_fr": "Français",
+  "preferences_section_language": "Langue",
+  "registry_add_failed": "Échec de reg add pour {key}",
+  "registry_open_with": "Ouvrir avec Xion",
+  "registry_registered": "Xion a été ajouté au menu contextuel Windows.",
+  "registry_unregistered": "Xion a été retiré du menu contextuel Windows."
+}

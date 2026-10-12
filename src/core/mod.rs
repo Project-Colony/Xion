@@ -14,8 +14,8 @@ pub mod config;
 pub mod uri;
 pub use config::{
     AppConfig, AppConfigLoad, CacheConfig, ConfigManager, ConfigSource, ConfigWarning,
-    EntryFilterConfig, FilesystemConfig, KeyChord, KeyInput, KeyKind, ListConfig, NamedKey,
-    PagingConfig, Session, SessionStore, ShellConfig, ShortcutBindings, SortKeyConfig,
+    EntryFilterConfig, FilesystemConfig, KeyChord, KeyInput, KeyKind, Language, ListConfig,
+    NamedKey, PagingConfig, Session, SessionStore, ShellConfig, ShortcutBindings, SortKeyConfig,
     SortOrderConfig, TabPersistConfig, ThemeChoice, ViewColumn, ViewConfig, ViewMode,
 };
 

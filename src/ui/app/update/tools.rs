@@ -99,6 +99,11 @@ impl XionApp {
                 crate::ui::theme::sync_colony_globals(&self.state.config.theme);
                 self.config_manager.save(&self.state.config);
             }
+            UiMessage::SetLanguage(language) => {
+                self.state.config.language = language;
+                crate::i18n::apply(language);
+                self.config_manager.save(&self.state.config);
+            }
             // Feature 4: Color themes
             UiMessage::SetTheme(theme) => {
                 self.state.config.dark_mode = crate::ui::theme::resolves_dark(&theme);

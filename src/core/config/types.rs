@@ -116,6 +116,36 @@ impl ThemeChoice {
     }
 }
 
+/// The interface language the user picked.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Language {
+    /// The session's language: `LC_ALL`, `LC_MESSAGES` or `LANG` on Unix, the
+    /// display language on Windows. French when it is French, English
+    /// otherwise.
+    #[default]
+    Auto,
+    English,
+    French,
+}
+
+impl Language {
+    pub const ALL: [Self; 3] = [Self::Auto, Self::English, Self::French];
+
+    /// How the choice is written in `config.toml`.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::English => "en",
+            Self::French => "fr",
+        }
+    }
+
+    /// The choice a `config.toml` value stands for; `None` when it is unknown.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|language| language.key() == key)
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub enum ShellConfig {
     /// The user's login shell.
@@ -253,6 +283,7 @@ pub struct AppConfig {
     pub dark_mode: bool,
     pub theme: ThemeChoice,
     pub terminal_shell: ShellConfig,
+    pub language: Language,
     pub respect_gitignore: bool,
     pub labels: std::collections::HashMap<PathBuf, crate::ui::FileLabel>,
     pub column_widths: std::collections::HashMap<String, f32>,
@@ -284,6 +315,7 @@ impl Default for AppConfig {
             dark_mode: crate::ui::theme::resolves_dark(&ThemeChoice::default()),
             theme: ThemeChoice::default(),
             terminal_shell: ShellConfig::default(),
+            language: Language::default(),
             respect_gitignore: false,
             labels: std::collections::HashMap::new(),
             column_widths,

@@ -256,7 +256,7 @@ impl XionApp {
         }
         // The shared widgets read global state; without this they render in
         // the fallback palette and in English.
-        crate::ui::theme::sync_colony_locale();
+        crate::i18n::apply(app.state.config.language);
         crate::ui::theme::sync_colony_globals(&app.state.config.theme);
         app.sync_watcher();
         let task = app.refresh_entries();

@@ -182,6 +182,11 @@ terminal_shell = "Cmd"
 
 respect_gitignore = false
 
+# Interface language: auto | en | fr. `auto` (the default) follows the session:
+# LC_ALL, LC_MESSAGES then LANG on Unix (empty values skipped), the display
+# language on Windows. Set from Preferences > General > Language.
+language = "auto"
+
 # Écrit seulement si la liste n'est pas vide.
 user_favorites = ["/home/utilisateur/travail"]
 
@@ -327,6 +332,7 @@ les vignettes, ni les noms, ni la liste.
 | `SetThemeVariant(family, variant)` | écrit `theme_family` et `theme_variant` |
 | `SetAccent(key)` | écrit `accent`, ou l'efface si on rechoisit le même |
 | `ToggleHighContrast` | bascule `high_contrast` |
+| `SetLanguage(language)` | writes `language` and switches the interface at once |
 | `ToggleDarkMode` | bascule `theme_variant` entre `dark` et `light` |
 
 Chacun sauvegarde immédiatement (`update/tools.rs`).

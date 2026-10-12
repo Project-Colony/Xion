@@ -263,20 +263,6 @@ pub fn sync_colony_globals(theme: &crate::core::ThemeChoice) {
     );
 }
 
-/// Align the shared widgets' language with the session's.
-///
-/// `colony_ui::i18n` starts in English and detects nothing on its own: its
-/// documentation leaves that choice to the host. Without this call, the picker
-/// cards showed "Dark mode" and "Light mode" in the middle of a French
-/// interface.
-pub fn sync_colony_locale() {
-    let tag = std::env::var("LC_ALL")
-        .or_else(|_| std::env::var("LC_MESSAGES"))
-        .or_else(|_| std::env::var("LANG"))
-        .unwrap_or_default();
-    colony_ui::i18n::set_locale(colony_ui::i18n::Locale::from_tag(&tag));
-}
-
 /// Whether a theme choice resolves to a dark palette.
 ///
 /// Derived from the background's luminance rather than from the catalogue's

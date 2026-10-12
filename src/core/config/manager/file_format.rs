@@ -65,6 +65,8 @@ pub(super) struct AppConfigFileV1 {
     pub(super) shortcuts: Option<ShortcutBindingsFile>,
     pub(super) compact_mode: Option<bool>,
     pub(super) terminal_shell: Option<String>,
+    /// `auto`, `en` or `fr`.
+    pub(super) language: Option<String>,
     pub(super) respect_gitignore: Option<bool>,
     pub(super) labels: Option<std::collections::HashMap<String, String>>,
     pub(super) column_widths: Option<std::collections::HashMap<String, f32>>,

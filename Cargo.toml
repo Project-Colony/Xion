@@ -71,6 +71,9 @@ image = { version = "0.25.10", default-features = false, features = [
 ] }
 notify = "8.2.0"
 serde = { version = "1.0.229", features = ["derive"] }
+# The locale tables in src/i18n/. Already in the tree through colony-ui, which
+# reads its own shared labels the same way.
+serde_json = "1.0.151"
 sysinfo = "0.39.6"
 toml = "1.1.7"
 tracing = "0.1.44"
@@ -100,6 +103,7 @@ zbus = "5.19.0"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
+    "Win32_Globalization",
     "Win32_NetworkManagement_WNet",
     "Win32_System_Console",
     "Win32_UI_Shell",

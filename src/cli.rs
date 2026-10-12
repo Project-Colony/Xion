@@ -2,6 +2,9 @@
 
 use std::path::PathBuf;
 
+use crate::core::Language;
+use crate::i18n::{t, tf};
+
 /// Exit code returned when a `--flag` sub-command fails.
 const EXIT_FAILURE: i32 = 1;
 
@@ -10,6 +13,8 @@ pub fn run(flag: &str) -> i32 {
     // Without this the `windows_subsystem = "windows"` attribute leaves the
     // process with no stdout/stderr, so every message below goes nowhere.
     crate::platform::attach_parent_console();
+    // No configuration is read for a sub-command: the session's language it is.
+    crate::i18n::apply(Language::Auto);
 
     match flag {
         "--register" => run_registry_command(RegistryCommand::Register),
@@ -17,14 +22,14 @@ pub fn run(flag: &str) -> i32 {
         "--help" | "--version" => {
             println!("Xion {}", env!("CARGO_PKG_VERSION"));
             println!();
-            println!("Usage: xion [CHEMIN]");
-            println!("       xion --register     Ajoute Xion au menu contextuel Windows");
-            println!("       xion --unregister   Retire Xion du menu contextuel Windows");
+            println!("{}", t("cli_usage"));
+            println!("       xion --register     {}", t("cli_register_help"));
+            println!("       xion --unregister   {}", t("cli_unregister_help"));
             0
         }
         other => {
-            eprintln!("Option inconnue : {other}");
-            eprintln!("Utilisez `xion --help` pour la liste des options.");
+            eprintln!("{}", tf("cli_unknown_option", &[("option", &other)]));
+            eprintln!("{}", t("cli_see_help"));
             EXIT_FAILURE
         }
     }
@@ -73,7 +78,7 @@ fn run_registry_command(command: RegistryCommand) -> i32 {
     match result {
         Ok(()) => 0,
         Err(error) => {
-            eprintln!("Échec de l'opération sur le registre : {error}");
+            eprintln!("{}", tf("cli_registry_failed", &[("error", &error)]));
             EXIT_FAILURE
         }
     }
@@ -81,6 +86,6 @@ fn run_registry_command(command: RegistryCommand) -> i32 {
 
 #[cfg(not(windows))]
 fn run_registry_command(_command: RegistryCommand) -> i32 {
-    eprintln!("L'intégration au menu contextuel n'est disponible que sous Windows.");
+    eprintln!("{}", t("cli_registry_windows_only"));
     EXIT_FAILURE
 }

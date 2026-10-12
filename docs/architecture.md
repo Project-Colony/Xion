@@ -24,6 +24,7 @@ Windows :
 ```
 cli          -> --flag sub-commands and the start path argument
 core/        -> types partagés, configuration, erreurs
+i18n/        -> interface text: en.json (canonical) and fr.json, t() and tf()
 filesystem/  -> accès FS, métadonnées, caches, opérations, observateur
 services/    -> logique métier (historique, favoris, recherche, miniatures…)
 platform/    -> intégration OS, un backend par cible
@@ -110,6 +111,18 @@ niveau (`src/lib.rs`).
   (`src/ui/app/view/sidebar_sections.rs`).
 - `VirtualList` : fenêtre visible pour le rendu virtualisé.
 - `highlight` : coloration syntaxique via syntect.
+
+## i18n/
+
+Every user-visible string is a key in `src/i18n/en.json` and `fr.json`, read
+with `i18n::t(key)` or `i18n::tf(key, args)` for strings with `{placeholders}`.
+English is canonical; the tests fail when the two files have different keys,
+when a key is empty, when a key copies one of colony-ui's shared labels, or
+when a literal key used in `src/` exists in neither table. Lookups fall back to
+English, then to `colony_ui::i18n::t`, which owns the shared Preferences
+labels (themes, accents, standard categories). The active locale is
+colony-ui's: `i18n::apply(config.language)` sets it at startup and when the
+language changes, so Xion's strings and the shared widgets always agree.
 
 ## platform/
 

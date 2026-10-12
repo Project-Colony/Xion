@@ -7,6 +7,7 @@ use std::io;
 use std::os::windows::process::CommandExt;
 use std::process::{Command, Stdio};
 
+use crate::i18n::{t, tf};
 use crate::platform::{CREATE_NO_WINDOW, system_binary};
 
 /// The registry paths we create for context menu integration.
@@ -20,26 +21,27 @@ const DRIVE_COMMAND_KEY: &str = r"HKEY_CURRENT_USER\Software\Classes\Drive\shell
 
 /// Register Xion in the Windows context menu.
 ///
-/// Adds "Ouvrir avec Xion" entries for:
+/// Adds "Open with Xion" entries, in the session's language, for:
 /// - Right-click on a folder
 /// - Right-click on folder background (empty space)
 /// - Right-click on a drive
 pub fn register() -> io::Result<()> {
     let exe_path = std::env::current_exe()?;
     let exe = exe_path.display().to_string();
+    let label = t("registry_open_with");
 
     // Folder context menu: right-click on a folder
-    reg_add(DIR_SHELL_KEY, "(Default)", "Ouvrir avec Xion")?;
+    reg_add(DIR_SHELL_KEY, "(Default)", label)?;
     reg_add(DIR_SHELL_KEY, "Icon", &exe)?;
     reg_add(DIR_COMMAND_KEY, "(Default)", &format!("\"{}\" \"%1\"", exe))?;
 
     // Background context menu: right-click on empty space inside a folder
-    reg_add(BG_SHELL_KEY, "(Default)", "Ouvrir avec Xion")?;
+    reg_add(BG_SHELL_KEY, "(Default)", label)?;
     reg_add(BG_SHELL_KEY, "Icon", &exe)?;
     reg_add(BG_COMMAND_KEY, "(Default)", &format!("\"{}\" \"%V\"", exe))?;
 
     // Drive context menu: right-click on a drive
-    reg_add(DRIVE_SHELL_KEY, "(Default)", "Ouvrir avec Xion")?;
+    reg_add(DRIVE_SHELL_KEY, "(Default)", label)?;
     reg_add(DRIVE_SHELL_KEY, "Icon", &exe)?;
     reg_add(
         DRIVE_COMMAND_KEY,
@@ -47,7 +49,7 @@ pub fn register() -> io::Result<()> {
         &format!("\"{}\" \"%1\"", exe),
     )?;
 
-    println!("Xion enregistré dans le menu contextuel Windows.");
+    println!("{}", t("registry_registered"));
     Ok(())
 }
 
@@ -57,7 +59,7 @@ pub fn unregister() -> io::Result<()> {
     reg_delete(BG_SHELL_KEY)?;
     reg_delete(DRIVE_SHELL_KEY)?;
 
-    println!("Xion retiré du menu contextuel Windows.");
+    println!("{}", t("registry_unregistered"));
     Ok(())
 }
 
@@ -88,7 +90,10 @@ fn reg_add(key: &str, value_name: &str, data: &str) -> io::Result<()> {
     let status = reg_command().args(&args).status()?;
 
     if !status.success() {
-        return Err(io::Error::other(format!("Échec de reg add pour {}", key)));
+        return Err(io::Error::other(tf(
+            "registry_add_failed",
+            &[("key", &key)],
+        )));
     }
     Ok(())
 }

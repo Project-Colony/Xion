@@ -17,13 +17,10 @@ categories = ["gui", "filesystem"]
 # self dev-dependency below turns the feature on for them alone.
 test-util = []
 
-# Remote FTP browsing. Unreachable from the UI today; see the note on suppaftp.
-ftp = ["dep:suppaftp"]
-
 [dependencies]
 # The shared Colony foundation: palettes, configuration paths, i18n and
 # widgets. Taken from crates.io, as Colony itself does.
-colony-ui = "0.1.5"
+colony-ui = "0.1.6"
 # Le même tampon partagé que celui qu'iced attend pour ses images : garder les
 # octets d'une vignette dans un `Bytes` évite d'en donner une copie au handle.
 bytes = "1.12.1"
@@ -92,12 +89,6 @@ flate2 = "1.1.10"
 sevenz-rust2 = { version = "0.23.0", default-features = false, features = ["bzip2", "compress", "ppmd"] }
 ignore = "0.4.33"
 encoding_rs = "0.8.42"
-# Optional, and off by default. `list_ftp_directory` has no caller anywhere in
-# src/ui/: nothing in the interface can reach it. Enabling it by default cost
-# twelve crates including the whole openssl chain — and a build dependency on
-# the system OpenSSL — for code that never runs. Turn it back on with
-# `--features ftp` once there is a command that calls it.
-suppaftp = { version = "12.1.1", features = ["native-tls"], optional = true }
 mdns-sd = "0.21.5"
 
 # Déjà compilé dans le binaire — iced le tire via mundy, qui lit les réglages
@@ -110,9 +101,7 @@ zbus = "5.19.0"
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_NetworkManagement_WNet",
-    "Win32_Storage_FileSystem",
     "Win32_System_Console",
-    "Win32_System_Com",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

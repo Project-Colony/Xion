@@ -22,6 +22,7 @@ constatés ».
 Windows :
 
 ```
+cli          -> --flag sub-commands and the start path argument
 core/        -> types partagés, configuration, erreurs
 filesystem/  -> accès FS, métadonnées, caches, opérations, observateur
 services/    -> logique métier (historique, favoris, recherche, miniatures…)
@@ -100,8 +101,8 @@ niveau (`src/lib.rs`).
 - `ThumbnailService` et fonctions de génération (image, vidéo via ffmpeg,
   PDF via mutool/pdftoppm).
 - `NetworkDiscoveryService` : découverte SMB et mDNS
-  (`src/services/network/`, découpé en `wnet.rs`, `net_view.rs`, `mdns.rs`,
-  `credentials.rs` et `ftp.rs`).
+  (`src/services/network/`, découpé en `wnet.rs`, `net_view.rs` et
+  `mdns.rs`).
 - `gvfs` : les emplacements montés par gvfs — partages SMB, SFTP, téléphones,
   Google Drive — retrouvés sous `$XDG_RUNTIME_DIR/gvfs`, où `gvfsd-fuse` les
   expose comme des dossiers ordinaires. Aucune liaison GIO : `LocalFileSystem`
@@ -116,6 +117,9 @@ niveau (`src/lib.rs`).
 uniforme, pour que le reste du crate n'écrive pas de `#[cfg]` en ligne
 (`src/platform/mod.rs`). Le backend `unix` dégrade explicitement au lieu de
 ne rien faire silencieusement.
+`platform::gpu` picks the wgpu backend before the renderer starts, and
+`attach_parent_console` gives `--help` a console on Windows. `src/main.rs`
+only reads the arguments, starts logging and launches the window.
 
 ## terminal
 

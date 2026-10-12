@@ -5,8 +5,8 @@ targets = [
     "x86_64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",
 ]
-# Optional features too (today only `ftp`), so the crates they pull in are
-# checked even though the shipped binary leaves them out.
+# Optional features too, so the crates they pull in are checked even when the
+# shipped binary leaves them out.
 all-features = true
 
 [advisories]

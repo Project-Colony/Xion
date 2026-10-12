@@ -11,6 +11,19 @@ use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 /// `CREATE_NO_WINDOW`: keeps console helpers from flashing a window.
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Reattach stdout/stderr to the console that launched the process.
+///
+/// The `windows_subsystem = "windows"` attribute starts the process without
+/// one, so command-line output would otherwise go nowhere.
+pub fn attach_parent_console() {
+    // ATTACH_PARENT_PROCESS. Failure just means there is no parent console
+    // (launched from Explorer), in which case there is nothing to attach to.
+    // SAFETY: AttachConsole takes a plain process id and touches no memory of ours.
+    unsafe {
+        let _ = windows_sys::Win32::System::Console::AttachConsole(u32::MAX);
+    }
+}
+
 /// Absolute path to a binary shipped in `%SystemRoot%\System32`.
 ///
 /// `Command::new("reg")` lets Windows resolve the name, and that search visits

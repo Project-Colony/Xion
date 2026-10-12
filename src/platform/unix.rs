@@ -6,6 +6,9 @@ use std::path::{Path, PathBuf};
 /// No-op on Unix; kept so callers do not need `#[cfg]` around process spawns.
 pub const CREATE_NO_WINDOW: u32 = 0;
 
+/// Unix processes keep the console they were started from; nothing to do.
+pub fn attach_parent_console() {}
+
 /// On Unix there is no protected system directory to anchor to, and `PATH`
 /// does not include the current directory, so the plain name is correct.
 pub fn system_binary(name: &str) -> PathBuf {

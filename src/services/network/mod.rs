@@ -1,13 +1,7 @@
-mod credentials;
-#[cfg(feature = "ftp")]
-mod ftp;
 mod mdns;
 mod net_view;
 mod wnet;
 
-pub use credentials::*;
-#[cfg(feature = "ftp")]
-pub use ftp::*;
 pub use mdns::*;
 use net_view::*;
 #[cfg(windows)]
@@ -410,14 +404,6 @@ The command completed successfully.
 
         let long = "N".repeat(500);
         assert_eq!(sanitize_mdns_label(&long).chars().count(), MAX_MDNS_LABEL);
-    }
-
-    #[test]
-    fn secret_wide_is_scrubbed() {
-        let mut secret = SecretWide::new("mot-de-passe");
-        assert!(secret.buf.iter().any(|&c| c != 0));
-        secret.zeroize();
-        assert!(secret.buf.iter().all(|&c| c == 0));
     }
 
     #[test]

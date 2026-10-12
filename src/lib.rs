@@ -29,6 +29,7 @@
 //! // cargo run --release
 //! ```
 
+pub mod cli;
 pub mod core;
 pub mod filesystem;
 pub mod platform;

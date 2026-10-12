@@ -62,15 +62,15 @@ install -m 755 "$ROOT/target/release/xion" "$BIN_DIR/xion"
 
 echo "→ icônes"
 mkdir -p "$ICON_DIR/scalable/apps"
-install -m 644 "$ROOT/assets/xion.svg" "$ICON_DIR/scalable/apps/xion.svg"
+install -m 644 "$ROOT/assets/brand/xion.svg" "$ICON_DIR/scalable/apps/xion.svg"
 for size in $LARGE_SIZES; do
     mkdir -p "$ICON_DIR/${size}x${size}/apps"
-    rsvg-convert -w "$size" -h "$size" "$ROOT/assets/xion.svg" \
+    rsvg-convert -w "$size" -h "$size" "$ROOT/assets/brand/xion.svg" \
         -o "$ICON_DIR/${size}x${size}/apps/xion.png"
 done
 for size in $SMALL_SIZES; do
     mkdir -p "$ICON_DIR/${size}x${size}/apps"
-    rsvg-convert -w "$size" -h "$size" "$ROOT/assets/xion-small.svg" \
+    rsvg-convert -w "$size" -h "$size" "$ROOT/assets/brand/xion-small.svg" \
         -o "$ICON_DIR/${size}x${size}/apps/xion.png"
 done
 

@@ -145,30 +145,37 @@ Le bloc ci-dessous liste l'intégralité de ce que Xion écrit et relit
 
 version = 1
 
-# ── Apparence ─────────────────────────────────────────────────────────────────
-# Le thème est une sélection dans le catalogue partagé de `colony-ui` :
-# 25 familles, 57 variantes, 8 accents. Les clés sont des chaînes libres et non
-# un ensemble fermé, à dessein : le socle ajoute des familles sans que Xion soit
-# recompilé, et `colony_ui::resolve` retombe sur sa palette de repli pour tout
-# couple inconnu — une famille retirée en amont dégrade au lieu d'empêcher le
-# démarrage.
-theme_family = "gruvbox"     # clé de famille : gruvbox, nord, catppuccin…
-theme_variant = "dark"       # clé de variante dans cette famille : dark, light,
-                             # mocha… ; les noms varient selon la famille
-high_contrast = false        # modificateur applicable à N'IMPORTE quelle
-                             # palette, pas un thème à part
-accent = "blue"              # red | orange | yellow | green | blue | indigo |
-                             # violet | amber. Absent = l'accent du thème.
+# ── Appearance and accessibility ──────────────────────────────────────────────
+# colony-ui's `StandardPreferences`, flattened at the top level under the names
+# every Colony program writes. Each key is read on its own: a bad value falls
+# back to its default and leaves the rest of the file alone.
+#
+# The theme is a pick in colony-ui's shared catalogue: 25 families, 57
+# variants. The keys are free strings rather than a closed set, on purpose: the
+# foundation adds families without Xion being recompiled, and
+# `colony_ui::resolve` falls back to its fallback palette for any unknown pair,
+# so a family removed upstream degrades instead of preventing startup.
+selected_theme = "gruvbox"   # family key: gruvbox, nord, catppuccin...
+selected_variant = "dark"    # variant key within that family: dark, light,
+                             # mocha... ; names vary by family
+selected_accent = "blue"     # red | orange | yellow | green | blue | indigo |
+                             # violet | amber. Absent: the theme's own accent.
+auto_accent = false          # true: the theme's own accent applies, and
+                             # selected_accent is remembered but not used
+font_size = "default"        # Appearance > Typography: small | default | large
+text_size_a11y = "default"   # Accessibility > Reading: small | default |
+                             # large | xlarge. Multiplies with font_size.
+animations = true            # Appearance > Effects: panel slides, animated GIFs
+high_contrast = false        # a modifier for ANY palette, not a theme of its own
+dyslexia_font = false        # OpenDyslexic replaces the interface font
+reduce_motion = false        # silences every animation, whatever `animations`
+                             # says: panels jump, GIFs show their first frame
 
-# `dark_mode` est RECALCULÉ au chargement à partir de la palette résolue
-# (`resolves_dark`, `src/ui/theme.rs`, qui mesure la luminance du fond) ; s'il
-# est écrit et incohérent, un avertissement le signale et le thème gagne.
-dark_mode = false
-
-# `theme` (ancien nom : Light | Dark | Nord | Solarized | HighContrast) est
-# encore LU, uniquement pour migrer un fichier antérieur au catalogue Colony.
-# Il n'est plus jamais écrit, et `theme_family` / `theme_variant` l'emportent
-# dès qu'ils sont présents tous les deux. Voir « Migration ».
+# `dark_mode` is no longer written: it is derived from the resolved palette
+# (`resolves_dark`, `src/ui/theme.rs`, which measures the background's
+# luminance). `theme`, `theme_family`, `theme_variant` and `accent` are still
+# READ, only to migrate files written by earlier versions, and never written
+# again. See "Migration".
 
 # Dossier d'ouverture. Défaut : le répertoire courant du processus.
 start_path = "/home/utilisateur"
@@ -319,29 +326,27 @@ Tests: `a_session_round_trips`,
 `a_missing_session_and_no_legacy_tabs_load_empty_and_write_nothing`
 (`session.rs`).
 
-## Ce qui écrit les quatre clés d'apparence
+## What writes the appearance keys
 
-Aucune n'a besoin d'être éditée à la main : l'écran **Apparence** les écrit
-(`render_appearance_layer`, `src/ui/app/view/appearance.rs`, ouvert par
-`UiMessage::ToggleAppearance` depuis le menu `⋯`). Les deux sélecteurs sont
-ceux de `colony-ui` et se rendent seuls depuis le catalogue ; Xion n'écrit ni
-les vignettes, ni les noms, ni la liste.
+None needs editing by hand: Preferences writes them. The **Xion** button in the
+top-left corner of the header opens the page, and its Appearance and
+Accessibility categories are colony-ui's `PreferencesView`, which renders
+itself from the catalogue: Xion draws neither the theme cards, nor the names,
+nor the list.
 
-| Message | Effet sur le fichier |
+| Message | Effect on the file |
 | --- | --- |
-| `SetThemeVariant(family, variant)` | écrit `theme_family` et `theme_variant` |
-| `SetAccent(key)` | écrit `accent`, ou l'efface si on rechoisit le même |
-| `ToggleHighContrast` | bascule `high_contrast` |
+| `Preference(change)` | records the change in `StandardPreferences`, applies it and saves; a theme change also raises the "Theme applied." toast |
 | `SetLanguage(language)` | writes `language` and switches the interface at once |
-| `ToggleDarkMode` | bascule `theme_variant` entre `dark` et `light` |
+| `ToggleDarkMode` | switches `selected_variant` between `dark` and `light` |
 
-Chacun sauvegarde immédiatement (`update/tools.rs`).
+Each one saves immediately (`update/tools.rs`).
 
-`ToggleDarkMode` ne fait plus tourner cinq thèmes : il bascule la variante
-claire/sombre **de la famille courante**. Une famille dont les variantes ne
-s'appellent ni `dark` ni `light` — `catppuccin` et ses quatre saveurs — n'a pas
-de contraire évident ; dans ce cas rien ne change et la barre d'état invite à
-choisir dans le menu (`update/tools.rs`).
+`ToggleDarkMode` no longer cycles five themes: it switches the light or dark
+variant **of the current family**, and only when the family has one. A family
+whose variants are called neither `dark` nor `light` (`catppuccin` and its four
+flavours) has no obvious opposite; then nothing changes and the status bar
+points to the picker (`update/tools.rs`).
 
 ## Raccourcis
 
@@ -385,30 +390,37 @@ Une version supérieure à `CURRENT_CONFIG_VERSION` (= 1, `manager/limits.rs`)
 est refusée avec un message explicite (`load_from_path`, `manager/mod.rs`) ; la
 configuration par défaut est utilisée.
 
-### Depuis l'ancienne clé `theme`
+### From the earlier theme keys
 
-Xion portait cinq palettes écrites à la main derrière un `enum`. Elles ont
-disparu au profit du catalogue `colony-ui`, et `merge_from_v1`
-(`manager/migrate.rs`) traduit l'ancien nom vers un couple famille/variante :
+Three generations of files exist, and `migrated_standard`
+(`manager/migrate.rs`) reads all of them:
 
-| ancien `theme` | `theme_family` | `theme_variant` | `high_contrast` |
+1. The current one writes colony-ui's keys (`selected_theme` and the others
+   above) and nothing else.
+2. The one before wrote `theme_family`, `theme_variant` and `accent`. When both
+   `theme_family` and `theme_variant` are present they become
+   `selected_theme` and `selected_variant`, and `accent` becomes
+   `selected_accent`. `high_contrast` already had its current name.
+3. The oldest carried five hand-written palettes behind a theme name, or only
+   `dark_mode`. The name maps onto the catalogue:
+
+| old `theme` | `selected_theme` | `selected_variant` | `high_contrast` |
 | --- | --- | --- | --- |
 | `"Light"` | `gruvbox` | `light` | `false` |
 | `"Dark"` | `gruvbox` | `dark` | `false` |
 | `"Nord"` | `nord` | `dark` | `false` |
 | `"Solarized"` | `solarized` | `dark` | `false` |
 | `"HighContrast"` | `gruvbox` | `dark` | **`true`** |
-| absent | `gruvbox` | `dark` (ou `light` si `dark_mode = false`) | `false` |
-| autre chaîne | `gruvbox` | `dark` | `false`, **avec avertissement** |
+| absent, `dark_mode = false` | `gruvbox` | `light` | `false` |
+| any other string | `gruvbox` | `dark` | `false`, **with a warning** |
 
-`Light` et `Dark` étaient des noms génériques sans famille derrière eux : ils
-prennent celle du repli du catalogue. `HighContrast` n'était pas une palette
-mais un rehaussement, et Colony en fait un modificateur applicable à n'importe
-quelle palette — d'où la case `high_contrast` plutôt qu'une famille dédiée.
+`Light` and `Dark` were generic names with no family behind them: they take
+the catalogue's fallback family. `HighContrast` was not a palette but a boost,
+and Colony makes it a modifier for any palette, hence the `high_contrast` key
+rather than a dedicated family.
 
-Cette traduction n'a lieu **que** si `theme_family` et `theme_variant` sont
-absents (ou l'un des deux) ; dès que les deux sont là, l'ancienne clé est
-ignorée. Un `high_contrast` explicite dans le fichier gagne dans tous les cas.
+None of the older keys is written again, so a file loses them on its first
+save.
 
 ### Tests de migration
 
@@ -479,8 +491,10 @@ remonte le tout en avertissements. Test :
       `SessionStore`.
 - [x] Location aligned on `<root>/Colony/Xion/`, with the old directory copied,
       marked and kept: `migrate_legacy_config_dir`.
-- [x] Thème choisi dans le catalogue partagé `colony-ui` (famille, variante,
-      contraste élevé, accent) — `ThemeChoice`, `src/core/config/types.rs`.
+- [x] Appearance and Accessibility stored as colony-ui's
+      `StandardPreferences` (theme, accent, auto accent, both text sizes,
+      animations, high contrast, dyslexia font, reduced motion):
+      `AppConfig::standard`, `src/core/config/types.rs`.
 - [x] Tests for the migration, validation, atomic write and recovery: 21 unit
       tests in `manager/mod.rs` (count of 2026-10-09;
       `grep -c '#\[test\]' src/core/config/manager/mod.rs`).

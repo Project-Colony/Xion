@@ -130,7 +130,7 @@ impl XionApp {
                 ViewMode::Grid => {
                     let grid = self.grid_window_for(total_entries);
                     let mut list = column![];
-                    let tile_height = self.state.config.view.grid_row_height;
+                    let tile_height = self.grid_row_height();
 
                     if grid.window.padding_top > 0.0 {
                         list = list
@@ -235,7 +235,7 @@ impl XionApp {
             &self.state.config.view.columns,
             &self.state.config.column_widths,
         );
-        let row_height = self.state.config.view.row_height;
+        let row_height = self.row_height();
         let list_header_visible = visible;
 
         let list_header: Element<'_, UiMessage> = if list_header_visible {

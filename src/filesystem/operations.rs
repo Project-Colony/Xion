@@ -400,8 +400,8 @@ fn move_entry(source: &Path, destination: &Path) -> Result<(), XionError> {
 
             if let Err(del_err) = delete_entry(&source) {
                 tracing::warn!(
-                    "Déplacement inter-volumes : suppression de la source impossible, \
-                     retrait de la copie : {del_err}"
+                    "Cross-volume move: cannot delete the source, removing the copy: \
+                     {del_err}"
                 );
                 discard_partial(&destination);
                 return Err(del_err);

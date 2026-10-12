@@ -84,6 +84,9 @@ impl XionApp {
         // Before anything is worded, the load warnings included: they are
         // rendered in the language the file itself asks for.
         crate::i18n::apply(config.language);
+        // Theme, accent, contrast, fonts, text sizes and motion: colony-ui's
+        // widgets and `UiTypography` read them from its globals.
+        config.standard.apply();
         let session_store = SessionStore::new();
         let session = session_store.load(&config_manager);
 
@@ -249,9 +252,6 @@ impl XionApp {
         if let Some(error) = watcher_error {
             app.last_action = Some(crate::i18n::tf("watcher_unavailable", &[("error", &error)]));
         }
-        // The shared widgets read global state; without this they render in
-        // the fallback palette.
-        crate::ui::theme::sync_colony_globals(&app.state.config.theme);
         app.sync_watcher();
         let task = app.refresh_entries();
         (app, task)
@@ -265,7 +265,7 @@ impl XionApp {
     pub fn new_for_test() -> Self {
         let config = crate::core::AppConfig::default();
         // Integration tests drive `update()` with messages that persist the
-        // config (SetTheme, ToggleCompactMode, SetShell, tab reordering...).
+        // config (Preference, ToggleCompactMode, SetShell, tab reordering...).
         // Left on the default path, a test run rewrites the developer's real
         // ~/.config/xion/config.toml. Point the manager at a throwaway file
         // instead; the process id keeps parallel test binaries apart.

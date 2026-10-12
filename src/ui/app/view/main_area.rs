@@ -19,6 +19,7 @@ use super::widgets::RADIUS;
 use super::widgets::body_text;
 use super::widgets::caption_text;
 use super::widgets::chrome_style;
+use super::widgets::icon_text;
 use super::widgets::surface_style;
 
 impl XionApp {
@@ -67,7 +68,7 @@ impl XionApp {
                         let path = entry.path.clone();
                         button(
                             row![
-                                body_text(typography, icon),
+                                icon_text(typography, icon),
                                 column![
                                     body_text(typography, name),
                                     row![
@@ -180,7 +181,7 @@ impl XionApp {
                             .unwrap_or(icons::FILE)
                     };
                     let size_str = if entry.is_dir {
-                        "—".to_string()
+                        "-".to_string()
                     } else {
                         crate::ui::app::helpers::format_bytes(entry.size)
                     };
@@ -200,7 +201,7 @@ impl XionApp {
                     };
                     button(
                         row![
-                            body_text(typography, icon),
+                            icon_text(typography, icon),
                             body_text(typography, entry.name.clone()),
                             horizontal_space(),
                             caption_text(typography, size_str),
@@ -267,7 +268,7 @@ impl XionApp {
                 ))
                 .push(horizontal_space())
                 .push(
-                    button(body_text(typography, icons::CLOSE))
+                    button(icon_text(typography, icons::CLOSE))
                         .on_press(UiMessage::CloseArchiveBrowser)
                         .padding([spacing.xs, spacing.sm])
                         .style(

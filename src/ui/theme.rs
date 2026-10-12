@@ -4,30 +4,8 @@
 //! and typography constants used throughout the application.
 
 use colony_ui::ColorExt;
-use iced::font::{Family, Style, Weight};
+use colony_ui::preferences::StandardPreferences;
 use iced::{Color, Font};
-
-/// Font name used throughout the application.
-pub const FONT_NAME: &str = "JetBrainsMono Nerd Font";
-
-/// Embedded font data.
-///
-/// Only the three variants `UiTypography` actually selects are shipped. The
-/// other thirteen Nerd Font weights used to be embedded and registered too:
-/// 13 x 2.36 MB of binary that iced parsed into its font database at startup
-/// and no widget ever asked for. Adding a weight here means adding it to
-/// `UiTypography` as well, or it is dead again.
-pub mod fonts {
-    /// `UiTypography::body_font`: Weight::Normal.
-    pub const REGULAR: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-Regular.ttf");
-    /// `UiTypography::title_font`: Weight::Semibold.
-    pub const SEMI_BOLD: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-SemiBold.ttf");
-    /// `UiTypography::caption_font`: Weight::Light + Style::Italic.
-    pub const LIGHT_ITALIC: &[u8] =
-        include_bytes!("../../ui/Assets/Fonts/JetBrainsMonoNerdFont-LightItalic.ttf");
-}
 
 /// Nerd Font icons used in the UI.
 pub mod icons {
@@ -77,12 +55,6 @@ pub mod icons {
     pub const FILE_TEXT: &str = "\u{f0219}"; // 󰈙 nf-md-file_document
     pub const FILE_TABLE: &str = "\u{f021b}"; // 󰈛 nf-md-file_excel
     pub const FILE_CONFIG: &str = "\u{f0493}"; // 󰒓 nf-md-settings
-    /// The gear of the identity button, which opens the preferences.
-    ///
-    /// Same glyph as `FILE_CONFIG`, two unrelated uses: one decorates a
-    /// configuration file in the list, the other is a chrome button. Naming them
-    /// separately means changing one does not touch the other.
-    pub const SETTINGS: &str = "\u{f0493}"; // 󰒓 nf-md-settings
     pub const FILE_GIT: &str = "\u{f02a2}"; // 󰊢 nf-md-git
     pub const FILE_LOCK: &str = "\u{f033e}"; // 󰌾 nf-md-lock
     pub const FILE_FONT: &str = "\u{f031a}"; // 󰌚 nf-md-format_font
@@ -211,67 +183,16 @@ pub struct UiColors {
     pub address_not_found: Color,
 }
 
-impl UiTypography {
-    /// What Colony's shared widgets expect.
-    ///
-    /// The two structures do not describe the same thing. Xion names three roles
-    /// with their size: title, body, caption. Colony names three weights and a
-    /// scale, and its widgets call `sz(base)` with base sizes from 8 to 15: the
-    /// scale makes everything vary, not named sizes.
-    ///
-    /// The bridge sets the scale from the body text, the size general
-    /// readability depends on, and maps the weights to the fonts Xion embeds.
-    /// Xion has no bold: the heaviest it carries is the titles' semibold, which
-    /// therefore serves for both.
-    pub fn colony(&self) -> colony_ui::Typography {
-        /// The body size Colony's base sizes are calibrated on. `sz(13)` should
-        /// render roughly as body text.
-        const COLONY_BODY_BASE: f32 = 13.0;
-
-        colony_ui::Typography {
-            scale: self.body / COLONY_BODY_BASE,
-            regular: self.body_font,
-            medium: self.title_font,
-            bold: self.title_font,
-        }
-    }
-}
-
-/// Set the global state the shared `colony-ui` widgets read.
-///
-/// Xion computes its own colours purely: `UiColors::from_colony` receives its
-/// palette as an argument, and nothing in the view reads global state. But the
-/// crate's widgets accept no palette: `theme_picker` and `accent_picker` dress
-/// themselves through `Palette::BG_CARD()` and friends, which all delegate to
-/// `active_palette()`, a static `RwLock`.
-///
-/// Without this call they rendered in dark gruvbox **whatever the chosen
-/// theme**, so the theme picker showed its cards in a theme the user had just
-/// left.
-///
-/// Only call it from `update` or at startup. From `view` it would be a lock
-/// write on every widget tree rebuild, and the view would mutate global state.
-pub fn sync_colony_globals(theme: &crate::core::ThemeChoice) {
-    let (family, variant) = theme.keys();
-    colony_ui::set_active_theme(family, variant);
-    colony_ui::set_high_contrast(theme.high_contrast);
-    colony_ui::set_active_accent(
-        theme
-            .accent
-            .as_deref()
-            .and_then(colony_ui::accent_key_to_color),
-    );
-}
-
-/// Whether a theme choice resolves to a dark palette.
+/// Whether the chosen theme resolves to a dark palette.
 ///
 /// Derived from the background's luminance rather than from the catalogue's
 /// `mode` field: the measurement is what the syntax highlighter actually cares
 /// about, and it keeps working for the fallback palette an unknown family
 /// resolves to.
-pub fn resolves_dark(theme: &crate::core::ThemeChoice) -> bool {
-    let (family, variant) = theme.keys();
-    !colony_ui::resolve(family, variant).bg_primary.is_light()
+pub fn resolves_dark(preferences: &StandardPreferences) -> bool {
+    !colony_ui::resolve(&preferences.selected_theme, &preferences.selected_variant)
+        .bg_primary
+        .is_light()
 }
 
 /// Nudges a colour away from `surface` until the two can be told apart.
@@ -308,7 +229,7 @@ impl UiColors {
     /// dependency on Colony's global theme state would scatter through hundreds
     /// of call sites.
     ///
-    /// The palette arrives as an argument for the same reason. `for_theme` runs
+    /// The palette arrives as an argument for the same reason. `for_preferences` runs
     /// inside `view`, so it runs on every rebuild of the widget tree; reaching
     /// for `active_palette()` there would take a lock per frame, and setting it
     /// would be the view mutating global state. `colony_ui::resolve` is pure,
@@ -402,14 +323,21 @@ impl Default for UiSpacing {
     }
 }
 
-/// Typography settings for text rendering.
+/// Xion's three text roles, sized and set by the user's preferences.
+///
+/// Built from colony-ui's [`Typography`](colony_ui::Typography), so the
+/// Appearance size and the Accessibility text size reach every role through
+/// `sz(base)`, and the dyslexia font replaces the interface font everywhere at
+/// once. The interface font ships in Regular, Medium and Bold only: titles are
+/// Bold, body text and captions Regular, and captions differ by size and by
+/// the muted colour their call sites give them.
 #[derive(Debug, Clone, Copy)]
 pub struct UiTypography {
-    /// Title font size.
+    /// Title font size: `sz(16)`.
     pub title: f32,
-    /// Body text font size.
+    /// Body text font size: `sz(14)`.
     pub body: f32,
-    /// Caption/small text font size.
+    /// Caption/small text font size: `sz(12)`.
     pub caption: f32,
     /// Font for titles.
     pub title_font: Font,
@@ -417,36 +345,43 @@ pub struct UiTypography {
     pub body_font: Font,
     /// Font for captions.
     pub caption_font: Font,
+    /// Font for Nerd Font glyphs, which OpenDyslexic does not carry: always
+    /// JetBrains Mono, whatever the dyslexia toggle says.
+    pub glyph_font: Font,
+    /// What colony-ui's own widgets take.
+    kit: colony_ui::Typography,
 }
 
-impl Default for UiTypography {
-    fn default() -> Self {
+impl UiTypography {
+    /// The user's current text settings.
+    ///
+    /// Reads colony-ui's globals, which `StandardPreferences::apply` sets at
+    /// startup and after every change: call it once per view.
+    pub fn current() -> Self {
+        Self::from_kit(colony_ui::Typography::current())
+    }
+
+    fn from_kit(kit: colony_ui::Typography) -> Self {
         Self {
-            title: 16.0,
-            body: 14.0,
-            caption: 12.0,
-            title_font: Font {
-                family: Family::Name(FONT_NAME),
-                weight: Weight::Semibold,
-                ..Font::DEFAULT
-            },
-            body_font: Font {
-                family: Family::Name(FONT_NAME),
-                weight: Weight::Normal,
-                ..Font::DEFAULT
-            },
-            caption_font: Font {
-                family: Family::Name(FONT_NAME),
-                weight: Weight::Light,
-                style: Style::Italic,
-                ..Font::DEFAULT
-            },
+            title: kit.sz(16),
+            body: kit.sz(14),
+            caption: kit.sz(12),
+            title_font: kit.bold,
+            body_font: kit.regular,
+            caption_font: kit.regular,
+            glyph_font: colony_ui::fonts::glyph_font(),
+            kit,
         }
+    }
+
+    /// What colony-ui's shared widgets expect.
+    pub fn colony(&self) -> colony_ui::Typography {
+        self.kit
     }
 }
 
 /// Complete design token set for the UI.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct UiTokens {
     /// Color palette.
     pub colors: UiColors,
@@ -457,26 +392,26 @@ pub struct UiTokens {
 }
 
 impl UiTokens {
-    /// Returns tokens for a specific theme choice.
+    /// Returns tokens for the user's preferences.
     ///
-    /// Pure: `resolve` and `with_high_contrast` both are, and this runs once per
-    /// rebuild of the widget tree.
-    pub fn for_theme(theme: &crate::core::ThemeChoice) -> Self {
-        let (family, variant) = theme.keys();
-        let palette = colony_ui::resolve(family, variant);
-        let palette = if theme.high_contrast {
+    /// The colours are pure: `resolve` and `with_high_contrast` both are, and
+    /// this runs once per rebuild of the widget tree. The typography reads
+    /// colony-ui's text globals, as every Colony program's view does.
+    pub fn for_preferences(preferences: &StandardPreferences) -> Self {
+        let palette =
+            colony_ui::resolve(&preferences.selected_theme, &preferences.selected_variant);
+        let palette = if preferences.high_contrast {
             palette.with_high_contrast()
         } else {
             palette
         };
-        let accent = theme
-            .accent
-            .as_deref()
-            .and_then(colony_ui::accent_key_to_color)
-            .unwrap_or(palette.accent_blue);
+        // `None` while auto accent is on or no accent was picked: the theme's
+        // own accent then applies.
+        let accent = preferences.accent_override().unwrap_or(palette.accent_blue);
         Self {
             colors: UiColors::from_colony(palette, accent),
-            ..Default::default()
+            spacing: UiSpacing::default(),
+            typography: UiTypography::current(),
         }
     }
 }
@@ -491,10 +426,26 @@ pub mod timing {
     pub const DOUBLE_CLICK_THRESHOLD: Duration = Duration::from_millis(500);
     /// Interval for file watcher polling.
     pub const WATCHER_POLL_INTERVAL: Duration = Duration::from_millis(750);
+    /// How long the "Theme applied." toast stays before it hides itself.
+    pub const TOAST_DURATION: Duration = Duration::from_secs(4);
 }
 
 /// UI layout constants.
+///
+/// Heights that hold a line of text are written at a text scale of 1.0 and go
+/// through [`layout::scaled`] where they are used, so they grow with the two
+/// size preferences instead of clipping 1.68x text in a row drawn for 1.0x.
 pub mod layout {
+    /// `height` at the user's text scale.
+    pub fn scaled(height: f32) -> f32 {
+        scaled_by(height, colony_ui::font_scale())
+    }
+
+    /// `height` at `scale`, rounded to a whole pixel like `sz()`.
+    pub fn scaled_by(height: f32, scale: f32) -> f32 {
+        (height * scale).round()
+    }
+
     /// Maximum depth for tree view expansion.
     pub const TREE_MAX_DEPTH: usize = 4;
     /// Maximum children to show per tree node.
@@ -621,68 +572,75 @@ mod colony_palette_tests {
     /// of their own: Colony's fallback with its own accent.
     #[test]
     fn the_default_colours_are_the_default_theme() {
-        let resolved = super::UiTokens::for_theme(&crate::core::ThemeChoice::default()).colors;
+        let resolved = super::UiTokens::for_preferences(
+            &colony_ui::preferences::StandardPreferences::default(),
+        )
+        .colors;
         assert_eq!(UiColors::default(), resolved);
+    }
+
+    /// With auto accent on, the picked accent is remembered but the theme's
+    /// own applies.
+    #[test]
+    fn auto_accent_hands_the_accent_back_to_the_theme() {
+        let mut preferences = colony_ui::preferences::StandardPreferences {
+            selected_accent: Some("violet".to_string()),
+            ..Default::default()
+        };
+        let picked = super::UiTokens::for_preferences(&preferences).colors.accent;
+        preferences.auto_accent = true;
+        let auto = super::UiTokens::for_preferences(&preferences).colors.accent;
+
+        assert_ne!(picked, auto);
+        assert_eq!(auto, UiColors::default().accent);
     }
 }
 
 #[cfg(test)]
-mod colony_globals_tests {
-    use crate::core::ThemeChoice;
+mod typography_tests {
+    use super::UiTypography;
 
-    /// The shared widgets accept no palette: they read `active_palette()`.
-    /// Without synchronisation the theme picker showed in the fallback palette,
-    /// so in a theme the user had just left.
+    fn at(scale: f32) -> UiTypography {
+        UiTypography::from_kit(colony_ui::Typography {
+            scale,
+            ..colony_ui::Typography::default()
+        })
+    }
+
+    /// Both size preferences multiply, from 0.85 x 0.85 to 1.2 x 1.4. Every
+    /// role is a whole pixel size and the three stay distinct and ordered at
+    /// both ends, so a caption never grows past the body text it annotates.
     #[test]
-    fn syncing_makes_the_shared_widgets_follow_the_choice() {
-        let choice = ThemeChoice {
-            family: "solarized".to_string(),
-            variant: "light".to_string(),
-            high_contrast: false,
-            accent: None,
-        };
-        super::sync_colony_globals(&choice);
+    fn the_roles_stay_ordered_at_the_extreme_scales() {
+        for (scale, title, body, caption) in [(0.7225, 12.0, 10.0, 9.0), (1.68, 27.0, 24.0, 20.0)] {
+            let typography = at(scale);
+            assert_eq!(
+                (typography.title, typography.body, typography.caption),
+                (title, body, caption),
+                "at {scale}"
+            );
+        }
+    }
+
+    /// A compact list row still holds its text at the largest scale, and a
+    /// normal one at the smallest still shows it whole.
+    #[test]
+    fn rows_grow_with_the_text_they_hold() {
+        for scale in [0.7225, 1.0, 1.68] {
+            let body = at(scale).body;
+            for row in [22.0, 32.0] {
+                let height = super::layout::scaled_by(row, scale);
+                assert!(height > body, "{row} px row at {scale}: {height} <= {body}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_default_scale_keeps_the_historical_sizes() {
+        let typography = at(1.0);
         assert_eq!(
-            colony_ui::active_palette().bg_card,
-            colony_ui::resolve("solarized", "light").bg_card,
-            "the global palette must follow the choice"
+            (typography.title, typography.body, typography.caption),
+            (16.0, 14.0, 12.0)
         );
-    }
-
-    /// The contrast boost must reach the shared widgets too, not only the
-    /// colours Xion computes for itself.
-    #[test]
-    fn high_contrast_reaches_the_shared_widgets() {
-        let mut choice = ThemeChoice {
-            family: "gruvbox".to_string(),
-            variant: "dark".to_string(),
-            high_contrast: false,
-            accent: None,
-        };
-        super::sync_colony_globals(&choice);
-        let plain = colony_ui::active_palette().text_primary;
-
-        choice.high_contrast = true;
-        super::sync_colony_globals(&choice);
-        let boosted = colony_ui::active_palette().text_primary;
-
-        assert_ne!(plain, boosted);
-        super::sync_colony_globals(&ThemeChoice::default());
-    }
-
-    /// A chosen accent replaces the theme's; `None` gives it back to the theme.
-    #[test]
-    fn the_chosen_accent_overrides_the_theme_one() {
-        let mut choice = ThemeChoice::default();
-        super::sync_colony_globals(&choice);
-        let theme_accent = colony_ui::effective_accent();
-
-        choice.accent = Some("violet".to_string());
-        super::sync_colony_globals(&choice);
-        assert_ne!(colony_ui::effective_accent(), theme_accent);
-
-        choice.accent = None;
-        super::sync_colony_globals(&choice);
-        assert_eq!(colony_ui::effective_accent(), theme_accent);
     }
 }

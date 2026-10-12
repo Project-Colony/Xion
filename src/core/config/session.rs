@@ -154,7 +154,13 @@ mod tests {
             "warnings: {:?}",
             loaded.warnings
         );
-        assert_eq!(loaded.config.theme.keys(), ("nord", "dark"));
+        assert_eq!(
+            (
+                loaded.config.standard.selected_theme.as_str(),
+                loaded.config.standard.selected_variant.as_str()
+            ),
+            ("nord", "dark")
+        );
 
         let expected = Session {
             active_tab_index: 1,

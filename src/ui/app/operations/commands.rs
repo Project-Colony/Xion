@@ -183,9 +183,9 @@ impl XionApp {
                 .iter()
                 .next()
                 .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "—".to_string())
+                .unwrap_or_else(|| "-".to_string())
         } else if selection.selected.is_empty() {
-            "—".to_string()
+            "-".to_string()
         } else {
             tn("items", selection.selected.len(), &[])
         };

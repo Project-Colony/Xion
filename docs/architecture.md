@@ -154,14 +154,38 @@ section dédiée plus bas.
   `media.rs`, `paging.rs`, `permissions.rs`, `shell.rs`, `windowing.rs` — et en
   quatre sous-modules : `update/` (9 fichiers), `view/` (21), `operations/` (8)
   et `navigation/` (5).
-- Les couleurs ne sont plus écrites dans Xion. `UiTokens::for_theme`
-  (`src/ui/theme.rs`) résout un couple famille/variante dans le catalogue
-  partagé de `colony-ui` — 25 familles, 57 variantes, 8 accents — et
-  `UiColors::from_colony` en dérive les dix-neuf surfaces que Xion nomme. La
-  palette arrive en argument plutôt que par `active_palette()` : `for_theme`
-  tourne à chaque reconstruction de l'arbre de widgets, donc une lecture d'état
-  global coûterait un verrou par image. Couvert par `colony_palette_tests`
-  (`src/ui/theme.rs`), qui vérifie la lisibilité sur **tout** le catalogue.
+- Colours are not written in Xion. `UiTokens::for_preferences`
+  (`src/ui/theme.rs`) resolves the theme family and variant of the user's
+  `StandardPreferences` in colony-ui's shared catalogue (25 families, 57
+  variants, 8 accents), and `UiColors::from_colony` derives the nineteen
+  surfaces Xion names. The palette is resolved purely, as an argument rather
+  than through `active_palette()`, because it runs on every rebuild of the
+  widget tree. `colony_palette_tests` (`src/ui/theme.rs`) checks legibility
+  across the **whole** catalogue.
+- Text goes through `UiTypography` (`src/ui/theme.rs`): three roles, title
+  `sz(16)` Bold, body `sz(14)` and caption `sz(12)` Regular, built from
+  `colony_ui::Typography::current()`. The two size preferences therefore
+  multiply into every text, and the dyslexia font replaces the interface font
+  everywhere at once. Nerd Font glyphs and the terminal use `glyph_font`, which
+  stays JetBrains Mono. The fonts themselves are embedded by colony-ui
+  (`colony_ui::fonts::BYTES`, registered in `ui::app::run`); Xion ships no font
+  file.
+- The shared Appearance and Accessibility settings are colony-ui's
+  `StandardPreferences`, stored as `AppConfig::standard` and flattened into
+  `config.toml`. `apply()` puts them into effect at startup
+  (`src/ui/app/construction.rs`), and every `UiMessage::Preference(change)`
+  goes through `XionApp::apply_preference` (`src/ui/app/update/tools.rs`),
+  which records it, applies it, saves the file and, for a theme, raises the
+  "Theme applied." toast.
+- The preferences page (`src/ui/app/view/preferences.rs`) is colony-ui's
+  `preferences_page` with its category list: General, Appearance and
+  Accessibility from `PreferencesView`, then Xion's own Files and About. It is
+  opened and closed by the identity button at the top-left of the header
+  (`src/ui/app/view/header.rs`).
+- Motion: `XionApp::update` settles both panel slides when
+  `colony_ui::effects_enabled()` is false, and `subscription`
+  (`src/ui/app/windowing.rs`) then starts neither the slide ticks nor the
+  animated GIF tick, so a GIF shows its first frame.
 
 ## Flux de données
 
@@ -235,8 +259,8 @@ n'est pas tenue.
       interrogé `src/ui/app/state.rs`.
 - [x] Découper `view/mod.rs` et `update.rs` — `src/ui/app/view/` (21 fichiers)
       et `src/ui/app/update/` (9 fichiers).
-- [x] Thème issu du catalogue partagé `colony-ui` — `UiTokens::for_theme`,
-      `src/ui/theme.rs`.
+- [x] Theme, typography, fonts and preferences from colony-ui:
+      `UiTokens::for_preferences` and `UiTypography`, `src/ui/theme.rs`.
 - [ ] Invalidation fine des caches sur évènement : le watcher déclenche
       aujourd'hui un relistage complet du dossier, pas une mise à jour ciblée.
 - [ ] Sortir les appels `std::fs` de `src/ui/` vers `filesystem/`.

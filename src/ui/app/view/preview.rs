@@ -23,7 +23,7 @@ use super::widgets::body_text;
 use super::widgets::caption_text;
 use super::widgets::chrome_style;
 use super::widgets::glyph_text;
-use super::widgets::title_text;
+use super::widgets::icon_text;
 
 impl XionApp {
     /// `display_entries` is resolved once in `view()` and passed in rather than
@@ -81,10 +81,14 @@ impl XionApp {
                                         .height(Length::Fixed(preview_media_size))
                                         .into()
                                 })
-                                .unwrap_or_else(|| title_text(typography, icons::LOADING).into())
+                                .unwrap_or_else(|| {
+                                    icon_text(typography, icons::LOADING)
+                                        .size(typography.title)
+                                        .into()
+                                })
                         }
                     }
-                    _ => title_text(typography, icon).into(),
+                    _ => icon_text(typography, icon).size(typography.title).into(),
                 };
 
                 let metadata = column![

@@ -35,7 +35,7 @@ impl XionApp {
             spacing,
             typography,
         } = ctx;
-        let toolbar_button = |label: String| widgets::toolbar_button(ctx, label);
+        let toolbar_icon = |glyph: &'static str| widgets::toolbar_icon(ctx, glyph);
 
         let address_bar: Element<'_, UiMessage> = if self.address_editing {
             // Editable text input mode
@@ -174,8 +174,8 @@ impl XionApp {
         };
 
         let address_suggestions = self.address_suggestions();
-        let history_button = toolbar_button("▼".to_string())
-            .on_press(UiMessage::ToggleHistoryMenu(!self.menus.history_open));
+        let history_button =
+            toolbar_icon("▼").on_press(UiMessage::ToggleHistoryMenu(!self.menus.history_open));
 
         let history_menu: Option<Element<'_, UiMessage>> =
             if self.menus.history_open && !address_suggestions.is_empty() {

@@ -532,7 +532,23 @@ fn load_from_path(path: &Path) -> Result<AppConfigLoad, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::config::types::{Language, ListConfig, SortKeyConfig, ThemeChoice};
+    use crate::core::config::types::{Language, ListConfig, SortKeyConfig};
+    use colony_ui::preferences::StandardPreferences;
+
+    fn theme(family: &str, variant: &str) -> StandardPreferences {
+        StandardPreferences {
+            selected_theme: family.to_string(),
+            selected_variant: variant.to_string(),
+            ..StandardPreferences::default()
+        }
+    }
+
+    fn keys(config: &AppConfig) -> (&str, &str) {
+        (
+            &config.standard.selected_theme,
+            &config.standard.selected_variant,
+        )
+    }
 
     /// A language this version does not know (a typo, a newer file) keeps the
     /// session's language and says so, instead of failing the whole load.
@@ -803,12 +819,7 @@ mod tests {
 
         let config = AppConfig {
             start_path: dir.path().to_path_buf(),
-            theme: ThemeChoice {
-                family: "nord".to_string(),
-                variant: "dark".to_string(),
-                high_contrast: false,
-                accent: None,
-            },
+            standard: theme("nord", "dark"),
             dark_mode: true,
             list: ListConfig {
                 sort_key: SortKeyConfig::Size,
@@ -825,7 +836,7 @@ mod tests {
             "warnings: {:?}",
             loaded.warnings
         );
-        assert_eq!(loaded.config.theme.keys(), ("nord", "dark"));
+        assert_eq!(keys(&loaded.config), ("nord", "dark"));
         assert_eq!(loaded.config.list.sort_key, SortKeyConfig::Size);
         assert_eq!(loaded.config.user_favorites, vec![dir.path().to_path_buf()]);
     }
@@ -855,12 +866,7 @@ mod tests {
         let manager = manager_in(dir.path());
 
         let first = AppConfig {
-            theme: ThemeChoice {
-                family: "nord".to_string(),
-                variant: "dark".to_string(),
-                high_contrast: false,
-                accent: None,
-            },
+            standard: theme("nord", "dark"),
             ..AppConfig::default()
         };
         manager.save(&first);
@@ -868,12 +874,7 @@ mod tests {
         assert!(!manager.backup_path().exists());
 
         let second = AppConfig {
-            theme: ThemeChoice {
-                family: "gruvbox".to_string(),
-                variant: "light".to_string(),
-                high_contrast: false,
-                accent: None,
-            },
+            standard: theme("gruvbox", "light"),
             ..AppConfig::default()
         };
         manager.save(&second);
@@ -883,7 +884,7 @@ mod tests {
             backup.contains("nord"),
             "the .bak must hold the previous version"
         );
-        assert_eq!(manager.load().config.theme.keys(), ("gruvbox", "light"));
+        assert_eq!(keys(&manager.load().config), ("gruvbox", "light"));
     }
 
     #[test]
@@ -892,12 +893,7 @@ mod tests {
         let manager = manager_in(dir.path());
 
         let good = AppConfig {
-            theme: ThemeChoice {
-                family: "solarized".to_string(),
-                variant: "dark".to_string(),
-                high_contrast: false,
-                accent: None,
-            },
+            standard: theme("solarized", "dark"),
             ..AppConfig::default()
         };
         manager.save(&good);
@@ -907,7 +903,7 @@ mod tests {
         fs::write(manager.path(), "version = 1\nthis is not toml <<<").expect("corrupt");
         let loaded = manager.load();
 
-        assert_eq!(loaded.config.theme.keys(), ("solarized", "dark"));
+        assert_eq!(keys(&loaded.config), ("solarized", "dark"));
         assert!(
             !manager.path().exists(),
             "the faulty file must be moved away"
@@ -991,7 +987,7 @@ mod tests {
         // Legacy V1 file carrying only the boolean.
         fs::write(manager.path(), "version = 1\ndark_mode = true\n").expect("write v1");
         let loaded = manager.load();
-        assert_eq!(loaded.config.theme.keys(), ("gruvbox", "dark"));
+        assert_eq!(keys(&loaded.config), ("gruvbox", "dark"));
         assert!(loaded.config.dark_mode);
     }
 
@@ -1006,7 +1002,7 @@ mod tests {
         .expect("write v1");
 
         let loaded = manager.load();
-        assert_eq!(loaded.config.theme.keys(), ("nord", "dark"));
+        assert_eq!(keys(&loaded.config), ("nord", "dark"));
         assert!(loaded.config.dark_mode, "dark_mode must follow the theme");
         assert!(
             loaded
@@ -1014,6 +1010,79 @@ mod tests {
                 .iter()
                 .any(|w| w.to_string().contains("dark_mode"))
         );
+    }
+
+    /// The keys written before colony-ui's `StandardPreferences` carry over,
+    /// and the next save writes only the new ones.
+    #[test]
+    fn the_previous_theme_keys_carry_over_and_are_not_written_again() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let manager = manager_in(dir.path());
+        fs::write(
+            manager.path(),
+            "version = 1\ndark_mode = true\ntheme_family = \"nord\"\n\
+             theme_variant = \"dark\"\nhigh_contrast = true\naccent = \"violet\"\n",
+        )
+        .expect("write v1");
+
+        let loaded = manager.load();
+        assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+        let standard = &loaded.config.standard;
+        assert_eq!(keys(&loaded.config), ("nord", "dark"));
+        assert!(standard.high_contrast);
+        assert_eq!(standard.selected_accent.as_deref(), Some("violet"));
+
+        manager.save(&loaded.config);
+        let written = fs::read_to_string(manager.path()).expect("read back");
+        for old in ["theme_family", "theme_variant", "dark_mode", "\naccent"] {
+            assert!(!written.contains(old), "{old} written again:\n{written}");
+        }
+        assert!(written.contains("selected_theme = \"nord\""), "{written}");
+        assert_eq!(manager.load().config, loaded.config);
+    }
+
+    /// A pre-Colony file with only `dark_mode = false` was a light theme.
+    #[test]
+    fn a_file_with_only_dark_mode_false_starts_light() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let manager = manager_in(dir.path());
+        fs::write(manager.path(), "version = 1\ndark_mode = false\n").expect("write v1");
+        assert_eq!(keys(&manager.load().config), ("gruvbox", "light"));
+    }
+
+    /// The new settings round-trip, and a bad value in one of them costs only
+    /// that value, not the file.
+    #[test]
+    fn the_shared_preferences_round_trip_and_tolerate_a_bad_value() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let manager = manager_in(dir.path());
+        let config = AppConfig {
+            standard: StandardPreferences {
+                auto_accent: true,
+                selected_accent: Some("amber".to_string()),
+                font_size: colony_ui::FontSize::Small,
+                text_size_a11y: colony_ui::TextSize::XLarge,
+                animations: false,
+                dyslexia_font: true,
+                reduce_motion: true,
+                ..theme("solarized", "light")
+            },
+            compact_mode: true,
+            ..AppConfig::default()
+        };
+        manager.save(&config);
+        assert_eq!(manager.load().config.standard, config.standard);
+
+        fs::write(
+            manager.path(),
+            "version = 1\nfont_size = \"enormous\"\nreduce_motion = true\n\
+             compact_mode = true\n",
+        )
+        .expect("write v1");
+        let loaded = manager.load().config;
+        assert_eq!(loaded.standard.font_size, colony_ui::FontSize::Default);
+        assert!(loaded.standard.reduce_motion);
+        assert!(loaded.compact_mode, "Xion's own keys survive");
     }
 
     #[test]

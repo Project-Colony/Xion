@@ -99,11 +99,7 @@ impl XionApp {
                         // the shell..." and kept it forever: a message that
                         // lies, since nothing is starting.
                         if let Some(tab) = self.terminal.tabs.get_mut(index) {
-                            tab.notice = Some(
-                                "L'interpréteur s'est arrêté. Repliez et rouvrez le panneau \
-                                 pour en relancer un."
-                                    .to_string(),
-                            );
+                            tab.notice = Some(t("terminal_shell_exited").to_string());
                         }
                     }
                 }
@@ -276,15 +272,16 @@ impl XionApp {
                 }
             };
 
-        // Xion's font is already monospaced (JetBrains Mono Nerd Font), so the
-        // terminal inherits it, and the Nerd Font glyphs modern prompts draw
-        // render without a fallback font.
-        let tokens = crate::ui::theme::UiTokens::for_theme(&self.state.config.theme);
+        // JetBrains Mono Nerd Font, at the interface's body size: monospaced,
+        // and carrying the Nerd Font glyphs modern prompts draw. The glyph
+        // font rather than the body font, which turns into OpenDyslexic when
+        // the dyslexia font is on and would break the grid.
+        let tokens = crate::ui::theme::UiTokens::for_preferences(&self.state.config.standard);
 
         let settings = iced_term::settings::Settings {
             font: iced_term::settings::FontSettings {
                 size: tokens.typography.body,
-                font_type: tokens.typography.body_font,
+                font_type: tokens.typography.glyph_font,
                 ..Default::default()
             },
             theme: iced_term::settings::ThemeSettings::new(Box::new(terminal_palette(

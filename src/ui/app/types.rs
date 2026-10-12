@@ -889,7 +889,14 @@ pub(super) struct PreferencesState {
     /// The convention wants it that way ("expanded state is per-section and
     /// remembered while the page is open") and no more: the state dies with
     /// the window, it has no place in the configuration file.
-    pub(super) expanded: std::collections::HashSet<&'static str>,
+    pub(super) expanded: std::collections::HashSet<String>,
+    /// The id of the "Theme applied." toast on screen, if one is.
+    ///
+    /// Each theme change raises a new id, so the timer of an older toast
+    /// cannot hide a newer one.
+    pub(super) toast: Option<u64>,
+    /// The last toast id handed out.
+    pub(super) toast_counter: u64,
 }
 
 #[derive(Debug, Default)]

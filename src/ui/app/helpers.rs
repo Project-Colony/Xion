@@ -71,7 +71,7 @@ pub fn operation_label(kind: FileOperationKind) -> &'static str {
 
 pub fn format_entry_size(entry: &FsEntry) -> String {
     match entry.entry_type {
-        FsEntryType::Directory => "—".to_string(),
+        FsEntryType::Directory => "-".to_string(),
         _ => format_bytes(entry.metadata.size),
     }
 }
@@ -103,7 +103,7 @@ pub fn format_modified(modified: Option<std::time::SystemTime>) -> String {
             let datetime: DateTime<Local> = time.into();
             datetime.format(t("date_time_format")).to_string()
         })
-        .unwrap_or_else(|| "—".to_string())
+        .unwrap_or_else(|| "-".to_string())
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
@@ -677,7 +677,7 @@ mod tests {
 
     #[test]
     fn format_modified_none() {
-        assert_eq!(format_modified(None), "—");
+        assert_eq!(format_modified(None), "-");
     }
 
     #[test]

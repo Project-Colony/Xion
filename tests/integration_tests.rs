@@ -306,8 +306,7 @@ mod services_integration {
 mod config_integration {
     use super::*;
     use xion::core::{
-        ConfigSource, ListConfig, PagingConfig, SortKeyConfig, SortOrderConfig, ThemeChoice,
-        ViewConfig,
+        ConfigSource, ListConfig, PagingConfig, SortKeyConfig, SortOrderConfig, ViewConfig,
     };
 
     #[test]
@@ -380,11 +379,17 @@ mod config_integration {
         let defaults = AppConfig::default();
         let saved = AppConfig {
             dark_mode: true,
-            theme: ThemeChoice {
-                family: "nord".to_string(),
-                variant: "dark".to_string(),
-                high_contrast: false,
-                accent: None,
+            standard: colony_ui::preferences::StandardPreferences {
+                selected_theme: "nord".to_string(),
+                selected_variant: "dark".to_string(),
+                selected_accent: Some("violet".to_string()),
+                auto_accent: true,
+                font_size: colony_ui::FontSize::Large,
+                animations: false,
+                high_contrast: true,
+                dyslexia_font: true,
+                reduce_motion: true,
+                text_size_a11y: colony_ui::TextSize::XLarge,
             },
             compact_mode: true,
             respect_gitignore: true,
@@ -413,7 +418,7 @@ mod config_integration {
         assert!(matches!(load.source, ConfigSource::File(_)));
         assert!(
             load.warnings.is_empty(),
-            "relecture bruyante : {:?}",
+            "the reload raised warnings: {:?}",
             load.warnings
                 .iter()
                 .map(ToString::to_string)
@@ -654,10 +659,14 @@ mod config_defaults {
     #[test]
     fn the_default_theme_follows_the_ecosystem_fallback() {
         let config = AppConfig::default();
-        assert_eq!(config.theme.family, "gruvbox");
-        assert_eq!(config.theme.variant, "dark");
-        assert!(!config.theme.high_contrast);
-        assert_eq!(config.theme.accent, None);
+        assert_eq!(config.standard.selected_theme, "gruvbox");
+        assert_eq!(config.standard.selected_variant, "dark");
+        assert!(!config.standard.high_contrast);
+        assert_eq!(config.standard.selected_accent, None);
+        assert!(
+            !config.standard.auto_accent,
+            "auto accent is off by default"
+        );
     }
 
     #[test]
@@ -749,20 +758,29 @@ mod ui_update {
     #[test]
     fn toggle_dark_mode_flips_the_variant_of_the_current_family() {
         let mut app = XionApp::new_for_test();
-        assert_eq!(app.state_for_test().config.theme.variant, "dark");
+        assert_eq!(
+            app.state_for_test().config.standard.selected_variant,
+            "dark"
+        );
         assert!(app.state_for_test().config.dark_mode);
 
         let _ = app.update_for_test(UiMessage::ToggleDarkMode);
-        assert_eq!(app.state_for_test().config.theme.variant, "light");
         assert_eq!(
-            app.state_for_test().config.theme.family,
+            app.state_for_test().config.standard.selected_variant,
+            "light"
+        );
+        assert_eq!(
+            app.state_for_test().config.standard.selected_theme,
             "gruvbox",
             "the family must not change"
         );
         assert!(!app.state_for_test().config.dark_mode);
 
         let _ = app.update_for_test(UiMessage::ToggleDarkMode);
-        assert_eq!(app.state_for_test().config.theme.variant, "dark");
+        assert_eq!(
+            app.state_for_test().config.standard.selected_variant,
+            "dark"
+        );
         assert!(app.state_for_test().config.dark_mode);
     }
 

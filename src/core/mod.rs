@@ -16,8 +16,7 @@ pub use config::{
     AppConfig, AppConfigLoad, CacheConfig, ConfigManager, ConfigSource, ConfigWarning,
     EntryFilterConfig, FilesystemConfig, KeyChord, KeyInput, KeyKind, Language, ListConfig,
     NamedKey, PagingConfig, Session, SessionStore, ShellConfig, ShortcutBindings, SortKeyConfig,
-    SortOrderConfig, TabPersistConfig, ThemeChoice, ViewColumn, ViewConfig, ViewMode,
-    config_warnings_summary,
+    SortOrderConfig, TabPersistConfig, ViewColumn, ViewConfig, ViewMode, config_warnings_summary,
 };
 
 pub type AppResult<T> = Result<T, XionError>;

@@ -86,7 +86,7 @@ pub mod app;
 pub mod theme;
 
 pub use app::{XionApp, run};
-pub use theme::{UiColors, UiSpacing, UiTokens, UiTypography, fonts, icons, layout, timing};
+pub use theme::{UiColors, UiSpacing, UiTokens, UiTypography, icons, layout, timing};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneKind {
@@ -364,8 +364,6 @@ pub enum UiMessage {
         hash: String,
     },
     CloseProperties,
-    // Feature 4: Color themes
-    SetTheme(crate::core::ThemeChoice),
     // Feature 5: Bulk rename
     OpenBulkRename,
     BulkRenameFindChanged(String),
@@ -463,12 +461,11 @@ pub enum UiMessage {
     ToggleShowHidden,
     /// Group folders before files, or sort everything together.
     ToggleDirectoriesFirst,
-    /// Choose a family and a variant from the Colony catalogue.
-    SetThemeVariant(&'static str, &'static str),
-    /// Choose an accent; the same key twice goes back to "the theme's".
-    SetAccent(&'static str),
-    /// Raise the contrast, on any palette.
-    ToggleHighContrast,
+    /// A change from the shared Appearance and Accessibility settings: theme,
+    /// accent, text sizes, effects, contrast, dyslexia font or motion.
+    Preference(colony_ui::preferences::Change),
+    /// Hide the "Theme applied." toast, if it is still the one with this id.
+    DismissToast(u64),
     /// Choose the interface language.
     SetLanguage(crate::core::Language),
     ColumnResizeStart(&'static str),

@@ -57,7 +57,13 @@ pub(super) struct ViewCtx {
 /// calibrated on the old three-strip header. This one has only one strip
 /// left, and the menu floated fifty pixels below the button it belongs to. Two
 /// numbers for the same thing drift apart as soon as the thing changes.
-pub(super) const HEADER_DROPDOWN_TOP: f32 = 54.0;
+///
+/// The paddings are fixed; the button grows with the text it holds.
+pub(super) fn header_dropdown_top() -> f32 {
+    const PADDINGS: f32 = 24.0;
+    const TOOLBAR_BUTTON: f32 = 30.0;
+    PADDINGS + crate::ui::theme::layout::scaled(TOOLBAR_BUTTON)
+}
 
 /// A solid fill with the standard one-pixel outline and a rounded corner.
 ///
@@ -174,8 +180,9 @@ pub(super) fn raised_button_style(
 /// and its font separately, which meant the pairing was a convention rather
 /// than a rule, and reading a call site told you two numbers instead of a role.
 ///
-/// `glyph_text` is not a mistake: the ✕, +, ⛔ and Nerd Font marks are drawn at
-/// caption size in the body font, deliberately.
+/// `glyph_text` draws the ✕, +, ⛔ and Nerd Font marks at caption size in the
+/// Nerd Font itself, which keeps them when the dyslexia font replaces the body
+/// font: OpenDyslexic carries none of them.
 pub(super) fn body_text<'a>(
     typography: UiTypography,
     content: impl text::IntoFragment<'a>,
@@ -200,7 +207,19 @@ pub(super) fn glyph_text<'a>(
 ) -> Text<'a> {
     text(content)
         .size(typography.caption)
-        .font(typography.body_font)
+        .font(typography.glyph_font)
+}
+
+/// A Nerd Font icon at body size, set in the Nerd Font whatever the dyslexia
+/// toggle says. Next to a label it is a separate text: a glyph and a word are
+/// two texts in two fonts.
+pub(super) fn icon_text<'a>(
+    typography: UiTypography,
+    content: impl text::IntoFragment<'a>,
+) -> Text<'a> {
+    text(content)
+        .size(typography.body)
+        .font(typography.glyph_font)
 }
 
 pub(super) fn title_text<'a>(
@@ -309,16 +328,21 @@ pub(super) fn toggle_button_style(
     }
 }
 
-/// The toolbar button used by the navigation arrows, the command bar and the
-/// rename prompt.
+/// The toolbar button for a word, such as the rename prompt's Confirm.
 pub(super) fn toolbar_button<'a>(ctx: ViewCtx, label: String) -> Button<'a, UiMessage> {
-    button(
-        text(label)
-            .size(ctx.typography.body)
-            .font(ctx.typography.body_font),
-    )
-    .padding([ctx.spacing.xs, ctx.spacing.sm])
-    .style(raised_button_style(ctx.colors, true))
+    toolbar_face(ctx, body_text(ctx.typography, label))
+}
+
+/// The toolbar button for a glyph: the navigation arrows, `⋯`, the address
+/// history.
+pub(super) fn toolbar_icon<'a>(ctx: ViewCtx, glyph: &'a str) -> Button<'a, UiMessage> {
+    toolbar_face(ctx, icon_text(ctx.typography, glyph))
+}
+
+fn toolbar_face<'a>(ctx: ViewCtx, face: Text<'a>) -> Button<'a, UiMessage> {
+    button(face)
+        .padding([ctx.spacing.xs, ctx.spacing.sm])
+        .style(raised_button_style(ctx.colors, true))
 }
 
 /// Which tooltip look a call site wants.

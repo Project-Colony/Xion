@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use colony_ui::preferences::StandardPreferences;
 use serde::{Deserialize, Serialize};
 
 use super::shortcuts::ShortcutBindings;
@@ -70,51 +71,7 @@ impl ViewMode {
     }
 }
 
-// ── Theme / shell enums ───────────────────────────────────────────────────────
-
-/// What the user chose in the appearance.
-///
-/// Xion used to carry five hand-written palettes behind an `enum`. They became
-/// a selection in `colony-ui`'s shared catalogue (twenty-five families,
-/// fifty-seven variants, eight accents), so the choice can no longer be a
-/// closed set of five names.
-///
-/// The keys are strings and not a closed type, on purpose: the foundation adds
-/// families without Xion being recompiled, and `colony_ui::resolve` falls back
-/// to its fallback palette for any unknown pair, so a family removed upstream
-/// degrades instead of preventing startup.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ThemeChoice {
-    /// Family key in the Colony catalogue: `gruvbox`, `nord`, `catppuccin`...
-    pub family: String,
-    /// Variant key within that family: `dark`, `light`, `mocha`...
-    pub variant: String,
-    /// Raise the contrast. Colony makes it a modifier for any palette, not a
-    /// separate theme.
-    pub high_contrast: bool,
-    /// Accent chosen by the user; `None` means "the theme's".
-    pub accent: Option<String>,
-}
-
-impl Default for ThemeChoice {
-    fn default() -> Self {
-        // The catalogue's fallback family, so Xion starts on what the ecosystem
-        // considers its default rather than on a local taste.
-        Self {
-            family: "gruvbox".to_string(),
-            variant: "dark".to_string(),
-            high_contrast: false,
-            accent: None,
-        }
-    }
-}
-
-impl ThemeChoice {
-    /// The pair `colony_ui::resolve` expects.
-    pub fn keys(&self) -> (&str, &str) {
-        (&self.family, &self.variant)
-    }
-}
+// ── Language / shell enums ────────────────────────────────────────────────────
 
 /// The interface language the user picked.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -280,8 +237,12 @@ pub struct AppConfig {
     pub view: ViewConfig,
     pub paging: PagingConfig,
     pub shortcuts: ShortcutBindings,
+    /// Derived from the theme, never entered separately.
     pub dark_mode: bool,
-    pub theme: ThemeChoice,
+    /// Theme, accent, text sizes, high contrast, dyslexia font and motion: the
+    /// Appearance and Accessibility settings every Colony program shares,
+    /// stored flat at the top of `config.toml` under colony-ui's field names.
+    pub standard: StandardPreferences,
     pub terminal_shell: ShellConfig,
     pub language: Language,
     pub respect_gitignore: bool,
@@ -312,8 +273,8 @@ impl Default for AppConfig {
             // Derived from the theme, never entered separately: the two drifted
             // apart in the past, and a light syntax highlighter ran on a dark
             // interface until the next theme change.
-            dark_mode: crate::ui::theme::resolves_dark(&ThemeChoice::default()),
-            theme: ThemeChoice::default(),
+            dark_mode: crate::ui::theme::resolves_dark(&StandardPreferences::default()),
+            standard: StandardPreferences::default(),
             terminal_shell: ShellConfig::default(),
             language: Language::default(),
             respect_gitignore: false,
@@ -387,15 +348,22 @@ pub struct AppConfigLoad {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, ThemeChoice};
+    use super::AppConfig;
 
-    /// The default follows the Colony catalogue's fallback rather than a local taste.
+    /// The default follows the Colony catalogue's fallback rather than a local
+    /// taste.
     #[test]
-    fn the_default_choice_is_the_ecosystem_fallback() {
-        let choice = ThemeChoice::default();
-        assert_eq!(choice.keys(), ("gruvbox", "dark"));
-        assert!(!choice.high_contrast);
-        assert_eq!(choice.accent, None, "\"auto\" means the theme's accent");
+    fn the_default_theme_is_the_ecosystem_fallback() {
+        let standard = AppConfig::default().standard;
+        assert_eq!(
+            (
+                standard.selected_theme.as_str(),
+                standard.selected_variant.as_str()
+            ),
+            colony_ui::preferences::DEFAULT_THEME
+        );
+        assert!(!standard.high_contrast);
+        assert_eq!(standard.selected_accent, None, "the theme's own accent");
     }
 
     /// `dark_mode` is derived from the resolved palette, not entered
@@ -406,7 +374,7 @@ mod tests {
         let config = AppConfig::default();
         assert_eq!(
             config.dark_mode,
-            crate::ui::theme::resolves_dark(&config.theme)
+            crate::ui::theme::resolves_dark(&config.standard)
         );
     }
 }

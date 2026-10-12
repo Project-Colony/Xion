@@ -11,7 +11,7 @@ use iced::{Alignment, Background, Element, Length, Theme, border};
 use crate::i18n::t;
 use crate::ui::UiMessage;
 use crate::ui::theme::icons;
-use crate::ui::theme::layout::{TAB_STRIP_HEIGHT, TERMINAL_RESIZE_BAR_HEIGHT};
+use crate::ui::theme::layout::{TAB_STRIP_HEIGHT, TERMINAL_RESIZE_BAR_HEIGHT, scaled};
 
 /// The space left under the tabs, between them and the bottom of their strip.
 const TAB_BOTTOM_GAP: f32 = 4.0;
@@ -135,7 +135,7 @@ impl XionApp {
                 // edge: that contact is what joins a tab to the area it opens.
                 // Detaching it is a deliberate choice: it breathes, at the cost
                 // of that join.
-                .height(Length::Fixed(TAB_STRIP_HEIGHT - TAB_BOTTOM_GAP))
+                .height(Length::Fixed(scaled(TAB_STRIP_HEIGHT) - TAB_BOTTOM_GAP))
                 .style(move |_: &Theme, status: ButtonStatus| {
                     let mut style = iced::widget::button::Style {
                         text_color: if is_active {
@@ -170,7 +170,7 @@ impl XionApp {
         }
 
         tab_bar = tab_bar.push(
-            button(caption_text(typography, icons::NEW).color(colors.text_muted))
+            button(glyph_text(typography, icons::NEW).color(colors.text_muted))
                 .padding([spacing.xs, spacing.sm])
                 .style(widgets::hover_button_style(
                     colors,
@@ -249,7 +249,7 @@ impl XionApp {
         // a row of buttons again.
         let tab_bar_element: Element<'_, UiMessage> = container(tab_bar)
             .width(Length::Fill)
-            .height(Length::Fixed(TAB_STRIP_HEIGHT))
+            .height(Length::Fixed(scaled(TAB_STRIP_HEIGHT)))
             .padding(iced::Padding {
                 top: 0.0,
                 right: spacing.sm,

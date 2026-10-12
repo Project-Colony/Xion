@@ -37,6 +37,7 @@ pub(super) struct RowCtx<'c> {
 use super::widgets::RADIUS;
 use super::widgets::body_text;
 use super::widgets::caption_text;
+use super::widgets::icon_text;
 
 impl XionApp {
     /// The icon or thumbnail shown at the start of a row or tile.
@@ -52,7 +53,7 @@ impl XionApp {
         } = cx.ui;
         let view_mode = cx.view_mode;
         match entry.entry_type {
-            FsEntryType::Directory => body_text(typography, icons::FOLDER).into(),
+            FsEntryType::Directory => icon_text(typography, icons::FOLDER).into(),
             FsEntryType::File if matches!(view_mode, ViewMode::Grid) => {
                 // Grid mode: show thumbnail preview if available
                 self.media
@@ -64,11 +65,11 @@ impl XionApp {
                             .height(Length::Fixed(self.state.config.view.thumbnail_size as f32))
                             .into()
                     })
-                    .unwrap_or_else(|| body_text(typography, icons::icon_for_entry(entry)).into())
+                    .unwrap_or_else(|| icon_text(typography, icons::icon_for_entry(entry)).into())
             }
             // List mode: always an icon, so every row is the same height.
             FsEntryType::File | FsEntryType::Symlink | FsEntryType::Other => {
-                body_text(typography, icons::icon_for_entry(entry)).into()
+                icon_text(typography, icons::icon_for_entry(entry)).into()
             }
         }
     }
@@ -217,7 +218,7 @@ impl XionApp {
         for (index, spec) in column_specs.iter().enumerate() {
             let cell: Element<'_, UiMessage> = if index == 0 {
                 let content = row![
-                    body_text(typography, icons::LOADING),
+                    icon_text(typography, icons::LOADING),
                     body_text(typography, t("loading"))
                 ]
                 .spacing(spacing.sm)

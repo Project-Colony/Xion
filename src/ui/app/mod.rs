@@ -19,7 +19,7 @@ static PRIMARY_CLAIM: Mutex<Option<crate::platform::single_instance::Primary>> =
 
 use iced::alignment::Horizontal;
 // Tracing is available for future use
-use iced::{Font, Length, Point, Rectangle, Theme, keyboard, mouse};
+use iced::{Length, Point, Rectangle, Theme, keyboard, mouse};
 
 use crate::core::{ConfigManager, SessionStore, SortKeyConfig, ViewColumn};
 use crate::services::{DirectoryLoader, FavoritesService, HistoryService, NetworkDiscoveryService};
@@ -43,8 +43,6 @@ mod windowing;
 
 use helpers::TreeNode;
 use types::*;
-
-use crate::ui::theme::{FONT_NAME, fonts};
 
 /// Widget ID for the main list scrollable: used to trigger initial scroll_to
 /// so that `on_scroll` fires and captures viewport bounds.
@@ -314,8 +312,8 @@ pub fn run(
         *guard = Some(primary);
     }
 
-    let result = iced::application(XionApp::new, XionApp::update, XionApp::view)
-        .title(|state: &XionApp| format!("Xion — {}", state.state.route.display_label()))
+    let application = iced::application(XionApp::new, XionApp::update, XionApp::view)
+        .title(|state: &XionApp| format!("Xion - {}", state.state.route.display_label()))
         // A plain, resizable, centred window: the shape every desktop file
         // manager uses. Not maximised: the user's window manager decides that,
         // and a file manager that seizes the whole screen on launch is a
@@ -349,12 +347,18 @@ pub fn run(
                 Theme::Light
             }
         })
-        .font(fonts::REGULAR)
-        .font(fonts::LIGHT_ITALIC)
-        .font(fonts::SEMI_BOLD)
-        .default_font(Font::with_name(FONT_NAME))
         .subscription(XionApp::subscription)
-        .exit_on_close_request(false)
+        .exit_on_close_request(false);
+
+    // colony-ui embeds the three Colony fonts: JetBrains Mono Nerd Font in
+    // Regular, Medium and Bold, OpenDyslexic, and Font Awesome. Every text
+    // names its font through `UiTypography`, so the dyslexia toggle reaches
+    // the whole window without a restart; the default only covers widgets
+    // that name none.
+    let result = colony_ui::fonts::BYTES
+        .into_iter()
+        .fold(application, |application, font| application.font(font))
+        .default_font(colony_ui::ui_font())
         .run();
 
     // Force a clean exit: background threads (the notify watcher, the tokio

@@ -43,7 +43,7 @@ impl XionApp {
             &self.state.config.column_widths,
         );
         let view_mode = self.state.config.view.mode;
-        let row_height = self.state.config.view.row_height;
+        let row_height = self.row_height();
         let cx = RowCtx {
             ui: ctx,
             view_mode,

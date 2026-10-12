@@ -67,11 +67,11 @@ impl XionApp {
                 let size_str = dialog
                     .size_bytes
                     .map(super::super::helpers::format_bytes)
-                    .unwrap_or_else(|| "—".to_string());
+                    .unwrap_or_else(|| "-".to_string());
                 let hash_str = if dialog.computing_hash {
                     t("properties_computing").to_string()
                 } else {
-                    dialog.sha256.clone().unwrap_or_else(|| "—".to_string())
+                    dialog.sha256.clone().unwrap_or_else(|| "-".to_string())
                 };
                 let title_str = if let Some(count) = dialog.selection_count {
                     tf("properties_title_many", &[("count", &count)])
@@ -115,11 +115,11 @@ impl XionApp {
                     field(t("properties_size"), size_str),
                     field(
                         t("properties_created"),
-                        dialog.created.as_deref().unwrap_or("—").to_string()
+                        dialog.created.as_deref().unwrap_or("-").to_string()
                     ),
                     field(
                         t("properties_modified"),
-                        dialog.modified.as_deref().unwrap_or("—").to_string()
+                        dialog.modified.as_deref().unwrap_or("-").to_string()
                     ),
                     field(
                         t("properties_read_only"),
@@ -411,7 +411,7 @@ impl XionApp {
                         .and_then(|n| n.to_str())
                         .unwrap_or_else(|| res.path.to_str().unwrap_or("?"));
                     let line_preview: String = res.line.chars().take(80).collect();
-                    let label = format!("{}:{} — {}", path_str, res.line_number, line_preview);
+                    let label = format!("{}:{} - {}", path_str, res.line_number, line_preview);
                     let parent = res
                         .path
                         .parent()

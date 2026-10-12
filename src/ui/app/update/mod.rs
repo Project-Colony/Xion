@@ -29,6 +29,14 @@ impl XionApp {
     }
 
     pub(crate) fn update(&mut self, message: UiMessage) -> Task<UiMessage> {
+        let task = self.route(message);
+        // Under reduced motion, or with animations off, a panel asked to slide
+        // is already where it was going: no frame of the slide is ever drawn.
+        self.settle_slides(colony_ui::effects_enabled());
+        task
+    }
+
+    fn route(&mut self, message: UiMessage) -> Task<UiMessage> {
         let mut tasks = Vec::new();
 
         let message = if self.is_user_selecting {

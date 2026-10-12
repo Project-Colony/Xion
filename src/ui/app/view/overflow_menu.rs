@@ -22,9 +22,9 @@ use crate::ui::theme::icons;
 
 use super::XionApp;
 use super::menu_items;
-use super::widgets::HEADER_DROPDOWN_TOP;
 use super::widgets::RADIUS;
 use super::widgets::ViewCtx;
+use super::widgets::header_dropdown_top;
 use super::widgets::surface_style;
 
 const MENU_RIGHT_MARGIN: f32 = 12.0;
@@ -158,7 +158,7 @@ impl XionApp {
 
         let anchored: Element<'_, UiMessage> = container(
             column![
-                vertical_space().height(Length::Fixed(HEADER_DROPDOWN_TOP)),
+                vertical_space().height(Length::Fixed(header_dropdown_top())),
                 row![
                     horizontal_space(),
                     opaque(menu),

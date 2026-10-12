@@ -23,6 +23,8 @@ use super::widgets::ViewCtx;
 use super::widgets::body_text;
 use super::widgets::caption_text;
 use super::widgets::filled_style;
+use super::widgets::glyph_text;
+use super::widgets::icon_text;
 use crate::ui::app::types::*;
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
@@ -47,7 +49,7 @@ pub(super) fn sidebar_button<'a>(
         typography,
     } = ctx;
     let content: Element<'_, UiMessage> =
-        row![body_text(typography, icon), body_text(typography, label)]
+        row![icon_text(typography, icon), body_text(typography, label)]
             .spacing(spacing.sm)
             .align_y(Alignment::Center)
             .into();
@@ -157,7 +159,7 @@ impl XionApp {
                 let content: Element<'_, UiMessage> = row![
                     indent,
                     caption_text(typography, chevron),
-                    body_text(typography, icon),
+                    icon_text(typography, icon),
                     body_text(typography, label)
                 ]
                 .spacing(spacing.xs)
@@ -315,7 +317,7 @@ impl XionApp {
                 for favorite in custom_favorites {
                     let label = format_sidebar_label(favorite);
                     let fav_path = favorite.clone();
-                    let remove_btn = button(caption_text(typography, icons::CLOSE))
+                    let remove_btn = button(glyph_text(typography, icons::CLOSE))
                         .padding(0)
                         .style(move |_theme: &Theme, _status| iced::widget::button::Style {
                             text_color: colors.text_muted,
@@ -378,7 +380,7 @@ impl XionApp {
                     let mount_path = mount.clone();
                     let content: Element<'_, UiMessage> = column![
                         row![
-                            caption_text(typography, icons::DRIVE),
+                            glyph_text(typography, icons::DRIVE),
                             caption_text(typography, drive_label(mount))
                         ]
                         .spacing(spacing.xs)
@@ -441,7 +443,7 @@ impl XionApp {
             drive_section = drive_section.push(
                 button(
                     row![
-                        body_text(typography, icons::DELETE),
+                        icon_text(typography, icons::DELETE),
                         body_text(typography, t("location_trash")),
                     ]
                     .spacing(spacing.xs)

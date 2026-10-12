@@ -38,18 +38,18 @@ use crate::ui::theme::layout::PREVIEW_RESIZE_BAR_WIDTH;
 use super::XionApp;
 use widgets::ViewCtx;
 
-use widgets::HEADER_DROPDOWN_TOP;
 use widgets::body_text;
 use widgets::caption_text;
 use widgets::filled_style;
 use widgets::glyph_text;
+use widgets::header_dropdown_top;
 use widgets::hover_button_style;
 use widgets::surface_style;
 use widgets::{RADIUS, RADIUS_PILL};
 
 impl XionApp {
     pub(super) fn view(&self) -> Element<'_, UiMessage> {
-        let tokens = UiTokens::for_theme(&self.state.config.theme);
+        let tokens = UiTokens::for_preferences(&self.state.config.standard);
         let colors = tokens.colors;
         let spacing = tokens.spacing;
         let typography = tokens.typography;
@@ -317,7 +317,7 @@ impl XionApp {
                     // Position below the header area
                     let menu_layer: Element<'_, UiMessage> = container(
                         column![
-                            vertical_space().height(Length::Fixed(HEADER_DROPDOWN_TOP)),
+                            vertical_space().height(Length::Fixed(header_dropdown_top())),
                             row![horizontal_space().width(Length::Fixed(120.0)), opaque(menu)]
                         ]
                         .spacing(0),
@@ -345,6 +345,27 @@ impl XionApp {
         // Last in the stack: a confirmation must sit above every other modal.
         let confirm_layer = self.render_confirm_layer(colors, spacing, typography);
 
+        // "Theme applied.", bottom left over the page, as Colony shows its
+        // notifications; clear of the status bar.
+        let toast_layer: Element<'_, UiMessage> = match self.menus.preferences.toast {
+            Some(id) => container(colony_ui::widgets::toast(
+                &typography.colony(),
+                t("theme_applied"),
+                UiMessage::DismissToast(id),
+            ))
+            .padding(iced::Padding {
+                bottom: spacing.xl * 3.0,
+                left: spacing.xl,
+                ..iced::Padding::ZERO
+            })
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Alignment::Start)
+            .align_y(Alignment::End)
+            .into(),
+            None => container(row![]).into(),
+        };
+
         stack![
             base,
             selection_layer,
@@ -359,6 +380,7 @@ impl XionApp {
             hex_layer,
             grep_layer,
             permissions_layer,
+            toast_layer,
             confirm_layer
         ]
         .into()

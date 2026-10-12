@@ -15,6 +15,7 @@ use super::XionApp;
 use super::widgets::ViewCtx;
 use super::widgets::caption_text;
 use super::widgets::filled_style;
+use super::widgets::glyph_text;
 use super::widgets::surface_style;
 use super::widgets::{RADIUS, RADIUS_PILL};
 
@@ -59,7 +60,7 @@ impl XionApp {
             },
         );
         let search_bar = container(
-            row![caption_text(typography, icons::SEARCH), search_input]
+            row![glyph_text(typography, icons::SEARCH), search_input]
                 .spacing(spacing.xs)
                 .align_y(Alignment::Center),
         )

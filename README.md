@@ -31,6 +31,9 @@ from the shared Colony theme catalogue.
   sidebar.
 - An English and a French interface: Preferences > General > Language picks
   one, or follows the session's language by default.
+- Every Colony theme and accent, two text sizes that multiply, high contrast, a
+  dyslexia-friendly font and reduced motion, all under Preferences, which the
+  **Xion** button in the top-left corner opens.
 - A versioned TOML configuration, reloaded on change, at
   `~/.config/Colony/Xion/config.toml` on Linux.
 
@@ -125,5 +128,6 @@ files you open. On Windows, `xion --register` adds context-menu entries under
 ## License
 
 Xion is licensed under the GNU General Public License v3.0 or later. See
-[LICENSE](LICENSE). The bundled JetBrains Mono Nerd Font files are under the SIL
-Open Font License 1.1 (`ui/Assets/Fonts/OFL.txt`).
+[LICENSE](LICENSE). Its fonts (JetBrains Mono Nerd Font, OpenDyslexic and Font
+Awesome 6 Free) come embedded in [colony-ui](https://crates.io/crates/colony-ui),
+which ships them with their licence texts.

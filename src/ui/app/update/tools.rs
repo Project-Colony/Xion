@@ -48,6 +48,8 @@ impl XionApp {
             }
             UiMessage::TogglePreferences => {
                 self.menus.preferences.open = !self.menus.preferences.open;
+                // Every visit starts on General, as in every Colony program.
+                self.menus.preferences.category = crate::ui::PreferencesCategory::default();
                 // The `⋯` menu would cover the page that just opened.
                 self.menus.overflow_open = false;
             }
@@ -55,8 +57,9 @@ impl XionApp {
                 self.menus.preferences.category = category;
             }
             UiMessage::TogglePreferencesSection(key) => {
-                if !self.menus.preferences.expanded.remove(key) {
-                    self.menus.preferences.expanded.insert(key);
+                let expanded = &mut self.menus.preferences.expanded;
+                if !expanded.remove(key) {
+                    expanded.insert(key.to_string());
                 }
             }
             UiMessage::ToggleShowHidden => {
@@ -72,46 +75,19 @@ impl XionApp {
                 self.config_manager.save(&self.state.config);
                 tasks.push(self.refresh_entries());
             }
-            UiMessage::SetThemeVariant(family, variant) => {
-                self.state.config.theme.family = family.to_string();
-                self.state.config.theme.variant = variant.to_string();
-                self.state.config.dark_mode =
-                    crate::ui::theme::resolves_dark(&self.state.config.theme);
-                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
-                // The highlighter keeps colours computed for the old theme
-                // until it is cleared.
-                self.cached_highlighted_preview = None;
-                self.config_manager.save(&self.state.config);
+            UiMessage::Preference(change) => {
+                if let Some(task) = self.apply_preference(change) {
+                    tasks.push(task);
+                }
             }
-            UiMessage::SetAccent(key) => {
-                // Picking the same accent again goes back to "the theme's":
-                // without this, the picker would have no way back.
-                let current = self.state.config.theme.accent.as_deref();
-                self.state.config.theme.accent = if current == Some(key) {
-                    None
-                } else {
-                    Some(key.to_string())
-                };
-                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
-                self.config_manager.save(&self.state.config);
-            }
-            UiMessage::ToggleHighContrast => {
-                self.state.config.theme.high_contrast = !self.state.config.theme.high_contrast;
-                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
-                self.config_manager.save(&self.state.config);
+            UiMessage::DismissToast(id) => {
+                if self.menus.preferences.toast == Some(id) {
+                    self.menus.preferences.toast = None;
+                }
             }
             UiMessage::SetLanguage(language) => {
                 self.state.config.language = language;
                 crate::i18n::apply(language);
-                self.config_manager.save(&self.state.config);
-            }
-            // Feature 4: Color themes
-            UiMessage::SetTheme(theme) => {
-                self.state.config.dark_mode = crate::ui::theme::resolves_dark(&theme);
-                self.state.config.theme = theme;
-                crate::ui::theme::sync_colony_globals(&self.state.config.theme);
-                // Invalidate syntax highlight cache so it's regenerated with the new theme colors
-                self.cached_highlighted_preview = None;
                 self.config_manager.save(&self.state.config);
             }
             // Feature 5: Bulk rename
@@ -539,29 +515,35 @@ impl XionApp {
                 // walking them one by one would make no sense any more, and the
                 // precise choice belongs to the picker.
                 //
-                // A family whose variant is called neither `dark` nor `light`
+                // A family whose variants are called neither `dark` nor `light`
                 // (`catppuccin` and its four flavours) has no obvious opposite:
-                // `resolve` would fall back to the fallback, which would be an
-                // abrupt jump. Stay in place in that case.
-                let choice = &self.state.config.theme;
-                let opposite = match choice.variant.as_str() {
+                // stay in place and say so rather than jump to another family.
+                let standard = &self.state.config.standard;
+                let opposite = match standard.selected_variant.as_str() {
                     "dark" => Some("light"),
                     "light" => Some("dark"),
                     _ => None,
                 };
-                if let Some(variant) = opposite {
-                    let mut next = choice.clone();
-                    next.variant = variant.to_string();
-                    self.state.config.dark_mode = crate::ui::theme::resolves_dark(&next);
-                    self.state.config.theme = next;
-                    crate::ui::theme::sync_colony_globals(&self.state.config.theme);
-                    self.cached_highlighted_preview = None;
-                    self.config_manager.save(&self.state.config);
-                } else {
-                    self.last_action = Some(tf(
-                        "theme_no_light_dark_variant",
-                        &[("family", &choice.family)],
-                    ));
+                let change =
+                    colony_ui::theme::family(&standard.selected_theme).and_then(|family| {
+                        let variant = family.variant(opposite?)?;
+                        Some(colony_ui::preferences::Change::Theme {
+                            family: family.key,
+                            variant: variant.key,
+                        })
+                    });
+                match change {
+                    Some(change) => {
+                        if let Some(task) = self.apply_preference(change) {
+                            tasks.push(task);
+                        }
+                    }
+                    None => {
+                        self.last_action = Some(tf(
+                            "theme_no_light_dark_variant",
+                            &[("family", &standard.selected_theme)],
+                        ));
+                    }
                 }
             }
             UiMessage::ToggleCompactMode => {
@@ -581,5 +563,117 @@ impl XionApp {
         }
 
         Flow::Continue
+    }
+}
+
+impl XionApp {
+    /// Records a shared Appearance or Accessibility change, puts it into
+    /// effect and saves it: there is no Save button.
+    ///
+    /// A theme change also raises the "Theme applied." toast, since switching
+    /// to a neighbouring variant can otherwise go unnoticed, and returns the
+    /// timer that hides it again.
+    pub(in crate::ui::app) fn apply_preference(
+        &mut self,
+        change: colony_ui::preferences::Change,
+    ) -> Option<Task<UiMessage>> {
+        use colony_ui::preferences::Change;
+
+        let config = &mut self.state.config;
+        config.standard.update(change);
+        config.dark_mode = crate::ui::theme::resolves_dark(&config.standard);
+        self.config_manager.save(&self.state.config);
+
+        let Change::Theme { .. } = change else {
+            return None;
+        };
+        // The highlighter keeps colours computed for the old theme until it is
+        // cleared.
+        self.cached_highlighted_preview = None;
+
+        let preferences = &mut self.menus.preferences;
+        preferences.toast_counter += 1;
+        let id = preferences.toast_counter;
+        preferences.toast = Some(id);
+        // Inside `async`: the timer needs the runtime that runs the task, not
+        // the one (if any) that builds it.
+        Some(Task::perform(
+            async { tokio::time::sleep(crate::ui::theme::timing::TOAST_DURATION).await },
+            move |()| UiMessage::DismissToast(id),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod preference_tests {
+    use colony_ui::preferences::Change;
+
+    use crate::ui::UiMessage;
+    use crate::ui::app::XionApp;
+
+    fn apply_theme(app: &mut XionApp, family: &'static str, variant: &'static str) {
+        let _ = app.update(UiMessage::Preference(Change::Theme { family, variant }));
+    }
+
+    /// Applying a theme is immediate, and the toast makes it noticeable.
+    #[test]
+    fn a_theme_change_saves_the_choice_and_raises_the_toast() {
+        let mut app = XionApp::new_for_test();
+        assert_eq!(app.menus.preferences.toast, None);
+
+        apply_theme(&mut app, "nord", "dark");
+
+        let standard = &app.state.config.standard;
+        assert_eq!(
+            (
+                standard.selected_theme.as_str(),
+                standard.selected_variant.as_str()
+            ),
+            ("nord", "dark")
+        );
+        assert!(app.menus.preferences.toast.is_some());
+    }
+
+    /// The timer of an older toast must not hide the one raised after it.
+    #[test]
+    fn only_the_latest_toast_is_dismissed_by_its_timer() {
+        let mut app = XionApp::new_for_test();
+        apply_theme(&mut app, "nord", "dark");
+        let first = app.menus.preferences.toast.expect("first toast");
+        apply_theme(&mut app, "gruvbox", "light");
+        let second = app.menus.preferences.toast.expect("second toast");
+
+        let _ = app.update(UiMessage::DismissToast(first));
+        assert_eq!(app.menus.preferences.toast, Some(second));
+
+        let _ = app.update(UiMessage::DismissToast(second));
+        assert_eq!(app.menus.preferences.toast, None);
+    }
+
+    /// Only a theme change raises it: the other settings show their effect
+    /// on the page itself.
+    #[test]
+    fn other_changes_raise_no_toast() {
+        let mut app = XionApp::new_for_test();
+        let _ = app.update(UiMessage::Preference(Change::AutoAccent(true)));
+        assert!(app.state.config.standard.auto_accent);
+        assert_eq!(app.menus.preferences.toast, None);
+    }
+
+    /// Every visit to the page starts on General.
+    #[test]
+    fn opening_the_page_starts_on_general() {
+        let mut app = XionApp::new_for_test();
+        let _ = app.update(UiMessage::TogglePreferences);
+        let _ = app.update(UiMessage::SelectPreferencesCategory(
+            crate::ui::PreferencesCategory::Files,
+        ));
+        let _ = app.update(UiMessage::TogglePreferences);
+        let _ = app.update(UiMessage::TogglePreferences);
+        assert!(app.menus.preferences.open);
+        assert_eq!(
+            app.menus.preferences.category,
+            crate::ui::PreferencesCategory::General
+        );
     }
 }

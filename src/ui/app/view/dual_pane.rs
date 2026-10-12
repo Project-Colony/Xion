@@ -20,6 +20,7 @@ use super::widgets::body_text;
 use super::widgets::caption_text;
 use super::widgets::chrome_style;
 use super::widgets::glyph_text;
+use super::widgets::icon_text;
 use super::widgets::surface_style;
 
 impl XionApp {
@@ -50,7 +51,7 @@ impl XionApp {
                 let activate_path = entry.path.clone();
                 button(
                     row![
-                        body_text(typography, icon),
+                        icon_text(typography, icon),
                         body_text(typography, entry.name.clone()),
                     ]
                     .spacing(spacing.sm)

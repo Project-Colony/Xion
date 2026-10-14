@@ -21,6 +21,10 @@ instead of inventing its own.
 - **Configuration over hard-coding.** Behaviour that a user could reasonably
   want different is a setting, versioned, migrated and validated
   ([../guide/configuration.md](../guide/configuration.md)).
+- **Current Rust, current dependencies.** Rust edition 2024, with
+  `Cargo.toml` and `Cargo.lock` kept up to date.
+- **Keyboard and mouse alike.** The whole interface is meant to be usable with
+  either one.
 - **Measured, not assumed.** Performance claims in the code come with the
   measurement that backs them; the measurements live in `tests/benches.rs`.
 
@@ -39,3 +43,18 @@ instead of inventing its own.
 | **`asInvoker` on Windows**, context-menu entries under `HKEY_CURRENT_USER` only | a file explorer has no reason to run elevated, and everything it starts would inherit the elevation |
 | **Deleting goes to the trash** by default | a permanent delete is a separate action, behind a confirmation |
 | **Releases signed in CI only**, through the shared Project Colony workflow | the signing key never reaches a developer machine or a build job; see the README's [Code signing policy](../../README.md#code-signing-policy) |
+
+## Documentation still to write
+
+Open items, carried over from the documentation roadmap of the earlier French
+`docs/docs.md`. The module map, the caches, search and the navigation model are
+written; these are not:
+
+- [ ] Interaction diagrams: the modules and the data flowing between them.
+  [../internals/architecture.md](../internals/architecture.md#data-flow) has a
+  short sketch, not a diagram.
+- [ ] The iced render cycle and the state model, in detail.
+- [ ] Tie the code examples in `docs/` to the crate, so that
+  `cargo test --doc` compiles them and they can no longer rot.
+- [ ] Give each page the date it was last checked against the code (see
+  [How these pages stay true](../README.md#how-these-pages-stay-true)).

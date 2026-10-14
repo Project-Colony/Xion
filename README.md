@@ -20,7 +20,7 @@ Windows, with tabs, previews, archives and a terminal panel, built in Rust on
 the toolkit every [Project Colony](https://github.com/Project-Colony) program
 shares.
 
-> **Status:** early, at 0.1. Proven: every change is built and tested on Linux
+> **Status:** early. Proven: every change is built and tested on Linux
 > and Windows in CI, and on the minimum Rust version; `cargo deny` reports no
 > open advisory; releases are published signed, and the signatures verify.
 > Wired but untested: the Windows context-menu integration (`xion --register`)

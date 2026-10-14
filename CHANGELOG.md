@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/Project-Colony/Xion/compare/v0.2.0...v0.2.1) (2026-10-14)
+
+
+### Documentation
+
+* bring back the open roadmap items and the French pages the English rewrite replaced ([#26](https://github.com/Project-Colony/Xion/issues/26)) ([8a03721](https://github.com/Project-Colony/Xion/commit/8a0372157733be63082a9b27da0c6ccc6a401d5e))
+
 ## [0.2.0](https://github.com/Project-Colony/Xion/compare/v0.1.0...v0.2.0) (2026-10-14)
 
 

@@ -1,18 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
   <!--
-    Xion — un dossier, et l'ion qui lui tourne autour.
+    Xion: a folder, and the ion that orbits it.
 
-    Deux contraintes ont dicté la construction :
+    Two constraints shaped the drawing:
 
-    - Le dossier est un aplat, ses trois barres sont des trous. Une version
-      « dossier encre sur barres ambre » disparaissait dans un dock sombre :
-      il ne restait que les barres flottant dans le vide. Un aplat se lit sur
-      n'importe quel fond.
-    - L'orbite passe derrière le dossier, avec un jour d'un pixel et demi tout
-      autour (le masque « gap »). Sans ce jour, l'ambre de l'orbite et l'ambre
-      du dossier fusionnaient en une seule tache.
+    - The folder is a solid fill, and its three bars are holes. A version
+      with an ink folder over amber bars vanished in a dark dock: only the
+      bars were left, floating in the void. A solid fill reads on any
+      background.
+    - The orbit passes behind the folder, with a gap of one and a half pixels
+      all around (the "gap" mask). Without that gap the amber of the orbit and
+      the amber of the folder merged into a single blot.
 
-    Les trois barres sont aussi la lettre Ξ, qui commence le nom.
+    The three bars are also the letter Xi, which starts the name.
   -->
   <defs>
     <mask id="gap">

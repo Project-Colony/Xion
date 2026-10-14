@@ -113,7 +113,7 @@ impl XionApp {
 /// once per entry.
 ///
 /// Two paths, and the split is measured rather than assumed
-/// (`cargo run --release --example bench_frame`):
+/// (`name_filter_and_selection_scan` in `tests/benches.rs`):
 ///
 /// * Both sides ASCII, nearly every file name, takes a byte-wise scan. On
 ///   50 000 entries that is about half the time of the previous

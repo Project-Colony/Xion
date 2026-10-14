@@ -27,7 +27,7 @@ uninstall() {
     for size in $SMALL_SIZES $LARGE_SIZES; do
         rm -f "$ICON_DIR/${size}x${size}/apps/xion.png"
     done
-    echo "Xion retiré de $PREFIX"
+    echo "Xion removed from $PREFIX"
 }
 
 refresh_caches() {
@@ -48,43 +48,43 @@ if [ "${1:-}" = "--uninstall" ]; then
 fi
 
 if ! command -v rsvg-convert >/dev/null 2>&1; then
-    echo "rsvg-convert est requis pour produire les icônes PNG." >&2
-    echo "  Arch : pacman -S librsvg    Debian : apt install librsvg2-bin" >&2
+    echo "rsvg-convert is required to render the PNG icons." >&2
+    echo "  Arch: pacman -S librsvg    Debian: apt install librsvg2-bin" >&2
     exit 1
 fi
 
-echo "→ compilation"
+echo "-> build"
 ( cd "$ROOT" && cargo build --release )
 
-echo "→ binaire"
+echo "-> binary"
 mkdir -p "$BIN_DIR"
 install -m 755 "$ROOT/target/release/xion" "$BIN_DIR/xion"
 
-echo "→ icônes"
+echo "-> icons"
 mkdir -p "$ICON_DIR/scalable/apps"
-install -m 644 "$ROOT/assets/xion.svg" "$ICON_DIR/scalable/apps/xion.svg"
+install -m 644 "$ROOT/assets/brand/xion.svg" "$ICON_DIR/scalable/apps/xion.svg"
 for size in $LARGE_SIZES; do
     mkdir -p "$ICON_DIR/${size}x${size}/apps"
-    rsvg-convert -w "$size" -h "$size" "$ROOT/assets/xion.svg" \
+    rsvg-convert -w "$size" -h "$size" "$ROOT/assets/brand/xion.svg" \
         -o "$ICON_DIR/${size}x${size}/apps/xion.png"
 done
 for size in $SMALL_SIZES; do
     mkdir -p "$ICON_DIR/${size}x${size}/apps"
-    rsvg-convert -w "$size" -h "$size" "$ROOT/assets/xion-small.svg" \
+    rsvg-convert -w "$size" -h "$size" "$ROOT/assets/brand/xion-small.svg" \
         -o "$ICON_DIR/${size}x${size}/apps/xion.png"
 done
 
-echo "→ entrée de bureau"
+echo "-> desktop entry"
 mkdir -p "$APP_DIR"
 install -m 644 "$ROOT/packaging/xion.desktop" "$APP_DIR/xion.desktop"
 
 refresh_caches
 
 echo
-echo "Installé dans $PREFIX."
+echo "Installed in $PREFIX."
 case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
-    *) echo "Attention : $BIN_DIR n'est pas dans votre PATH." ;;
+    *) echo "Warning: $BIN_DIR is not in your PATH." ;;
 esac
-echo "Pour en faire le gestionnaire de fichiers par défaut :"
+echo "To make Xion the default file manager:"
 echo "    xdg-mime default xion.desktop inode/directory"

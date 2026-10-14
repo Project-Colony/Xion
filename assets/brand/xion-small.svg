@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
   <!--
-    La même icône à 16, 22 et 24 pixels : l'orbite y devient une bouillie de
-    deux pixels. Elle tombe, la particule reste. C'est ce que fait Adwaita —
-    un dessin par taille, pas une réduction mécanique du grand.
+    The same icon at 16, 22 and 24 pixels, where the orbit turns into a
+    two-pixel smudge. The orbit goes, the particle stays. That is what Adwaita
+    does: one drawing per size, not a mechanical reduction of the large one.
   -->
   <defs>
     <mask id="barsS">

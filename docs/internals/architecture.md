@@ -314,8 +314,9 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and every push to
 | `ubuntu-latest`, `windows-latest` | format check, clippy with warnings as errors, every test, and a check that no source file starts with a UTF-8 byte order mark |
 | `msrv` | `cargo check` and `cargo test` on Rust 1.95 |
 | `advisories` | `cargo deny check advisories bans licenses sources` |
+| `translations up to date` | `scripts/i18n-check.sh`, which fails when a page under `docs/i18n/` no longer matches the English it was translated from, and `scripts/i18n-links.py`, which fails on a Markdown link or anchor that leads nowhere |
 
-All four are required before anything merges into `main`. Releases are built,
+The first four are required before anything merges into `main`. Releases are built,
 signed and published by `.github/workflows/release.yml` through the shared
 Project Colony workflow; the README's
 [Code signing policy](../../README.md#code-signing-policy) says how to check

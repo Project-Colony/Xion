@@ -124,6 +124,13 @@ Full documentation is in [docs/](docs/). Start at
 [docs/README.md](docs/README.md). To report a vulnerability, see
 [SECURITY.md](SECURITY.md).
 
+## Language
+
+Some pages are translated. **English is canonical**: when a translation
+disagrees with it, the English file is right.
+
+- **Français** - [README](docs/i18n/fr/README.md) · [documentation index](docs/i18n/fr/docs/README.md) · [goals and decisions](docs/i18n/fr/docs/project/decisions.md)
+
 ## Code signing policy
 
 Every release asset is signed by the Project Colony organisation in CI, never on

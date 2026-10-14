@@ -20,6 +20,16 @@ Sorted by who is reading, not by subject.
 
 | | |
 |---|---|
-| [project/decisions.md](project/decisions.md) | what Xion is for, and the technical choices that follow from it |
+| [project/decisions.md](project/decisions.md) | what Xion is for, the technical choices that follow from it, and the documentation still to write |
+
+## How these pages stay true
+
+No page carries a "reviewed" checkbox. A ticked box proves no review took
+place: an earlier index certified three pages as reviewed and aligned with the
+code while two of them described structures and paths that no longer existed.
+
+Instead, each page cites its sources: a file and a symbol, or a test name. A
+line number is a reading taken on one day; when it disagrees with the code, the
+symbol it names is what counts.
 
 Security policy: [../SECURITY.md](../SECURITY.md).

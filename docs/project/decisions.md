@@ -52,7 +52,7 @@ written; these are not:
 
 - [ ] Interaction diagrams: the modules and the data flowing between them.
   [../internals/architecture.md](../internals/architecture.md#data-flow) has a
-  three-line sketch, not a diagram.
+  short sketch, not a diagram.
 - [ ] The iced render cycle and the state model, in detail.
 - [ ] Tie the code examples in `docs/` to the crate, so that
   `cargo test --doc` compiles them and they can no longer rot.

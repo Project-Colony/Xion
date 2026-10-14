@@ -1,4 +1,4 @@
-<!-- xion-i18n: source=docs/project/decisions.md sha=988e014885465e49827498ee5351184206e57483 -->
+<!-- xion-i18n: source=docs/project/decisions.md sha=8973ce1cb6b396b841fd78d362cd591f3f362c4d -->
 
 # Objectifs et décisions
 
@@ -61,7 +61,7 @@ ne le sont pas :
 
 - [ ] Diagrammes d'interaction : les modules et les flux de données entre eux.
   [architecture.md](../../../../../docs/internals/architecture.md#data-flow)
-  en donne une esquisse de trois lignes, pas un diagramme.
+  en donne une courte esquisse, pas un diagramme.
 - [ ] Cycle de rendu Iced et modèle d'état détaillé.
 - [ ] Rattacher les exemples de code de `docs/` au crate, pour que
   `cargo test --doc` les compile et qu'ils ne puissent plus pourrir.

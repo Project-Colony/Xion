@@ -89,7 +89,7 @@ tar = "0.4.46"
 flate2 = "1.1.10"
 # The maintained fork of sevenz-rust, which is unmaintained (RUSTSEC-2026-0246).
 # No "aes256": Xion opens archives without a password.
-sevenz-rust2 = { version = "0.23.0", default-features = false, features = ["bzip2", "compress", "ppmd"] }
+sevenz-rust2 = { version = "0.24.0", default-features = false, features = ["bzip2", "compress", "ppmd"] }
 ignore = "0.4.33"
 encoding_rs = "0.8.42"
 mdns-sd = "0.21.5"

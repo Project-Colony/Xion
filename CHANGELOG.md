@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/Project-Colony/Xion/compare/v0.2.0...v0.2.1) (2026-11-09)
+
+
+### Fixes
+
+* **deps:** update dependencies and the Rust toolchain, and fix the open security advisories ([#37](https://github.com/Project-Colony/Xion/issues/37)) ([86b9e5a](https://github.com/Project-Colony/Xion/commit/86b9e5a53d6c0a7b0a57cf2b5c2fef41170a9d30))
+
+
+### Documentation
+
+* bring back the open roadmap items and the French pages the English rewrite replaced ([#26](https://github.com/Project-Colony/Xion/issues/26)) ([8a03721](https://github.com/Project-Colony/Xion/commit/8a0372157733be63082a9b27da0c6ccc6a401d5e))
+
 ## [0.2.0](https://github.com/Project-Colony/Xion/compare/v0.1.0...v0.2.0) (2026-10-14)
 
 

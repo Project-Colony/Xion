@@ -2,7 +2,7 @@
 name = "xion"
 version = "0.2.0"
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.99"
 authors = ["Xion Contributors"]
 description = "A modern, performant file explorer written in Rust"
 repository = "https://github.com/Project-Colony/Xion"
@@ -59,7 +59,7 @@ wgpu = { version = "27.0.1", default-features = false, features = ["std"] }
 #
 # Move back to a published version as soon as one ships.
 iced_term = { git = "https://github.com/Harzu/iced_term", rev = "1df60bb08a6a0ffcf3dfc1a74ee568947fc48cb8", version = "0.8.0" }
-tokio = { version = "1.53.2", features = ["rt", "time", "sync", "process", "io-util"] }
+tokio = { version = "1.54.1", features = ["rt", "time", "sync", "process", "io-util"] }
 # No "tiff": it was the only thing pulling tiff -> zune-jpeg 0.4, a SECOND
 # complete JPEG decoder alongside the zune-jpeg 0.5 that image itself uses.
 image = { version = "0.25.10", default-features = false, features = [
@@ -69,30 +69,30 @@ image = { version = "0.25.10", default-features = false, features = [
     "png",
     "webp",
 ] }
-notify = "8.2.0"
+notify = "8.2.2"
 serde = { version = "1.0.229", features = ["derive"] }
 # The locale tables in src/i18n/. Already in the tree through colony-ui, which
 # reads its own shared labels the same way.
-serde_json = "1.0.151"
-sysinfo = "0.39.6"
-toml = "1.1.7"
+serde_json = "1.0.154"
+sysinfo = "0.40.1"
+toml = "1.2.1"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-trash = "5.2.9"
-sha2 = "0.11.0"
+trash = "5.3.0"
+sha2 = "0.11.1"
 syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
 git2 = { version = "0.21.0", default-features = false }
 walkdir = "2.5.0"
-zip = "8.6.0"
+zip = "9.5.0"
 pdf-extract = "0.12.1"
 tar = "0.4.46"
-flate2 = "1.1.10"
+flate2 = "1.1.11"
 # The maintained fork of sevenz-rust, which is unmaintained (RUSTSEC-2026-0246).
 # No "aes256": Xion opens archives without a password.
-sevenz-rust2 = { version = "0.23.0", default-features = false, features = ["bzip2", "compress", "ppmd"] }
-ignore = "0.4.33"
-encoding_rs = "0.8.42"
-mdns-sd = "0.21.5"
+sevenz-rust2 = { version = "0.25.0", default-features = false, features = ["bzip2", "compress", "ppmd"] }
+ignore = "0.4.34"
+encoding_rs = "0.8.44"
+mdns-sd = "0.21.7"
 
 # Already compiled into the binary: iced pulls it in through mundy, which reads
 # the desktop appearance settings. The single instance therefore costs no extra

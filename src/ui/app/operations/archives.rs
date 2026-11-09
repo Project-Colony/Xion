@@ -27,8 +27,10 @@ impl XionApp {
                             let mut zip = zip::ZipArchive::new(file).ok()?;
                             let mut listed = Vec::new();
                             for index in 0..zip.len() {
-                                if let Ok(entry) = zip.by_index(index) {
-                                    let inner_path = entry.name().to_string();
+                                if let Ok(entry) = zip.by_index(index)
+                                    && let Ok(inner_path) = entry.name()
+                                {
+                                    let inner_path = inner_path.into_owned();
                                     let name = inner_path
                                         .rsplit('/')
                                         .find(|part| !part.is_empty())

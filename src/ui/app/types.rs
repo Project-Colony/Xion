@@ -133,7 +133,11 @@ thread_local! {
 }
 
 fn refresh_disk_list() -> Vec<(PathBuf, DiskUsage)> {
-    let disks = Disks::new_with_refreshed_list();
+    // sysinfo 0.40 returns an error only on a platform it does not support,
+    // where 0.39 returned an empty list: keep the empty list.
+    let Ok(disks) = Disks::new_with_refreshed_list() else {
+        return Vec::new();
+    };
     let mut list: Vec<(PathBuf, DiskUsage)> = disks
         .iter()
         .map(|disk| {

@@ -422,10 +422,20 @@ pub(super) fn extract_zip_entry(
 
     // The zip crate's own guard: `None` means the name is not safely
     // relative. Checked in addition to `safe_join`, not instead of it.
+    // Owned: `entry` is read mutably below, and zip 9 returns the name borrowed.
+    let name = entry
+        .name()
+        .map_err(|e| {
+            tf(
+                "archive_error_entry",
+                &[("format", &"ZIP"), ("name", &inner_path), ("error", &e)],
+            )
+        })?
+        .into_owned();
     if entry.enclosed_name().is_none() {
-        return Err(tf("archive_refused_entry", &[("entry", &entry.name())]));
+        return Err(tf("archive_refused_entry", &[("entry", &name)]));
     }
-    let out_path = safe_join(dest_dir, entry.name())?;
+    let out_path = safe_join(dest_dir, &name)?;
 
     if entry.is_dir() {
         create_parent_within(dest_dir, &out_path)?;

@@ -274,7 +274,7 @@ the resources too.
 ## Building and testing
 
 The toolchain is pinned in `rust-toolchain.toml`; `rust-version` in
-`Cargo.toml` (1.95) is the oldest compiler CI proves the crate still builds
+`Cargo.toml` (1.99) is the oldest compiler CI proves the crate still builds
 with. Beyond Rust, a build needs only a C compiler, for the bundled C code of
 libgit2, zlib and zstd; the windowing libraries are loaded at run time.
 
@@ -312,7 +312,7 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and every push to
 | Job | What it runs |
 |---|---|
 | `ubuntu-latest`, `windows-latest` | format check, clippy with warnings as errors, every test, and a check that no source file starts with a UTF-8 byte order mark |
-| `msrv` | `cargo check` and `cargo test` on Rust 1.95 |
+| `msrv` | `cargo check` and `cargo test` on Rust 1.99 |
 | `advisories` | `cargo deny check advisories bans licenses sources` |
 | `translations up to date` | `scripts/i18n-check.sh`, which fails when a page under `docs/i18n/` no longer matches the English it was translated from, and `scripts/i18n-links.py`, which fails on a Markdown link or anchor that leads nowhere |
 

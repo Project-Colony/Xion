@@ -24,6 +24,13 @@ ignore = [
     # bundled in the binary and the system's installed fonts, which Xion does
     # not choose; it cannot be removed without leaving iced.
     { id = "RUSTSEC-2026-0192", reason = "iced's font stack; no replacement release" },
+    # zbus_names, zvariant and zvariant_derive, through zbus 5. They were merged
+    # into zbus 6, but iced 0.14 reaches zbus 5 through mundy, so moving Xion's
+    # own zbus to 6 would add a second zbus and leave these in the graph. They
+    # only encode and decode D-Bus messages on the session bus.
+    { id = "RUSTSEC-2026-0370", reason = "zvariant through iced's zbus 5; no zbus 5 release without it" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names through iced's zbus 5; no zbus 5 release without it" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive through iced's zbus 5; no zbus 5 release without it" },
 ]
 
 [bans]

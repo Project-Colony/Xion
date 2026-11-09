@@ -38,27 +38,40 @@ pub(super) fn list_tar_gz(path: &std::path::Path) -> Option<Vec<ArchiveEntry>> {
 pub(super) fn list_7z(path: &std::path::Path) -> Option<Vec<ArchiveEntry>> {
     let mut archive =
         sevenz_rust2::ArchiveReader::open(path, sevenz_rust2::Password::empty()).ok()?;
-    let mut entries = Vec::new();
+    // Sets up each block's decoder without reading its data, so an archive
+    // that uses a method Xion cannot decode is still refused. The entries come
+    // from the header: since sevenz-rust2 0.24, `for_each_entries` decodes
+    // and checks every byte the callback leaves unread.
     archive
-        .for_each_entries(|entry, _reader| {
+        .for_each_entries_with_decision(|_, _| Ok(sevenz_rust2::EntryDecision::SkipBlock))
+        .ok()?;
+    let header = archive.archive();
+    // Entries stored in a block first, then the empty ones, the order
+    // `for_each_entries` visits them in.
+    let (stored, empty): (Vec<_>, Vec<_>) = header
+        .files
+        .iter()
+        .zip(&header.stream_map.file_block_index)
+        .partition(|(_, block)| block.is_some());
+    let entries = stored
+        .into_iter()
+        .chain(empty)
+        .map(|(entry, _)| {
             let inner_path = entry.name().to_string();
             let name = inner_path
                 .rsplit('/')
                 .find(|s| !s.is_empty())
                 .unwrap_or(&inner_path)
                 .to_string();
-            let is_dir = entry.is_directory();
-            let size = entry.size();
-            entries.push(ArchiveEntry {
+            ArchiveEntry {
                 name,
                 inner_path,
-                is_dir,
-                size,
+                is_dir: entry.is_directory(),
+                size: entry.size(),
                 compressed_size: 0,
-            });
-            Ok(true)
+            }
         })
-        .ok()?;
+        .collect();
     Some(entries)
 }
 
@@ -638,6 +651,28 @@ mod tests {
             "entries: {:?}",
             listed.iter().map(|e| &e.inner_path).collect::<Vec<_>>()
         );
+    }
+
+    /// The list is read from the header and keeps the order the entry walk
+    /// gave: entries with data first, then the empty ones (here the folders).
+    /// Damaged entry data must not hide it.
+    #[test]
+    fn sevenz_listing_reads_the_header_only() {
+        let root = tempfile::tempdir().unwrap();
+        let tree = root.path().join("tree");
+        std::fs::create_dir_all(tree.join("sub")).unwrap();
+        std::fs::write(tree.join("sub").join("deep.txt"), "deep ".repeat(1000)).unwrap();
+        let out = root.path().join("tree.7z");
+        create_7z(&[tree], &out).unwrap();
+
+        // The packed data starts right after the 32-byte signature header.
+        let mut bytes = std::fs::read(&out).unwrap();
+        bytes[32] ^= 0xff;
+        std::fs::write(&out, bytes).unwrap();
+
+        let listed = list_7z(&out).expect("header still readable");
+        let paths: Vec<_> = listed.iter().map(|e| e.inner_path.as_str()).collect();
+        assert_eq!(paths, ["tree/sub/deep.txt", "tree", "tree/sub"]);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 name = "xion"
 version = "0.2.0"
 edition = "2024"
-rust-version = "1.99"
+rust-version = "1.95"
 authors = ["Xion Contributors"]
 description = "A modern, performant file explorer written in Rust"
 repository = "https://github.com/Project-Colony/Xion"

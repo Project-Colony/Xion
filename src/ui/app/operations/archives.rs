@@ -95,14 +95,18 @@ impl XionApp {
                                 sevenz_rust2::Password::empty(),
                             )
                             .map_err(|e| e.to_string())?;
-                            arch.for_each_entries(|entry, reader| {
+                            // Stop once the entry is written: Continue would decode and
+                            // check every later entry, and a bad later block would turn
+                            // a finished extraction into an error.
+                            arch.for_each_entries_with_decision(|entry, reader| {
                                 if entry.name() == inner_path {
                                     let mut out_file = std::fs::File::create(&out_path)
                                         .map_err(|e| std::io::Error::other(e.to_string()))?;
                                     std::io::copy(reader, &mut out_file)?;
                                     found = true;
+                                    return Ok(sevenz_rust2::EntryDecision::Stop);
                                 }
-                                Ok(true)
+                                Ok(sevenz_rust2::EntryDecision::Continue)
                             })
                             .map_err(|e| e.to_string())?;
                             if found {

@@ -108,7 +108,7 @@ cargo build --release
 ./target/release/xion
 ```
 
-Requires Rust 1.99 or newer; `rust-toolchain.toml` pins the toolchain CI uses,
+Requires Rust 1.95 or newer; `rust-toolchain.toml` pins the toolchain CI uses,
 and rustup installs it on the first build. Beyond Rust, the build needs only a
 C compiler (`build-essential` on Debian or Ubuntu) for the bundled C code of
 libgit2, zlib and zstd. The windowing libraries are loaded at run time, so no

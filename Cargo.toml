@@ -98,7 +98,7 @@ mdns-sd = "0.21.7"
 # the desktop appearance settings. The single instance therefore costs no extra
 # dependency, only the version Cargo already agrees on.
 [target.'cfg(unix)'.dependencies]
-zbus = "5.19.0"
+zbus = "6.2.1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [

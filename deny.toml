@@ -12,6 +12,9 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+# cargo-deny 0.22 narrowed the default to direct dependencies. Every crate in
+# the graph stays checked, as before; the ignores below are transitive ones.
+unmaintained = "all"
 # Only "unmaintained" notices with no maintained release to move to and no
 # path from untrusted input. Every vulnerability is fixed by upgrading instead.
 ignore = [

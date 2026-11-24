@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use chrono::{DateTime, Local};
 use iced::{Length, Rectangle};
 
 use crate::core::{
@@ -99,11 +98,15 @@ pub fn format_bytes(bytes: u64) -> String {
 
 pub fn format_modified(modified: Option<std::time::SystemTime>) -> String {
     modified
-        .map(|time| {
-            let datetime: DateTime<Local> = time.into();
-            datetime.format(t("date_time_format")).to_string()
-        })
+        .and_then(|time| format_local_time(time, t("date_time_format")))
         .unwrap_or_else(|| "-".to_string())
+}
+
+/// `time` in the system time zone, formatted with a strftime pattern. `None`
+/// for a time past year 9999 either way, which jiff cannot represent.
+pub fn format_local_time(time: std::time::SystemTime, format: &str) -> Option<String> {
+    let zoned = jiff::ZonedDateTime::try_from(time).ok()?;
+    Some(zoned.strftime(format).to_string())
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
@@ -685,6 +688,16 @@ mod tests {
         let result = format_modified(Some(std::time::SystemTime::now()));
         assert!(result.contains('-'));
         assert!(result.contains(':'));
+    }
+
+    #[test]
+    fn format_local_time_keeps_the_strftime_layout() {
+        // 2001-09-09 01:46:40 UTC: the date stays in September 2001 in every zone.
+        let time = std::time::UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+        let text = format_local_time(time, "%d/%m/%Y %H:%M:%S").unwrap();
+        assert_eq!(text.len(), 19);
+        assert_eq!(&text[2..10], "/09/2001");
+        assert_eq!(&text[13..14], ":");
     }
 
     #[test]

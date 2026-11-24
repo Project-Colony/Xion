@@ -61,10 +61,11 @@ impl XionApp {
                             .parent()
                             .map(|p| p.display().to_string())
                             .unwrap_or_default();
-                        let accessed_str = {
-                            let dt: chrono::DateTime<chrono::Local> = entry.accessed.into();
-                            dt.format("%d/%m/%Y %H:%M").to_string()
-                        };
+                        let accessed_str = crate::ui::app::helpers::format_local_time(
+                            entry.accessed,
+                            "%d/%m/%Y %H:%M",
+                        )
+                        .unwrap_or_else(|| "-".to_string());
                         let path = entry.path.clone();
                         button(
                             row![

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/Project-Colony/Xion/compare/v0.2.1...v0.2.2) (2026-11-24)
+
+
+### Fixes
+
+* **deps:** update dependencies and Rust to 1.100 and fix the open security advisories ([#42](https://github.com/Project-Colony/Xion/issues/42)) ([c95fbed](https://github.com/Project-Colony/Xion/commit/c95fbede6ffa141177b9536916eafe5cfee5cb28))
+
 ## [0.2.1](https://github.com/Project-Colony/Xion/compare/v0.2.0...v0.2.1) (2026-11-09)
 
 

@@ -1,4 +1,4 @@
-<!-- xion-i18n: source=README.md sha=8b82fe4b0e2baf73ca5d4db01f717baec48c5a6d -->
+<!-- xion-i18n: source=README.md sha=076a9c0ca51e870e53fc54a6a944be52742b85af -->
 
 <div align="center">
 
@@ -116,7 +116,7 @@ cargo build --release
 ./target/release/xion
 ```
 
-Demande Rust 1.95 ou plus récent ; `rust-toolchain.toml` épingle la chaîne
+Demande Rust 1.100 ou plus récent ; `rust-toolchain.toml` épingle la chaîne
 d'outils qu'utilise la CI, et rustup l'installe à la première compilation.
 Au-delà de Rust, la compilation ne demande qu'un compilateur C
 (`build-essential` sous Debian ou Ubuntu) pour le code C embarqué de libgit2,

@@ -106,7 +106,9 @@ pub fn discover_mdns_services() -> Vec<NetworkResource> {
                     if !seen.insert(path.clone()) {
                         continue;
                     }
-                    let raw_name = info.get_fullname().to_string();
+                    // mdns-sd 0.22 keeps the `\.` escapes in a fullname read from
+                    // the network; unescaped, the label stays what 0.21 gave.
+                    let raw_name = mdns_sd::instance_name_unescaped(info.get_fullname());
                     let label =
                         sanitize_mdns_label(raw_name.split('.').next().unwrap_or(&raw_name));
                     let label = if label.is_empty() { host } else { label };

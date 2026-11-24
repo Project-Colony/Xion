@@ -175,10 +175,10 @@ mod watcher_error_tests {
     /// caller must be able to recognise a refusal to stay quiet.
     #[test]
     fn a_permission_refusal_keeps_its_io_kind() {
-        let error = notify::Error {
-            kind: notify::ErrorKind::Io(io::Error::from(io::ErrorKind::PermissionDenied)),
-            paths: vec!["/boot".into()],
-        };
+        let error = notify::Error::new(notify::ErrorKind::Io(io::Error::from(
+            io::ErrorKind::PermissionDenied,
+        )))
+        .set_paths(vec!["/boot".into()]);
         match watcher_error(error) {
             XionError::Io(io) => assert_eq!(io.kind(), io::ErrorKind::PermissionDenied),
             other => panic!("error kind lost: {other}"),
@@ -190,10 +190,7 @@ mod watcher_error_tests {
     /// refusal.
     #[test]
     fn a_real_failure_is_not_mistaken_for_a_refusal() {
-        let error = notify::Error {
-            kind: notify::ErrorKind::MaxFilesWatch,
-            paths: Vec::new(),
-        };
+        let error = notify::Error::new(notify::ErrorKind::MaxFilesWatch);
         assert!(matches!(watcher_error(error), XionError::Watcher(_)));
     }
 
@@ -202,10 +199,8 @@ mod watcher_error_tests {
     /// next to the path already written plainly.
     #[test]
     fn the_message_no_longer_carries_a_debug_path_list() {
-        let error = notify::Error {
-            kind: notify::ErrorKind::WatchNotFound,
-            paths: vec!["/boot".into()],
-        };
+        let error =
+            notify::Error::new(notify::ErrorKind::WatchNotFound).set_paths(vec!["/boot".into()]);
         let rendered = watcher_error(error).to_string();
         assert!(!rendered.contains("about"), "message: {rendered}");
         assert!(!rendered.contains("/boot"), "message: {rendered}");

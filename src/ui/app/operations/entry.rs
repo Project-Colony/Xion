@@ -116,7 +116,7 @@ impl XionApp {
     }
 
     pub(in crate::ui::app) fn open_properties(&mut self, path: PathBuf) -> Task<UiMessage> {
-        use chrono::{DateTime, Local};
+        use crate::ui::app::helpers::format_local_time;
         use std::fs;
 
         let meta = fs::metadata(&path).ok();
@@ -125,14 +125,14 @@ impl XionApp {
             .as_ref()
             .map(|m| m.permissions().readonly())
             .unwrap_or(false);
-        let created = meta.as_ref().and_then(|m| m.created().ok()).map(|t| {
-            let dt: DateTime<Local> = t.into();
-            dt.format("%d/%m/%Y %H:%M:%S").to_string()
-        });
-        let modified = meta.as_ref().and_then(|m| m.modified().ok()).map(|t| {
-            let dt: DateTime<Local> = t.into();
-            dt.format("%d/%m/%Y %H:%M:%S").to_string()
-        });
+        let created = meta
+            .as_ref()
+            .and_then(|m| m.created().ok())
+            .and_then(|t| format_local_time(t, "%d/%m/%Y %H:%M:%S"));
+        let modified = meta
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| format_local_time(t, "%d/%m/%Y %H:%M:%S"));
 
         self.properties_dialog = Some(PropertiesDialog {
             path: path.clone(),
